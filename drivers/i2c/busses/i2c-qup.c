@@ -338,6 +338,7 @@ qup_i2c_pwr_mgmt(struct qup_i2c_dev *dev, unsigned int state)
 	} else {
 		qup_update_state(dev, QUP_RESET_STATE);
 		clk_disable_unprepare(dev->clk);
+		qup_config_core_on_en(dev);
 		clk_disable_unprepare(dev->pclk);
 	}
 }
