@@ -292,3 +292,7 @@ ifdef CONFIG_MSM_PROC_COMM_REGULATOR
 obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30-regulator.o
 obj-$(CONFIG_ARCH_MSM7X27A) += board-msm7x27a-regulator.o
 endif
+
+ifdef CONFIG_TOUCHSCREEN_MELFAS100_TS
+obj-$(CONFIG_ARCH_MSM8960) += board-msm8960-melfas-touch.o
+endif
