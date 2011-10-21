@@ -45,6 +45,8 @@ enum usb_mode_type {
  * OTG_PHY_CONTROL	Id/VBUS notifications comes form USB PHY.
  * OTG_PMIC_CONTROL	Id/VBUS notifications comes from PMIC hardware.
  * OTG_USER_CONTROL	Id/VBUS notifcations comes from User via sysfs.
+ * OTG_ACCY_CONTROL	Id/VBUS notifcations comes from accessory detection
+ *                      driver.
  *
  */
 enum otg_control_type {
@@ -52,6 +54,7 @@ enum otg_control_type {
 	OTG_PHY_CONTROL,
 	OTG_PMIC_CONTROL,
 	OTG_USER_CONTROL,
+	OTG_ACCY_CONTROL,
 };
 
 /**
@@ -153,6 +156,7 @@ struct msm_otg_platform_data {
 	void (*setup_gpio)(enum usb_otg_state state);
 	char *pclk_src_name;
 	int pmic_id_irq;
+	struct platform_device *accy_pdev;
 };
 
 /**
@@ -182,6 +186,10 @@ struct msm_otg_platform_data {
  * @usbdev_nb: The notifier block used to know about the B-device
  *             connected. Useful only when ACA_A charger is
  *             connected.
+ * @accy_nb: The notifier block used to know about mode switches
+ *             requested when the accessory detection driver.
+ *             determines it necessary. Useful only when the
+ *             OTG_ACCY_CONTROL mode is set.
  * @mA_port: The amount of current drawn by the attached B-device.
  */
 struct msm_otg {
@@ -211,6 +219,7 @@ struct msm_otg {
 	u8 dcd_retries;
 	struct wake_lock wlock;
 	struct notifier_block usbdev_nb;
+	struct notifier_block accy_nb;
 	unsigned mA_port;
 	unsigned long caps;
 	/*
