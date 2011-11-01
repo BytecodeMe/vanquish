@@ -1614,8 +1614,13 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	spin_unlock(&swap_lock);
 
 	oom_score_adj = test_set_oom_score_adj(OOM_SCORE_ADJ_MAX);
+<<<<<<< HEAD
 	err = try_to_unuse(type);
 	test_set_oom_score_adj(oom_score_adj);
+=======
+	err = try_to_unuse(type, false, 0); /* force all pages to be unused */
+	compare_swap_oom_score_adj(OOM_SCORE_ADJ_MAX, oom_score_adj);
+>>>>>>> a84f8f2... oom: fix race while temporarily setting current's oom_score_adj
 
 	if (err) {
 		/*
