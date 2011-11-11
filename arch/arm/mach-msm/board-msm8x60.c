@@ -109,6 +109,10 @@
 #include "rpm_resources.h"
 #include "acpuclock.h"
 #include "pm-boot.h"
+
+#include <linux/ion.h>
+#include <mach/ion.h>
+
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
 /* Macros assume PMIC GPIOs start at 0 */
@@ -2210,6 +2214,10 @@ struct platform_device msm_camera_sensor_mt9e013 = {
 #endif
 
 #ifdef CONFIG_IMX074
+static struct msm_camera_sensor_platform_info imx074_sensor_board_info = {
+	.mount_angle = 180
+};
+
 static struct msm_camera_sensor_flash_data flash_imx074 = {
 	.flash_type		= MSM_CAMERA_FLASH_LED,
 	.flash_src		= &msm_flash_src
@@ -2226,7 +2234,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.num_resources		= ARRAY_SIZE(msm_camera_resources),
 	.flash_data		= &flash_imx074,
 	.strobe_flash_data	= &strobe_flash_xenon,
-	.sensor_platform_info = &sensor_board_info,
+	.sensor_platform_info = &imx074_sensor_board_info,
 	.csi_if			= 1
 };
 struct platform_device msm_camera_sensor_imx074 = {
@@ -2620,6 +2628,16 @@ static int writeback_offset(void)
 #define USER_SMI_SIZE         (MSM_SMI_SIZE - KERNEL_SMI_SIZE)
 #define MSM_PMEM_SMIPOOL_SIZE USER_SMI_SIZE
 
+#define MSM_ION_EBI_SIZE        MSM_PMEM_SF_SIZE
+#define MSM_ION_ADSP_SIZE       MSM_PMEM_ADSP_SIZE
+#define MSM_ION_SMI_SIZE	MSM_PMEM_SMIPOOL_SIZE
+
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+#define MSM_ION_HEAP_NUM	5
+#else
+#define MSM_ION_HEAP_NUM	2
+#endif
+
 static unsigned fb_size;
 static int __init fb_size_setup(char *p)
 {
@@ -2749,6 +2767,7 @@ static struct platform_device msm_fb_device = {
 };
 
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
@@ -2774,7 +2793,7 @@ static struct platform_device android_pmem_adsp_device = {
 	.id = 2,
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
-
+#endif
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
@@ -2798,6 +2817,7 @@ static struct platform_device android_pmem_audio_device = {
 		}, \
 	.num_paths = 1, \
 	}
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static struct msm_bus_paths pmem_smi_table[] = {
 	[0] = PMEM_BUS_WIDTH(0), /* Off */
 	[1] = PMEM_BUS_WIDTH(1), /* On */
@@ -2809,21 +2829,21 @@ static struct msm_bus_scale_pdata smi_client_pdata = {
 	.name = "pmem_smi",
 };
 
-void pmem_request_smi_region(void *data)
+void request_smi_region(void *data)
 {
 	int bus_id = (int) data;
 
 	msm_bus_scale_client_update_request(bus_id, 1);
 }
 
-void pmem_release_smi_region(void *data)
+void release_smi_region(void *data)
 {
 	int bus_id = (int) data;
 
 	msm_bus_scale_client_update_request(bus_id, 0);
 }
 
-void *pmem_setup_smi_region(void)
+void *setup_smi_region(void)
 {
 	return (void *)msm_bus_scale_register_client(&smi_client_pdata);
 }
@@ -2832,9 +2852,9 @@ static struct android_pmem_platform_data android_pmem_smipool_pdata = {
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
 	.memory_type = MEMTYPE_SMI,
-	.request_region = pmem_request_smi_region,
-	.release_region = pmem_release_smi_region,
-	.setup_region = pmem_setup_smi_region,
+	.request_region = request_smi_region,
+	.release_region = release_smi_region,
+	.setup_region = setup_smi_region,
 	.map_on_demand = 1,
 };
 static struct platform_device android_pmem_smipool_device = {
@@ -2842,7 +2862,7 @@ static struct platform_device android_pmem_smipool_device = {
 	.id = 7,
 	.dev = { .platform_data = &android_pmem_smipool_pdata },
 };
-
+#endif
 #endif
 
 #define GPIO_DONGLE_PWR_EN 258
@@ -3189,6 +3209,14 @@ reg_l5_put:
 	return rc;
 }
 
+/* TODO: Put the regulator to LPM / HPM in suspend/resume*/
+static int cyttsp_platform_suspend(struct i2c_client *client)
+{
+	msleep(20);
+
+	return CY_OK;
+}
+
 static int cyttsp_platform_resume(struct i2c_client *client)
 {
 	/* add any special code to strobe a wakeup pin or chip reset */
@@ -3228,6 +3256,7 @@ static struct cyttsp_platform_data cyttsp_fluid_pdata = {
 	.resout_gpio = -1,
 	.irq_gpio = CYTTSP_TS_GPIO_IRQ,
 	.resume = cyttsp_platform_resume,
+	.suspend = cyttsp_platform_suspend,
 	.init = cyttsp_platform_init,
 };
 
@@ -3270,6 +3299,7 @@ static struct cyttsp_platform_data cyttsp_tmg240_pdata = {
 	.resout_gpio = -1,
 	.irq_gpio = CYTTSP_TS_GPIO_IRQ,
 	.resume = cyttsp_platform_resume,
+	.suspend = cyttsp_platform_suspend,
 	.init = cyttsp_platform_init,
 	.disable_ghost_det = true,
 };
@@ -4127,10 +4157,12 @@ static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_ssbi3,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&android_pmem_device,
 	&android_pmem_adsp_device,
-	&android_pmem_audio_device,
 	&android_pmem_smipool_device,
+#endif
+	&android_pmem_audio_device,
 #endif
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -4997,10 +5029,12 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_batt_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&android_pmem_device,
 	&android_pmem_adsp_device,
-	&android_pmem_audio_device,
 	&android_pmem_smipool_device,
+#endif
+	&android_pmem_audio_device,
 #endif
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -5094,8 +5128,59 @@ static struct platform_device *surf_devices[] __initdata = {
 
 	&msm_tsens_device,
 	&msm_rpm_device,
-
+#ifdef CONFIG_ION_MSM
+	&ion_dev,
+#endif
+	&msm8660_device_watchdog,
 };
+
+#ifdef CONFIG_ION_MSM
+struct ion_platform_data ion_pdata = {
+	.nr = MSM_ION_HEAP_NUM,
+	.heaps = {
+		{
+			.id	= ION_HEAP_SYSTEM_ID,
+			.type	= ION_HEAP_TYPE_SYSTEM,
+			.name	= ION_VMALLOC_HEAP_NAME,
+		},
+		{
+			.id	= ION_HEAP_SYSTEM_CONTIG_ID,
+			.type	= ION_HEAP_TYPE_SYSTEM_CONTIG,
+			.name	= ION_KMALLOC_HEAP_NAME,
+		},
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+		{
+			.id	= ION_HEAP_EBI_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_EBI1_HEAP_NAME,
+			.size	= MSM_ION_EBI_SIZE,
+			.memory_type = ION_EBI_TYPE,
+		},
+		{
+			.id	= ION_HEAP_ADSP_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_ADSP_HEAP_NAME,
+			.size	= MSM_ION_ADSP_SIZE,
+			.memory_type = ION_EBI_TYPE,
+		},
+		{
+			.id	= ION_HEAP_SMI_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_SMI_HEAP_NAME,
+			.size	= MSM_ION_SMI_SIZE,
+			.memory_type = ION_SMI_TYPE,
+		},
+#endif
+	}
+};
+
+struct platform_device ion_dev = {
+	.name = "ion-msm",
+	.id = 1,
+	.dev = { .platform_data = &ion_pdata },
+};
+#endif
+
 
 static struct memtype_reserve msm8x60_reserve_table[] __initdata = {
 	/* Kernel SMI memory pool for video core, used for firmware */
@@ -5124,13 +5209,24 @@ static struct memtype_reserve msm8x60_reserve_table[] __initdata = {
 	},
 };
 
+static void reserve_ion_memory(void)
+{
+#if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_EBI_SIZE;
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_ADSP_SIZE;
+	msm8x60_reserve_table[MEMTYPE_SMI].size += MSM_ION_SMI_SIZE;
+#endif
+}
+
 static void __init size_pmem_devices(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	android_pmem_adsp_pdata.size = pmem_adsp_size;
 	android_pmem_smipool_pdata.size = MSM_PMEM_SMIPOOL_SIZE;
-	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
 	android_pmem_pdata.size = pmem_sf_size;
+#endif
+	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
 #endif
 }
 
@@ -5142,18 +5238,23 @@ static void __init reserve_memory_for(struct android_pmem_platform_data *p)
 static void __init reserve_pmem_memory(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	reserve_memory_for(&android_pmem_adsp_pdata);
 	reserve_memory_for(&android_pmem_smipool_pdata);
-	reserve_memory_for(&android_pmem_audio_pdata);
 	reserve_memory_for(&android_pmem_pdata);
+#endif
+	reserve_memory_for(&android_pmem_audio_pdata);
 	msm8x60_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
 #endif
 }
+
+
 
 static void __init msm8x60_calculate_reserve_sizes(void)
 {
 	size_pmem_devices();
 	reserve_pmem_memory();
+	reserve_ion_memory();
 }
 
 static int msm8x60_paddr_to_memtype(unsigned int paddr)
@@ -7559,7 +7660,7 @@ static void __init msm8x60_init_tlmm(void)
 	|| defined(CONFIG_MMC_MSM_SDC4_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC5_SUPPORT))
 
-/* 8x60 is having 5 SDCC controllers */
+/* 8x60 has 5 SDCC controllers */
 #define MAX_SDCC_CONTROLLER	5
 
 struct msm_sdcc_gpio {
@@ -7883,7 +7984,7 @@ struct sdcc_reg {
 	unsigned int lpm_uA;
 	unsigned int hpm_uA;
 };
-/* all SDCC controllers requires VDD/VCC voltage */
+/* all SDCC controllers require VDD/VCC voltage */
 static struct sdcc_reg sdcc_vdd_reg_data[MAX_SDCC_CONTROLLER];
 /* only SDCC1 requires VCCQ voltage */
 static struct sdcc_reg sdcc_vccq_reg_data[1];
@@ -7896,7 +7997,7 @@ struct sdcc_reg_data {
 	struct sdcc_reg *vddp_data; /* keeps VDD Pad regulator info */
 	unsigned char sts; /* regulator enable/disable status */
 };
-/* msm8x60 have 5 SDCC controllers */
+/* msm8x60 has 5 SDCC controllers */
 static struct sdcc_reg_data sdcc_vreg_data[MAX_SDCC_CONTROLLER];
 
 static int msm_sdcc_vreg_init_reg(struct sdcc_reg *vreg)

@@ -25,6 +25,8 @@
 #include <linux/usb/android.h>
 #include <linux/usb/msm_hsusb.h>
 #include <linux/mfd/pm8xxx/pm8xxx-adc.h>
+#include <linux/leds.h>
+#include <linux/leds-pm8xxx.h>
 #include "timer.h"
 #include "devices.h"
 #include "board-9615.h"
@@ -94,6 +96,42 @@ static struct pm8xxx_misc_platform_data pm8xxx_misc_pdata = {
 	.priority		= 0,
 };
 
+#define PM8018_LED_KB_MAX_CURRENT	20	/* I = 20mA */
+#define PM8XXX_LED_PWM_PERIOD_US	1000
+
+/**
+ * PM8XXX_PWM_CHANNEL_NONE shall be used when LED shall not be
+ * driven using PWM feature.
+ */
+#define PM8XXX_PWM_CHANNEL_NONE		-1
+
+static struct led_info pm8018_led_info[] = {
+	[0] = {
+		.name	= "led:kb",
+	},
+};
+
+static struct led_platform_data pm8018_led_core_pdata = {
+	.num_leds = ARRAY_SIZE(pm8018_led_info),
+	.leds = pm8018_led_info,
+};
+
+static struct pm8xxx_led_config pm8018_led_configs[] = {
+	[0] = {
+		.id = PM8XXX_ID_LED_KB_LIGHT,
+		.mode = PM8XXX_LED_MODE_PWM3,
+		.max_current = PM8018_LED_KB_MAX_CURRENT,
+		.pwm_channel = 2,
+		.pwm_period_us = PM8XXX_LED_PWM_PERIOD_US,
+	},
+};
+
+static struct pm8xxx_led_platform_data pm8xxx_leds_pdata = {
+		.led_core = &pm8018_led_core_pdata,
+		.configs = pm8018_led_configs,
+		.num_configs = ARRAY_SIZE(pm8018_led_configs),
+};
+
 static struct pm8018_platform_data pm8018_platform_data __devinitdata = {
 	.irq_pdata		= &pm8xxx_irq_pdata,
 	.gpio_pdata		= &pm8xxx_gpio_pdata,
@@ -103,6 +141,7 @@ static struct pm8018_platform_data pm8018_platform_data __devinitdata = {
 	.misc_pdata		= &pm8xxx_misc_pdata,
 	.regulator_pdatas	= msm_pm8018_regulator_pdata,
 	.adc_pdata		= &pm8018_adc_pdata,
+	.leds_pdata		= &pm8xxx_leds_pdata,
 };
 
 static struct msm_ssbi_platform_data msm9615_ssbi_pm8018_pdata __devinitdata = {
@@ -118,6 +157,15 @@ static struct platform_device msm9615_device_rpm_regulator __devinitdata = {
 	.id	= -1,
 	.dev	= {
 		.platform_data = &msm_rpm_regulator_9615_pdata,
+	},
+};
+
+static struct platform_device msm9615_device_ext_2p95v_vreg = {
+	.name	= GPIO_REGULATOR_DEV_NAME,
+	.id	= 18,
+	.dev	= {
+		.platform_data =
+			&msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_2P95V],
 	},
 };
 
@@ -233,11 +281,10 @@ struct msm_gpiomux_config msm9615_gsbi_configs[] __initdata = {
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT))
 
-#define GPIO_SDCARD_PWR_EN	18
 #define GPIO_SDC1_HW_DET	80
 #define GPIO_SDC2_DAT1_WAKEUP	26
 
-/* MDM9x15 have 2 SDCC controllers */
+/* MDM9x15 has 2 SDCC controllers */
 enum sdcc_controllers {
 	SDCC1,
 	SDCC2,
@@ -245,6 +292,51 @@ enum sdcc_controllers {
 };
 
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
+/* All SDCC controllers requires VDD/VCC voltage */
+static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC1 : External card slot connected */
+	[SDCC1] = {
+		.name = "sdc_vdd",
+		/*
+		 * This is a gpio-regulator and does not support
+		 * regulator_set_voltage and regulator_set_optimum_mode
+		 */
+		.set_voltage_sup = false,
+		.high_vol_level = 2950000,
+		.low_vol_level = 2950000,
+		.hpm_uA = 600000, /* 600mA */
+	}
+};
+
+/* All SDCC controllers may require voting for VDD PAD voltage */
+static struct msm_mmc_reg_data mmc_vddp_reg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC1 : External card slot connected */
+	[SDCC1] = {
+		.name = "sdc_vddp",
+		.set_voltage_sup = true,
+		.high_vol_level = 2950000,
+		.low_vol_level = 1850000,
+		.always_on = true,
+		.lpm_sup = true,
+		/* Max. Active current required is 16 mA */
+		.hpm_uA = 16000,
+		/*
+		 * Sleep current required is ~300 uA. But min. vote can be
+		 * in terms of mA (min. 1 mA). So let's vote for 2 mA
+		 * during sleep.
+		 */
+		.lpm_uA = 2000,
+	}
+};
+
+static struct msm_mmc_slot_reg_data mmc_slot_vreg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC1 : External card slot connected */
+	[SDCC1] = {
+		.vdd_data = &mmc_vdd_reg_data[SDCC1],
+		.vddp_data = &mmc_vddp_reg_data[SDCC1],
+	}
+};
+
 /* SDC1 pad data */
 static struct msm_mmc_pad_drv sdc1_pad_drv_on_cfg[] = {
 	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA},
@@ -408,8 +500,9 @@ static struct mmc_platform_data sdc1_data = {
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.sup_clk_table	= sdc1_sup_clk_rates,
 	.sup_clk_cnt	= ARRAY_SIZE(sdc1_sup_clk_rates),
-	.pclk_src_dfab	= 1,
+	.pclk_src_dfab	= true,
 	.sdcc_v4_sup    = true,
+	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
 	.pin_data	= &mmc_slot_pin_data[SDCC1],
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
 	.status_gpio	= GPIO_SDC1_HW_DET,
@@ -446,32 +539,16 @@ static struct mmc_platform_data *msm9615_sdc2_pdata;
 
 static void __init msm9615_init_mmc(void)
 {
-	int ret;
-
 	if (msm9615_sdc1_pdata) {
-		ret = gpio_request(GPIO_SDCARD_PWR_EN, "SDCARD_PWR_EN");
-
-		if (ret) {
-			pr_err("%s: sdcc1: Error requesting GPIO "
-				"SDCARD_PWR_EN:%d\n", __func__, ret);
-		} else {
-			ret = gpio_direction_output(GPIO_SDCARD_PWR_EN, 1);
-			if (ret) {
-				pr_err("%s: sdcc1: Error setting o/p direction"
-					" for GPIO SDCARD_PWR_EN:%d\n",
-					__func__, ret);
-				gpio_free(GPIO_SDCARD_PWR_EN);
-			} else {
-				msm_add_sdcc(1, msm9615_sdc1_pdata);
-			}
-		}
+		/* SDC1: External card slot for SD/MMC cards */
+		msm_add_sdcc(1, msm9615_sdc1_pdata);
 	}
 
 	if (msm9615_sdc2_pdata) {
 		msm_gpiomux_install(msm9615_sdcc2_configs,
 			ARRAY_SIZE(msm9615_sdcc2_configs));
 
-		/* SDC2: External card slot */
+		/* SDC2: External card slot used for WLAN */
 		msm_add_sdcc(2, msm9615_sdc2_pdata);
 	}
 }
@@ -566,6 +643,7 @@ static struct platform_device *common_devices[] = {
 	&msm_device_gadget_peripheral,
 	&android_usb_device,
 	&msm9615_device_uart_gsbi4,
+	&msm9615_device_ext_2p95v_vreg,
 	&msm9615_device_ssbi_pmic1,
 	&msm9615_device_qup_i2c_gsbi5,
 	&msm9615_device_qup_spi_gsbi3,
@@ -586,6 +664,7 @@ static struct platform_device *common_devices[] = {
 		defined(CONFIG_CRYPTO_DEV_QCEDEV_MODULE)
 	&msm9615_qcedev_device,
 #endif
+	&msm9615_device_watchdog,
 };
 
 static void __init msm9615_i2c_init(void)

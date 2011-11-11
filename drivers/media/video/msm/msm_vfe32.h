@@ -140,6 +140,9 @@
 /* For DBPC bit 1 is set to zero and other's 1 */
 #define DBCC_MASK 0xFFFFFFFD
 
+/* For DBPC/ABF/DBCC/ABCC bits are set to 1 all others 0 */
+#define DEMOSAIC_MASK 0xF
+
 /* For MCE enable bit 28 set to zero and other's 1 */
 #define MCE_EN_MASK 0xEFFFFFFF
 
@@ -211,6 +214,8 @@ enum  vfe_recording_state {
 #define V32_DEMOSAICV3_0_LEN      4
 #define V32_DEMOSAICV3_1_OFF      0x0000061C
 #define V32_DEMOSAICV3_1_LEN      88
+#define V32_DEMOSAICV3_2_OFF      0x0000066C
+#define V32_DEMOSAICV3_UP_REG_CNT 5
 /* BPC     */
 #define V32_DEMOSAIC_2_OFF        0x0000029C
 #define V32_DEMOSAIC_2_LEN        8
@@ -871,6 +876,7 @@ struct vfe32_frame_extra {
 #define VFE32_OUTPUT_MODE_V (0x1 << 2)
 #define VFE32_OUTPUT_MODE_P (0x1 << 3)
 #define VFE32_OUTPUT_MODE_T (0x1 << 4)
+#define VFE32_OUTPUT_MODE_P_ALL_CHNLS (0x1 << 5)
 
 struct vfe_stats_control {
 	uint8_t  ackPending;

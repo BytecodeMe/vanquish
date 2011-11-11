@@ -461,6 +461,42 @@ static DEFINE_VDD_CLASS(vdd_dig, set_vdd_dig);
 	.fmax[VDD_DIG_##l2] = (f2), \
 	.fmax[VDD_DIG_##l3] = (f3)
 
+enum vdd_l23_levels {
+	VDD_L23_OFF,
+	VDD_L23_ON
+};
+
+static int set_vdd_l23(struct clk_vdd_class *vdd_class, int level)
+{
+	int rc;
+
+	if (level == VDD_L23_OFF) {
+		rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_L23,
+				RPM_VREG_VOTER3, 0, 0, 1);
+		if (rc)
+			return rc;
+		rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_S8,
+				RPM_VREG_VOTER3, 0, 0, 1);
+		if (rc)
+			rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_L23,
+				RPM_VREG_VOTER3, 1800000, 1800000, 1);
+	} else {
+		rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_S8,
+				RPM_VREG_VOTER3, 2200000, 2200000, 1);
+		if (rc)
+			return rc;
+		rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_L23,
+				RPM_VREG_VOTER3, 1800000, 1800000, 1);
+		if (rc)
+			rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_S8,
+				RPM_VREG_VOTER3, 0, 0, 1);
+	}
+
+	return rc;
+}
+
+static DEFINE_VDD_CLASS(vdd_l23, set_vdd_l23);
+
 /*
  * Clock Descriptions
  */
@@ -537,6 +573,8 @@ static struct pll_clk pll3_clk = {
 	.c = {
 		.dbg_name = "pll3_clk",
 		.ops = &clk_ops_pll,
+		.vdd_class = &vdd_l23,
+		.fmax[VDD_L23_ON] = ULONG_MAX,
 		CLK_INIT(pll3_clk.c),
 	},
 };
@@ -5124,32 +5162,43 @@ static struct clk_lookup msm_clocks_8064[] __initdata = {
 	CLK_DUMMY("rgb_tv_clk",		RGB_TV_CLK,		NULL, OFF),
 	CLK_DUMMY("npl_tv_clk",		NPL_TV_CLK,		NULL, OFF),
 	CLK_LOOKUP("core_clk",		gfx3d_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		gfx3d_clk.c,	"footswitch-8x60.2"),
+	CLK_LOOKUP("bus_clk",		gfx3d_axi_clk.c, "footswitch-8x60.2"),
 	CLK_LOOKUP("iface_clk",         vcap_p_clk.c,           NULL),
-	CLK_LOOKUP("bus_clk",		vcap_axi_clk.c,         NULL),
+	CLK_LOOKUP("iface_clk",         vcap_p_clk.c,	"footswitch-8x60.10"),
+	CLK_LOOKUP("bus_clk",		vcap_axi_clk.c,	"footswitch-8x60.10"),
 	CLK_LOOKUP("core_clk",          vcap_clk.c,             NULL),
+	CLK_LOOKUP("core_clk",          vcap_clk.c,	"footswitch-8x60.10"),
 	CLK_LOOKUP("vcap_npl_clk",      vcap_npl_clk.c,         NULL),
-	CLK_LOOKUP("bus_clk",		ijpeg_axi_clk.c,	NULL),
+	CLK_LOOKUP("bus_clk",		ijpeg_axi_clk.c, "footswitch-8x60.3"),
 	CLK_LOOKUP("mem_clk",		imem_axi_clk.c,		NULL),
 	CLK_LOOKUP("ijpeg_clk",         ijpeg_clk.c,            NULL),
+	CLK_LOOKUP("core_clk",		ijpeg_clk.c,	"footswitch-8x60.3"),
 	CLK_LOOKUP("core_clk",		jpegd_clk.c,		NULL),
 	CLK_LOOKUP("mdp_clk",		mdp_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		mdp_clk.c,	 "footswitch-8x60.4"),
 	CLK_LOOKUP("mdp_vsync_clk",	mdp_vsync_clk.c,	NULL),
 	CLK_LOOKUP("lut_mdp",		lut_mdp_clk.c,		NULL),
 	CLK_LOOKUP("core_clk",		rot_clk.c,	"msm_rotator.0"),
+	CLK_LOOKUP("core_clk",		rot_clk.c,	"footswitch-8x60.6"),
 	CLK_DUMMY("tv_src_clk",		TV_SRC_CLK,		NULL, OFF),
 	CLK_LOOKUP("core_clk",		vcodec_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		vcodec_clk.c,	"footswitch-8x60.7"),
 	CLK_DUMMY("mdp_tv_clk",		MDP_TV_CLK,		NULL, OFF),
 	CLK_DUMMY("hdmi_clk",		HDMI_TV_CLK,		NULL, OFF),
 	CLK_LOOKUP("core_clk",		hdmi_app_clk.c,		NULL),
 	CLK_LOOKUP("vpe_clk",		vpe_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		vpe_clk.c,	"footswitch-8x60.9"),
 	CLK_LOOKUP("vfe_clk",		vfe_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		vfe_clk.c,	"footswitch-8x60.8"),
 	CLK_LOOKUP("csi_vfe_clk",	csi_vfe_clk.c,		NULL),
-	CLK_LOOKUP("vfe_axi_clk",	vfe_axi_clk.c,		NULL),
-	CLK_LOOKUP("mdp_axi_clk",	mdp_axi_clk.c,		NULL),
-	CLK_LOOKUP("bus_clk",		vcodec_axi_clk.c,	NULL),
-	CLK_LOOKUP("bus_a_clk",		vcodec_axi_a_clk.c,	NULL),
-	CLK_LOOKUP("bus_b_clk",		vcodec_axi_b_clk.c,	NULL),
-	CLK_LOOKUP("vpe_axi_clk",	vpe_axi_clk.c,		NULL),
+	CLK_LOOKUP("bus_clk",		vfe_axi_clk.c,	"footswitch-8x60.8"),
+	CLK_LOOKUP("bus_clk",		mdp_axi_clk.c,	"footswitch-8x60.4"),
+	CLK_LOOKUP("bus_clk",		rot_axi_clk.c,	"footswitch-8x60.6"),
+	CLK_LOOKUP("bus_clk",		vcodec_axi_clk.c,  "footswitch-8x60.7"),
+	CLK_LOOKUP("bus_a_clk",        vcodec_axi_a_clk.c, "footswitch-8x60.7"),
+	CLK_LOOKUP("bus_b_clk",        vcodec_axi_b_clk.c, "footswitch-8x60.7"),
+	CLK_LOOKUP("bus_clk",		vpe_axi_clk.c,	"footswitch-8x60.9"),
 	CLK_LOOKUP("amp_pclk",		amp_p_clk.c,		NULL),
 	CLK_LOOKUP("csi_pclk",		csi_p_clk.c,		NULL),
 	CLK_LOOKUP("dsi_m_pclk",	dsi1_m_p_clk.c,		NULL),
@@ -5157,17 +5206,24 @@ static struct clk_lookup msm_clocks_8064[] __initdata = {
 	CLK_LOOKUP("dsi_m_pclk",	dsi2_m_p_clk.c,		NULL),
 	CLK_LOOKUP("dsi_s_pclk",	dsi2_s_p_clk.c,		NULL),
 	CLK_LOOKUP("iface_clk",		gfx3d_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		gfx3d_p_clk.c,	"footswitch-8x60.2"),
 	CLK_LOOKUP("master_iface_clk",	hdmi_m_p_clk.c,		NULL),
 	CLK_LOOKUP("slave_iface_clk",	hdmi_s_p_clk.c,		NULL),
 	CLK_LOOKUP("ijpeg_pclk",	ijpeg_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		ijpeg_p_clk.c,	"footswitch-8x60.3"),
 	CLK_LOOKUP("iface_clk",		jpegd_p_clk.c,		NULL),
 	CLK_LOOKUP("mem_iface_clk",	imem_p_clk.c,		NULL),
 	CLK_LOOKUP("mdp_pclk",		mdp_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		mdp_p_clk.c,	"footswitch-8x60.4"),
 	CLK_LOOKUP("iface_clk",		smmu_p_clk.c,		NULL),
 	CLK_LOOKUP("iface_clk",		rot_p_clk.c,	"msm_rotator.0"),
+	CLK_LOOKUP("iface_clk",		rot_p_clk.c,	"footswitch-8x60.6"),
 	CLK_LOOKUP("iface_clk",		vcodec_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		vcodec_p_clk.c,	"footswitch-8x60.7"),
 	CLK_LOOKUP("vfe_pclk",		vfe_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		vfe_p_clk.c,	"footswitch-8x60.8"),
 	CLK_LOOKUP("vpe_pclk",		vpe_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_pclk",	vpe_p_clk.c,	"footswitch-8x60.9"),
 	CLK_LOOKUP("mi2s_bit_clk",	mi2s_bit_clk.c,		NULL),
 	CLK_LOOKUP("mi2s_osr_clk",	mi2s_osr_clk.c,		NULL),
 	CLK_LOOKUP("i2s_mic_bit_clk",	codec_i2s_mic_bit_clk.c,	NULL),
@@ -5205,7 +5261,7 @@ static struct clk_lookup msm_clocks_8064[] __initdata = {
 	CLK_LOOKUP("usb_hsic_p_clk",	usb_hsic_p_clk.c,	NULL),
 
 	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
-	CLK_LOOKUP("ebi1_clk",		ebi1_adm_clk.c, "msm_dmov"),
+	CLK_LOOKUP("mem_clk",		ebi1_adm_clk.c, "msm_dmov"),
 
 	CLK_LOOKUP("l2_mclk",		l2_m_clk,     NULL),
 	CLK_LOOKUP("krait0_mclk",	krait0_m_clk, NULL),
@@ -5650,10 +5706,10 @@ static void __init reg_init(void)
 		/* Check if PLL8 is active */
 		is_pll_enabled = readl_relaxed(BB_PLL8_STATUS_REG) & BIT(16);
 		if (!is_pll_enabled) {
-			/* Ref clk = 24.5MHz and program pll8 to 384MHz */
-			writel_relaxed(0xF,  BB_PLL8_L_VAL_REG);
-			writel_relaxed(0x21, BB_PLL8_M_VAL_REG);
-			writel_relaxed(0x31, BB_PLL8_N_VAL_REG);
+			/* Ref clk = 27MHz and program pll8 to 384MHz */
+			writel_relaxed(0xE, BB_PLL8_L_VAL_REG);
+			writel_relaxed(0x2, BB_PLL8_M_VAL_REG);
+			writel_relaxed(0x9, BB_PLL8_N_VAL_REG);
 
 			regval = readl_relaxed(BB_PLL8_CONFIG_REG);
 
@@ -5679,10 +5735,10 @@ static void __init reg_init(void)
 		/* Check if PLL3 is active */
 		is_pll_enabled = readl_relaxed(GPLL1_STATUS_REG) & BIT(16);
 		if (!is_pll_enabled) {
-			/* Ref clk = 24.5MHz and program pll3 to 1200MHz */
-			writel_relaxed(0x30, GPLL1_L_VAL_REG);
-			writel_relaxed(0x30, GPLL1_M_VAL_REG);
-			writel_relaxed(0x31, GPLL1_N_VAL_REG);
+			/* Ref clk = 27MHz and program pll3 to 1200MHz */
+			writel_relaxed(0x2C, GPLL1_L_VAL_REG);
+			writel_relaxed(0x4,  GPLL1_M_VAL_REG);
+			writel_relaxed(0x9,  GPLL1_N_VAL_REG);
 
 			regval = readl_relaxed(GPLL1_CONFIG_REG);
 
@@ -5698,10 +5754,10 @@ static void __init reg_init(void)
 		/* Check if PLL14 is active */
 		is_pll_enabled = readl_relaxed(BB_PLL14_STATUS_REG) & BIT(16);
 		if (!is_pll_enabled) {
-			/* Ref clk = 24.5MHz and program pll14 to 480MHz */
-			writel_relaxed(0x13, BB_PLL14_L_VAL_REG);
-			writel_relaxed(0x1D, BB_PLL14_M_VAL_REG);
-			writel_relaxed(0x31, BB_PLL14_N_VAL_REG);
+			/* Ref clk = 27MHz and program pll14 to 480MHz */
+			writel_relaxed(0x11, BB_PLL14_L_VAL_REG);
+			writel_relaxed(0x7,  BB_PLL14_M_VAL_REG);
+			writel_relaxed(0x9,  BB_PLL14_N_VAL_REG);
 
 			regval = readl_relaxed(BB_PLL14_CONFIG_REG);
 
@@ -5765,10 +5821,10 @@ static void __init reg_init(void)
 		/* Check if PLL4 is active */
 		is_pll_enabled = readl_relaxed(LCC_PLL0_STATUS_REG) & BIT(16);
 		if (!is_pll_enabled) {
-			/* Ref clk = 24.5MHz and program pll4 to 393.2160MHz */
-			writel_relaxed(0x10,   LCC_PLL0_L_VAL_REG);
-			writel_relaxed(0x130,  LCC_PLL0_M_VAL_REG);
-			writel_relaxed(0x17ED, LCC_PLL0_N_VAL_REG);
+			/* Ref clk = 27MHz and program pll4 to 393.2160MHz */
+			writel_relaxed(0xE,   LCC_PLL0_L_VAL_REG);
+			writel_relaxed(0x27A, LCC_PLL0_M_VAL_REG);
+			writel_relaxed(0x465, LCC_PLL0_N_VAL_REG);
 
 			regval = readl_relaxed(LCC_PLL0_CONFIG_REG);
 

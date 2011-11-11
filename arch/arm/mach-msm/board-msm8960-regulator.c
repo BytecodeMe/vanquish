@@ -118,6 +118,8 @@ VREG_CONSUMERS(L25) = {
 	REGULATOR_SUPPLY("8921_l25",		NULL),
 	REGULATOR_SUPPLY("VDDD_CDC_D",		"tabla-slim"),
 	REGULATOR_SUPPLY("CDC_VDDA_A_1P2V",	"tabla-slim"),
+	REGULATOR_SUPPLY("VDDD_CDC_D",		"tabla2x-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_A_1P2V",	"tabla2x-slim"),
 };
 VREG_CONSUMERS(L26) = {
 	REGULATOR_SUPPLY("8921_l26",		NULL),
@@ -157,7 +159,12 @@ VREG_CONSUMERS(S4) = {
 	REGULATOR_SUPPLY("CDC_VDD_CP",		"tabla-slim"),
 	REGULATOR_SUPPLY("CDC_VDDA_TX",		"tabla-slim"),
 	REGULATOR_SUPPLY("CDC_VDDA_RX",		"tabla-slim"),
+	REGULATOR_SUPPLY("VDDIO_CDC",		"tabla2x-slim"),
+	REGULATOR_SUPPLY("CDC_VDD_CP",		"tabla2x-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_TX",		"tabla2x-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_RX",		"tabla2x-slim"),
 	REGULATOR_SUPPLY("vcc_i2c",		"3-005b"),
+	REGULATOR_SUPPLY("EXT_HUB_VDDIO",	"msm_hsic_host"),
 };
 VREG_CONSUMERS(S5) = {
 	REGULATOR_SUPPLY("8921_s5",		NULL),
@@ -478,7 +485,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 	RPM_SMPS(S3,	 0, 1, 1,  500000, 1150000, NULL, 100000, 4p80),
 	RPM_SMPS(S4,	 1, 1, 0, 1800000, 1800000, NULL, 100000, 3p20),
 	RPM_SMPS(S7,	 0, 1, 0, 1150000, 1150000, NULL, 100000, 3p20),
-	RPM_SMPS(S8,	 1, 1, 0, 2200000, 2200000, NULL, 100000, 1p60),
+	RPM_SMPS(S8,	 1, 1, 1, 2200000, 2200000, NULL, 100000, 1p60),
 
 	/*	ID     a_on pd ss min_uV   max_uV  supply  sys_uA init_ip */
 	RPM_LDO(L1,	 1, 1, 0, 1050000, 1050000, "8921_s4", 0, 10000),
@@ -500,7 +507,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 	RPM_LDO(L18,	 0, 1, 0, 1300000, 1300000, "8921_s4", 0, 0),
 	RPM_LDO(L21,	 0, 1, 0, 1900000, 1900000, "8921_s8", 0, 0),
 	RPM_LDO(L22,	 0, 1, 0, 2750000, 2750000, NULL,      0, 0),
-	RPM_LDO(L23,	 1, 1, 0, 1800000, 1800000, "8921_s8", 10000, 10000),
+	RPM_LDO(L23,	 1, 1, 1, 1800000, 1800000, "8921_s8", 10000, 10000),
 	RPM_LDO(L24,	 0, 1, 1,  750000, 1150000, "8921_s1", 10000, 10000),
 	RPM_LDO(L25,	 1, 1, 0, 1225000, 1225000, "8921_s1", 10000, 10000),
 

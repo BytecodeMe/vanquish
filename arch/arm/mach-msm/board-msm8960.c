@@ -89,6 +89,7 @@
 #include "rpm_log.h"
 #include "smd_private.h"
 #include "pm-boot.h"
+#include "msm_watchdog.h"
 
 static struct platform_device msm_fm_platform_init = {
 	.name = "iris_fm",
@@ -154,6 +155,12 @@ struct pm8xxx_mpp_init {
 			PM_GPIO_STRENGTH_HIGH, \
 			_func, 0, 0)
 
+#define PM8XXX_GPIO_OUTPUT_VIN(_gpio, _val, _vin) \
+	PM8XXX_GPIO_INIT(_gpio, PM_GPIO_DIR_OUT, PM_GPIO_OUT_BUF_CMOS, _val, \
+			PM_GPIO_PULL_NO, _vin, \
+			PM_GPIO_STRENGTH_HIGH, \
+			PM_GPIO_FUNC_NORMAL, 0, 0)
+
 /* Initial PM8921 GPIO configurations */
 static struct pm8xxx_gpio_init pm8921_gpios[] __initdata = {
 	PM8XXX_GPIO_DISABLE(6),				 /* Disable unused */
@@ -161,7 +168,7 @@ static struct pm8xxx_gpio_init pm8921_gpios[] __initdata = {
 	PM8XXX_GPIO_INPUT(16,	    PM_GPIO_PULL_UP_30), /* SD_CARD_WP */
     /* External regulator shared by display and touchscreen on LiQUID */
 	PM8XXX_GPIO_OUTPUT(17,	    0),			 /* DISP 3.3 V Boost */
-	PM8XXX_GPIO_OUTPUT(21,	    1),			 /* Backlight Enable */
+	PM8XXX_GPIO_OUTPUT_VIN(21, 1, PM_GPIO_VIN_VPH),	 /* Backlight Enable */
 	PM8XXX_GPIO_DISABLE(22),			 /* Disable NFC */
 	PM8XXX_GPIO_OUTPUT_FUNC(24, 0, PM_GPIO_FUNC_2),	 /* Bl: Off, PWM mode */
 	PM8XXX_GPIO_INPUT(26,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
@@ -725,6 +732,12 @@ static struct gpiomux_setting hsic_sus_cfg = {
 	.pull = GPIOMUX_PULL_DOWN,
 };
 
+static struct gpiomux_setting hsic_hub_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct msm_gpiomux_config msm8960_hsic_configs[] = {
 	{
 		.gpio = 150,               /*HSIC_STROBE */
@@ -737,6 +750,13 @@ static struct msm_gpiomux_config msm8960_hsic_configs[] = {
 		.gpio = 151,               /* HSIC_DATA */
 		.settings = {
 			[GPIOMUX_ACTIVE] = &hsic_act_cfg,
+			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
+		},
+	},
+	{
+		.gpio = 91,               /* HSIC_HUB_RESET */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &hsic_hub_act_cfg,
 			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
 		},
 	},
@@ -2406,6 +2426,35 @@ static struct slim_device msm_slim_tabla = {
 		.platform_data = &tabla_platform_data,
 	},
 };
+
+static struct tabla_pdata tabla20_platform_data = {
+	.slimbus_slave_device = {
+		.name = "tabla-slave",
+		.e_addr = {0, 0, 0x60, 0, 0x17, 2},
+	},
+	.irq = MSM_GPIO_TO_INT(62),
+	.irq_base = TABLA_INTERRUPT_BASE,
+	.num_irqs = NR_TABLA_IRQS,
+	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
+	.micbias = {
+		.ldoh_v = TABLA_LDOH_2P85_V,
+		.cfilt1_mv = 1800,
+		.cfilt2_mv = 1800,
+		.cfilt3_mv = 1800,
+		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
+		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
+		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
+		.bias4_cfilt_sel = TABLA_CFILT3_SEL,
+	}
+};
+
+static struct slim_device msm_slim_tabla20 = {
+	.name = "tabla2x-slim",
+	.e_addr = {0, 1, 0x60, 0, 0x17, 2},
+	.dev = {
+		.platform_data = &tabla20_platform_data,
+	},
+};
 #endif
 
 static struct slim_boardinfo msm_slim_devices[] = {
@@ -2413,6 +2462,10 @@ static struct slim_boardinfo msm_slim_devices[] = {
 	{
 		.bus_num = 1,
 		.slim_slave = &msm_slim_tabla,
+	},
+	{
+		.bus_num = 1,
+		.slim_slave = &msm_slim_tabla20,
 	},
 #endif
 	/* add more slimbus slaves as needed */
@@ -2614,11 +2667,6 @@ static int __init gpiomux_init(void)
 	msm_gpiomux_install(wcnss_5wire_interface,
 			ARRAY_SIZE(wcnss_5wire_interface));
 
-#ifdef CONFIG_USB_EHCI_MSM_HSIC
-	msm_gpiomux_install(msm8960_hsic_configs,
-			ARRAY_SIZE(msm8960_hsic_configs));
-#endif
-
 	return 0;
 }
 
@@ -2716,7 +2764,7 @@ static void __init msm8960_init_irq(void)
 	}
 }
 
-/* MSM8960 have 5 SDCC controllers */
+/* MSM8960 has 5 SDCC controllers */
 enum sdcc_controllers {
 	SDCC1,
 	SDCC2,
@@ -2726,7 +2774,7 @@ enum sdcc_controllers {
 	MAX_SDCC_CONTROLLER
 };
 
-/* All SDCC controllers requires VDD/VCC voltage */
+/* All SDCC controllers require VDD/VCC voltage */
 static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC1 : eMMC card connected */
 	[SDCC1] = {
@@ -3057,6 +3105,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 #endif
 
 #ifdef CONFIG_USB_EHCI_MSM_HSIC
+#define HSIC_HUB_RESET_GPIO	91
 static struct msm_hsic_host_platform_data msm_hsic_pdata = {
 	.strobe		= 150,
 	.data		= 151,
@@ -3111,8 +3160,7 @@ static int usb_diag_update_pid_and_serial_num(uint32_t pid, const char *snum)
 	}
 
 	dload->magic_struct.serial_num = SERIAL_NUM_MAGIC_ID;
-	strncpy(dload->serial_number, snum, SERIAL_NUMBER_LENGTH);
-	dload->serial_number[SERIAL_NUMBER_LENGTH - 1] = '\0';
+	strlcpy(dload->serial_number, snum, SERIAL_NUMBER_LENGTH);
 out:
 	iounmap(dload);
 	return 0;
@@ -3309,14 +3357,16 @@ static struct cyttsp_regulator regulator_data[] = {
 		.name = "vdd",
 		.min_uV = CY_TMA300_VTG_MIN_UV,
 		.max_uV = CY_TMA300_VTG_MAX_UV,
-		.load_uA = CY_TMA300_CURR_24HZ_UA,
+		.hpm_load_uA = CY_TMA300_CURR_24HZ_UA,
+		.lpm_load_uA = CY_TMA300_SLEEP_CURR_UA,
 	},
 	/* TODO: Remove after runtime PM is enabled in I2C driver */
 	{
 		.name = "vcc_i2c",
 		.min_uV = CY_I2C_VTG_MIN_UV,
 		.max_uV = CY_I2C_VTG_MAX_UV,
-		.load_uA = CY_I2C_CURR_UA,
+		.hpm_load_uA = CY_I2C_CURR_UA,
+		.lpm_load_uA = CY_I2C_SLEEP_CURR_UA,
 	},
 };
 
@@ -3708,6 +3758,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_ptm_device,
 #endif
 	&msm_device_dspcrashd_8960,
+	&msm8960_device_watchdog,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
@@ -3765,7 +3816,6 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm8960_device_otg,
 	&msm8960_device_gadget_peripheral,
 	&msm_device_hsusb_host,
-	&msm_device_hsic_host,
 	&android_usb_device,
 	&msm_pcm,
 	&msm_pcm_routing,
@@ -4375,6 +4425,28 @@ static void __init msm8960_init_dsps(void)
 #endif /* CONFIG_MSM_DSPS */
 }
 
+static void __init msm8960_init_hsic(void)
+{
+#ifdef CONFIG_USB_EHCI_MSM_HSIC
+	uint32_t version = socinfo_get_version();
+
+	pr_info("%s: version:%d mtp:%d\n", __func__,
+			SOCINFO_VERSION_MAJOR(version),
+			machine_is_msm8960_mtp());
+
+	if ((SOCINFO_VERSION_MAJOR(version) == 1) ||
+			machine_is_msm8960_mtp() ||
+			machine_is_msm8960_fluid())
+		return;
+
+	msm_gpiomux_install(msm8960_hsic_configs,
+			ARRAY_SIZE(msm8960_hsic_configs));
+
+	platform_device_register(&msm_device_hsic_host);
+#endif
+}
+
+
 #ifdef CONFIG_ISL9519_CHARGER
 static struct isl_platform_data isl_data __initdata = {
 	.valid_n_gpio		= 0,	/* Not required when notify-by-pmic */
@@ -4462,6 +4534,10 @@ static void __init register_i2c_devices(void)
 
 static void __init msm8960_sim_init(void)
 {
+	struct msm_watchdog_pdata *wdog_pdata = (struct msm_watchdog_pdata *)
+		&msm8960_device_watchdog.dev.platform_data;
+
+	wdog_pdata->bark_time = 15000;
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
@@ -4554,6 +4630,12 @@ static void __init msm8960_cdp_init(void)
 	msm8960_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm8960_device_gadget_peripheral.dev.parent = &msm8960_device_otg.dev;
 	msm_device_hsusb_host.dev.parent = &msm8960_device_otg.dev;
+#ifdef CONFIG_USB_EHCI_MSM_HSIC
+	if (machine_is_msm8960_liquid()) {
+		if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) >= 2)
+			msm_hsic_pdata.hub_reset = HSIC_HUB_RESET_GPIO;
+	}
+#endif
 	msm_device_hsic_host.dev.platform_data = &msm_hsic_pdata;
 	gpiomux_init();
 	if (machine_is_msm8960_cdp())
@@ -4578,6 +4660,7 @@ static void __init msm8960_cdp_init(void)
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+	msm8960_init_hsic();
 	msm8960_init_cam();
 	msm8960_init_mmc();
 	acpuclk_init(&acpuclk_8960_soc_data);
@@ -4664,6 +4747,7 @@ MACHINE_START(MSM8930_CDP, "QCT MSM8930 CDP")
 	.timer = &msm_timer,
 	.init_machine = msm8960_cdp_init,
 	.init_early = msm8960_allocate_memory_regions,
+	.init_very_early = msm8960_early_memory,
 MACHINE_END
 
 MACHINE_START(MSM8930_MTP, "QCT MSM8930 MTP")
@@ -4673,6 +4757,7 @@ MACHINE_START(MSM8930_MTP, "QCT MSM8930 MTP")
 	.timer = &msm_timer,
 	.init_machine = msm8960_cdp_init,
 	.init_early = msm8960_allocate_memory_regions,
+	.init_very_early = msm8960_early_memory,
 MACHINE_END
 
 MACHINE_START(MSM8930_FLUID, "QCT MSM8930 FLUID")
@@ -4682,5 +4767,6 @@ MACHINE_START(MSM8930_FLUID, "QCT MSM8930 FLUID")
 	.timer = &msm_timer,
 	.init_machine = msm8960_cdp_init,
 	.init_early = msm8960_allocate_memory_regions,
+	.init_very_early = msm8960_early_memory,
 MACHINE_END
 #endif

@@ -34,6 +34,7 @@
 #include "spm.h"
 #include "pm.h"
 #include "rpm_resources.h"
+#include "msm_watchdog.h"
 
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS          0x16000000
@@ -55,6 +56,20 @@
 /* Address of SSBI CMD */
 #define MSM_PMIC1_SSBI_CMD_PHYS	0x00500000
 #define MSM_PMIC_SSBI_SIZE	SZ_4K
+
+static struct msm_watchdog_pdata msm_watchdog_pdata = {
+	.pet_time = 10000,
+	.bark_time = 11000,
+	.has_secure = true,
+};
+
+struct platform_device msm9615_device_watchdog = {
+	.name = "msm_watchdog",
+	.id = -1,
+	.dev = {
+		.platform_data = &msm_watchdog_pdata,
+	},
+};
 
 static struct resource msm_dmov_resource[] = {
 	{
@@ -721,20 +736,19 @@ struct msm_mpm_device_data msm_mpm_dev_data = {
 };
 
 static uint8_t spm_wfi_cmd_sequence[] __initdata = {
-	0x00, 0x03, 0x0B, 0x00,
-	0x0f,
+	0x00, 0x03, 0x00, 0x0f,
 };
 
 static uint8_t spm_power_collapse_without_rpm[] __initdata = {
-	0x30, 0x20, 0x10, 0x00,
-	0x50, 0x03, 0x50, 0x00,
-	0x10, 0x20, 0x30, 0x0f,
+	0x34, 0x24, 0x14, 0x04,
+	0x54, 0x03, 0x54, 0x04,
+	0x14, 0x24, 0x3e, 0x0f,
 };
 
 static uint8_t spm_power_collapse_with_rpm[] __initdata = {
-	0x30, 0x20, 0x10, 0x00,
-	0x50, 0x07, 0x50, 0x00,
-	0x10, 0x20, 0x30, 0x0f,
+	0x34, 0x24, 0x14, 0x04,
+	0x54, 0x07, 0x54, 0x04,
+	0x14, 0x24, 0x3e, 0x0f,
 };
 
 static struct msm_spm_seq_entry msm_spm_seq_list[] __initdata = {
@@ -759,7 +773,7 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	[0] = {
 		.reg_base_addr = MSM_SAW0_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x01,
-		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1F,
+		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1001,
 		.num_modes = ARRAY_SIZE(msm_spm_seq_list),
 		.modes = msm_spm_seq_list,
 	},

@@ -44,8 +44,17 @@ ion_phys_addr_t ion_carveout_allocate(struct ion_heap *heap,
 	unsigned long offset = gen_pool_alloc_aligned(carveout_heap->pool,
 							size, ilog2(align));
 
-	if (!offset)
+	if (!offset) {
+		if ((carveout_heap->total_size -
+		      carveout_heap->allocated_bytes) > size)
+			pr_debug("%s: heap %s has enough memory (%lx) but"
+				" the allocation of size %lx still failed."
+				" Memory is probably fragmented.",
+				__func__, heap->name,
+				carveout_heap->total_size -
+				carveout_heap->allocated_bytes, size);
 		return ION_CARVEOUT_ALLOCATE_FAIL;
+	}
 
 	carveout_heap->allocated_bytes += size;
 	return offset;
@@ -92,13 +101,27 @@ static void ion_carveout_heap_free(struct ion_buffer *buffer)
 struct scatterlist *ion_carveout_heap_map_dma(struct ion_heap *heap,
 					      struct ion_buffer *buffer)
 {
-	return ERR_PTR(-EINVAL);
+	struct scatterlist *sglist;
+	struct page *page = phys_to_page(buffer->priv_phys);
+
+	if (page == NULL)
+		return NULL;
+
+	sglist = vmalloc(sizeof(struct scatterlist));
+	if (!sglist)
+		return ERR_PTR(-ENOMEM);
+
+	sg_init_table(sglist, 1);
+	sg_set_page(sglist, page, buffer->size, 0);
+
+	return sglist;
 }
 
 void ion_carveout_heap_unmap_dma(struct ion_heap *heap,
 				 struct ion_buffer *buffer)
 {
-	return;
+	if (buffer->sglist)
+		vfree(buffer->sglist);
 }
 
 void *ion_carveout_heap_map_kernel(struct ion_heap *heap,
@@ -183,6 +206,8 @@ static struct ion_heap_ops carveout_heap_ops = {
 	.map_user = ion_carveout_heap_map_user,
 	.map_kernel = ion_carveout_heap_map_kernel,
 	.unmap_kernel = ion_carveout_heap_unmap_kernel,
+	.map_dma = ion_carveout_heap_map_dma,
+	.unmap_dma = ion_carveout_heap_unmap_dma,
 	.cache_op = ion_carveout_cache_ops,
 	.get_allocated = ion_carveout_get_allocated,
 	.get_total = ion_carveout_get_total,

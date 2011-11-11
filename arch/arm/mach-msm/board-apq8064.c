@@ -38,6 +38,7 @@
 #include <linux/bootmem.h>
 #include <asm/setup.h>
 
+#include "msm_watchdog.h"
 #include "board-apq8064.h"
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
@@ -213,7 +214,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.pclk_src_name		= "dfab_usb_hs_clk",
 };
 
-/* APQ8064 have 4 SDCC controllers */
+/* APQ8064 has 4 SDCC controllers */
 enum sdcc_controllers {
 	SDCC1,
 	SDCC2,
@@ -222,7 +223,7 @@ enum sdcc_controllers {
 	MAX_SDCC_CONTROLLER
 };
 
-/* All SDCC controllers requires VDD/VCC voltage */
+/* All SDCC controllers require VDD/VCC voltage */
 static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC1 : eMMC card connected */
 	[SDCC1] = {
@@ -493,6 +494,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_audio_device,
+	&msm8064_device_watchdog,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
@@ -733,6 +735,10 @@ static void __init apq8064_common_init(void)
 
 static void __init apq8064_sim_init(void)
 {
+	struct msm_watchdog_pdata *wdog_pdata = (struct msm_watchdog_pdata *)
+		&msm8064_device_watchdog.dev.platform_data;
+
+	wdog_pdata->bark_time = 15000;
 	apq8064_common_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 }

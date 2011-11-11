@@ -295,16 +295,26 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	}
 
 	if (port->buf[0].data) {
-		pr_debug("%s:data[%p]phys[%p][%p] cnt[%d]\n",
-			   __func__,
-			   (void *)port->buf[0].data,
-			   (void *)port->buf[0].phys,
-			   (void *)&port->buf[0].phys, cnt);
-		dma_free_coherent(NULL,
-			port->buf[0].size * port->max_buf_cnt,
-			port->buf[0].data,
-				port->buf[0].phys);
+		pr_debug("%s:data[%p]phys[%p][%p]"
+			"mem_buffer[%p]\n",
+			__func__,
+			(void *)port->buf[0].data,
+			(void *)port->buf[0].phys,
+			(void *)&port->buf[0].phys,
+			(void *)port->buf[0].mem_buffer);
+		if (IS_ERR((void *)port->buf[0].mem_buffer))
+			pr_err("%s:mem buffer invalid, error ="
+				"%ld\n", __func__,
+				PTR_ERR((void *)port->buf[0].mem_buffer));
+		else {
+			if (msm_subsystem_unmap_buffer(
+				port->buf[0].mem_buffer) < 0)
+				pr_err("%s: unmap buffer"
+					" failed\n", __func__);
+		}
+		free_contiguous_memory_by_paddr(port->buf[0].phys);
 	}
+
 	while (cnt >= 0) {
 		port->buf[cnt].data = NULL;
 		port->buf[cnt].phys = 0;
@@ -533,6 +543,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 {
 	int cnt = 0;
 	int rc = 0;
+	int flags = 0;
 	struct audio_buffer *buf;
 
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
@@ -560,8 +571,35 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 
 	ac->port[dir].buf = buf;
 
-	buf[0].data =  dma_alloc_coherent(NULL, bufsz * bufcnt,
-				&buf[0].phys, GFP_KERNEL);
+	buf[0].phys = allocate_contiguous_ebi_nomap(bufsz * bufcnt,
+						SZ_4K);
+	if (!buf[0].phys) {
+		pr_err("%s:Buf alloc failed "
+			" size=%d, bufcnt=%d\n", __func__,
+			bufsz, bufcnt);
+		mutex_unlock(&ac->cmd_lock);
+		goto fail;
+	}
+
+	flags = MSM_SUBSYSTEM_MAP_KADDR | MSM_SUBSYSTEM_MAP_CACHED;
+	buf[0].mem_buffer = msm_subsystem_map_buffer(buf[0].phys,
+				bufsz * bufcnt, flags, NULL, 0);
+	if (IS_ERR((void *)buf[cnt].mem_buffer)) {
+		pr_err("%s:map_buffer failed,"
+			"error = %ld\n",
+			__func__, PTR_ERR((void *)buf[0].mem_buffer));
+
+		mutex_unlock(&ac->cmd_lock);
+		goto fail;
+	}
+	buf[0].data = buf[0].mem_buffer->vaddr;
+	if (!buf[0].data) {
+		pr_err("%s:invalid vaddr,"
+			" iomap failed\n", __func__);
+		mutex_unlock(&ac->cmd_lock);
+		goto fail;
+	}
+
 	buf[0].used = dir ^ 1;
 	buf[0].size = bufsz;
 	buf[0].actual_size = bufsz;
@@ -1081,6 +1119,10 @@ int q6asm_open_read(struct audio_client *ac,
 		open.uMode = BUFFER_META_ENABLE | STREAM_PRIORITY_HIGH;
 		open.format = AMRNB_FS;
 		break;
+	case FORMAT_AMRWB:
+		open.uMode = BUFFER_META_ENABLE | STREAM_PRIORITY_HIGH;
+		open.format = AMRWB_FS;
+		break;
 	default:
 		pr_err("Invalid format[%d]\n", format);
 		goto fail_cmd;
@@ -1205,6 +1247,27 @@ int q6asm_open_read_write(struct audio_client *ac,
 	case FORMAT_WMA_V10PRO:
 		open.write_format = WMA_V10PRO;
 		break;
+	case FORMAT_AMRNB:
+		open.write_format = AMRNB_FS;
+		break;
+	case FORMAT_AMRWB:
+		open.write_format = AMRWB_FS;
+		break;
+	case FORMAT_V13K:
+		open.write_format = V13K_FS;
+		break;
+	case FORMAT_EVRC:
+		open.write_format = EVRC_FS;
+		break;
+	case FORMAT_EVRCB:
+		open.write_format = EVRCB_FS;
+		break;
+	case FORMAT_EVRCWB:
+		open.write_format = EVRCWB_FS;
+		break;
+	case FORMAT_MP3:
+		open.write_format = MP3;
+		break;
 	default:
 		pr_err("Invalid format[%d]\n", wr_format);
 		goto fail_cmd;
@@ -1225,6 +1288,9 @@ int q6asm_open_read_write(struct audio_client *ac,
 		break;
 	case FORMAT_AMRNB:
 		open.read_format = AMRNB_FS;
+		break;
+	case FORMAT_AMRWB:
+		open.read_format = AMRWB_FS;
 		break;
 	default:
 		pr_err("Invalid format[%d]\n", rd_format);
@@ -1597,6 +1663,44 @@ fail_cmd:
 	return -EINVAL;
 }
 
+int q6asm_enc_cfg_blk_amrwb(struct audio_client *ac, uint32_t frames_per_buf,
+			uint16_t band_mode, uint16_t dtx_enable)
+{
+	struct asm_stream_cmd_encdec_cfg_blk enc_cfg;
+	int rc = 0;
+
+	pr_debug("%s:session[%d]frames[%d]band_mode[0x%4x]dtx_enable[0x%4x]",
+		__func__, ac->session, frames_per_buf, band_mode, dtx_enable);
+
+	q6asm_add_hdr(ac, &enc_cfg.hdr, sizeof(enc_cfg), TRUE);
+
+	enc_cfg.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+
+	enc_cfg.param_id = ASM_ENCDEC_CFG_BLK_ID;
+	enc_cfg.param_size = sizeof(struct asm_encode_cfg_blk);
+
+	enc_cfg.enc_blk.frames_per_buf = frames_per_buf;
+	enc_cfg.enc_blk.format_id = AMRWB_FS;
+	enc_cfg.enc_blk.cfg_size  = sizeof(struct asm_amrwb_read_cfg);
+	enc_cfg.enc_blk.cfg.amrwb.mode = band_mode;
+	enc_cfg.enc_blk.cfg.amrwb.dtx_mode = dtx_enable;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &enc_cfg);
+	if (rc < 0) {
+		pr_err("Comamnd %d failed\n", ASM_STREAM_CMD_SET_ENCDEC_PARAM);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("timeout. waited for FORMAT_UPDATE\n");
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
 int q6asm_media_format_block_pcm(struct audio_client *ac,
 				uint32_t rate, uint32_t channels)
 {
@@ -1731,6 +1835,37 @@ fail_cmd:
 	return -EINVAL;
 }
 
+
+
+int q6asm_media_format_block(struct audio_client *ac, uint32_t format)
+{
+
+	struct asm_stream_media_format_update fmt;
+	int rc = 0;
+
+	pr_debug("%s:session[%d] format[0x%x]\n", __func__,
+			ac->session, format);
+
+	q6asm_add_hdr(ac, &fmt.hdr, sizeof(fmt), TRUE);
+	fmt.hdr.opcode = ASM_DATA_CMD_MEDIA_FORMAT_UPDATE;
+	fmt.format = format;
+	fmt.cfg_size = 0;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &fmt);
+	if (rc < 0) {
+		pr_err("%s:Comamnd open failed\n", __func__);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+		(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s:timeout. waited for FORMAT_UPDATE\n", __func__);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
 
 int q6asm_media_format_block_wma(struct audio_client *ac,
 				void *cfg)

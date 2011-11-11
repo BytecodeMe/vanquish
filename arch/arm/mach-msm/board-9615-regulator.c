@@ -12,6 +12,7 @@
  */
 
 #include <linux/regulator/pm8018-regulator.h>
+#include <linux/regulator/gpio-regulator.h>
 #include <mach/rpm-regulator.h>
 
 #include "board-9615.h"
@@ -60,6 +61,7 @@ VREG_CONSUMERS(L12) = {
 };
 VREG_CONSUMERS(L13) = {
 	REGULATOR_SUPPLY("8018_l13",		NULL),
+	REGULATOR_SUPPLY("sdc_vddp",		"msm_sdcc.1"),
 };
 VREG_CONSUMERS(L14) = {
 	REGULATOR_SUPPLY("8018_l14",		NULL),
@@ -82,6 +84,10 @@ VREG_CONSUMERS(S5) = {
 };
 VREG_CONSUMERS(LVS1) = {
 	REGULATOR_SUPPLY("8018_lvs1",		NULL),
+};
+VREG_CONSUMERS(EXT_2P95V) = {
+	REGULATOR_SUPPLY("ext_2p95v",		NULL),
+	REGULATOR_SUPPLY("sdc_vdd",		"msm_sdcc.1"),
 };
 
 #define PM8018_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV, \
@@ -238,6 +244,25 @@ VREG_CONSUMERS(LVS1) = {
 		.pin_ctrl = _pin_ctrl, \
 	}
 
+#define GPIO_VREG_INIT(_id, _reg_name, _gpio_label, _gpio) \
+	[GPIO_VREG_ID_##_id] = { \
+		.init_data = { \
+			.constraints = { \
+				.valid_ops_mask	= REGULATOR_CHANGE_STATUS, \
+			}, \
+			.num_consumer_supplies	= \
+					ARRAY_SIZE(vreg_consumers_##_id), \
+			.consumer_supplies	= vreg_consumers_##_id, \
+		}, \
+		.regulator_name = _reg_name, \
+		.gpio_label	= _gpio_label, \
+		.gpio		= _gpio, \
+	}
+
+/* GPIO regulator constraints */
+struct gpio_regulator_platform_data msm_gpio_regulator_pdata[] = {
+	GPIO_VREG_INIT(EXT_2P95V, "ext_2p95v", "ext_2p95_en", 18),
+};
 
 /* PM8018 regulator constraints */
 struct pm8018_regulator_platform_data
@@ -265,7 +290,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 	RPM_LDO(L10,     0, 1, 0, 1050000, 1050000, "8018_s5", 0, 0),
 	RPM_LDO(L11,     0, 1, 0, 1050000, 1050000, "8018_s5", 0, 0),
 	RPM_LDO(L12,     0, 1, 0, 1050000, 1050000, "8018_s5", 0, 0),
-	RPM_LDO(L13,     0, 1, 0, 2950000, 2950000, NULL,      0, 0),
+	RPM_LDO(L13,     0, 1, 0, 1850000, 2950000, NULL,      0, 0),
 	RPM_LDO(L14,     0, 1, 0, 2850000, 2850000, NULL,      0, 0),
 
 	/*	ID    a_on pd ss		    supply */

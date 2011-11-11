@@ -32,6 +32,7 @@
 
 #define VOIP_MAX_Q_LEN 10
 #define VOIP_MAX_VOC_PKT_SIZE 640
+#define VOIP_MIN_VOC_PKT_SIZE 320
 
 enum voip_state {
 	VOIP_STOPPED,
@@ -61,6 +62,7 @@ struct voip_drv_info {
 	struct list_head free_out_queue;
 
 	wait_queue_head_t out_wait;
+	wait_queue_head_t in_wait;
 
 	struct mutex lock;
 	struct mutex in_lock;
@@ -103,13 +105,66 @@ static struct snd_pcm_hardware msm_pcm_hardware = {
 	.channels_min =         1,
 	.channels_max =         1,
 	.buffer_bytes_max =	VOIP_MAX_VOC_PKT_SIZE * VOIP_MAX_Q_LEN,
-	.period_bytes_min =	VOIP_MAX_VOC_PKT_SIZE,
+	.period_bytes_min =	VOIP_MIN_VOC_PKT_SIZE,
 	.period_bytes_max =	VOIP_MAX_VOC_PKT_SIZE,
 	.periods_min =		VOIP_MAX_Q_LEN,
 	.periods_max =		VOIP_MAX_Q_LEN,
 	.fifo_size =            0,
 };
 
+
+static int msm_voip_mute_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_tx_mute(voc_get_session_id(VOIP_SESSION_NAME), TX_PATH, mute);
+
+	return 0;
+}
+
+static int msm_voip_mute_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static int msm_voip_volume_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int volume = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: volume: %d\n", __func__, volume);
+
+	voc_set_rx_vol_index(voc_get_session_id(VOIP_SESSION_NAME),
+			     RX_PATH,
+			     volume);
+	return 0;
+}
+static int msm_voip_volume_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static struct snd_kcontrol_new msm_voip_controls[] = {
+	SOC_SINGLE_EXT("Voip Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_voip_mute_get, msm_voip_mute_put),
+	SOC_SINGLE_EXT("Voip Rx Volume", SND_SOC_NOPM, 0, 5, 0,
+				msm_voip_volume_get, msm_voip_volume_put),
+};
+
+static int msm_pcm_voip_probe(struct snd_soc_platform *platform)
+{
+	snd_soc_add_platform_controls(platform, msm_voip_controls,
+					ARRAY_SIZE(msm_voip_controls));
+
+	return 0;
+}
 
 /* sample rate supported */
 static unsigned int supported_sample_rates[] = {8000, 16000};
@@ -187,6 +242,7 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt,
 		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
 		pr_err("DL data not available\n");
 	}
+	wake_up(&prtd->in_wait);
 }
 
 static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
@@ -300,12 +356,15 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 	struct voip_drv_info *prtd = runtime->private_data;
 
 	int count = frames_to_bytes(runtime, frames);
-	pr_debug("%s: count = %d\n", __func__, count);
+	pr_debug("%s: count = %d, frames=%d\n", __func__, count, (int)frames);
 
-	mutex_lock(&prtd->in_lock);
-
-	if (count == VOIP_MAX_VOC_PKT_SIZE) {
-		if (!list_empty(&prtd->free_in_queue)) {
+	ret = wait_event_interruptible_timeout(prtd->in_wait,
+				(!list_empty(&prtd->free_in_queue) ||
+				prtd->state == VOIP_STOPPED),
+				1 * HZ);
+	if (ret > 0) {
+		mutex_lock(&prtd->in_lock);
+		if (count <= VOIP_MAX_VOC_PKT_SIZE) {
 			buf_node =
 				list_first_entry(&prtd->free_in_queue,
 						struct voip_buf_node, list);
@@ -315,15 +374,19 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 						buf, count);
 			buf_node->frame.len = count;
 			list_add_tail(&buf_node->list, &prtd->in_queue);
-		} else
-			pr_err("%s: No free DL buffs\n", __func__);
-	} else {
-		pr_err("%s: Write count %d is not  VOIP_MAX_VOC_PKT_SIZE\n",
-			__func__, count);
-		ret = -ENOMEM;
-	}
+		} else {
+			pr_err("%s: Write cnt %d is > VOIP_MAX_VOC_PKT_SIZE\n",
+				__func__, count);
+			ret = -ENOMEM;
+		}
 
-	mutex_unlock(&prtd->in_lock);
+		mutex_unlock(&prtd->in_lock);
+	} else if (ret == 0) {
+		pr_err("%s: No free DL buffs\n", __func__);
+		ret = -ETIMEDOUT;
+	} else {
+		pr_err("%s: playback copy  was interrupted\n", __func__);
+	}
 
 	return  ret;
 }
@@ -349,7 +412,7 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 	if (ret > 0) {
 		mutex_lock(&prtd->out_lock);
 
-		if (count == VOIP_MAX_VOC_PKT_SIZE) {
+		if (count <= VOIP_MAX_VOC_PKT_SIZE) {
 			buf_node = list_first_entry(&prtd->out_queue,
 					struct voip_buf_node, list);
 			list_del(&buf_node->list);
@@ -366,9 +429,9 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 			list_add_tail(&buf_node->list,
 						&prtd->free_out_queue);
 		} else {
-				pr_err("%s: Read count %d < VOIP_MAX_VOC_PKT_SIZE\n",
-						__func__, count);
-				ret = -ENOMEM;
+			pr_err("%s: Read count %d > VOIP_MAX_VOC_PKT_SIZE\n",
+				__func__, count);
+			ret = -ENOMEM;
 		}
 
 		mutex_unlock(&prtd->out_lock);
@@ -666,6 +729,7 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 static struct snd_soc_platform_driver msm_soc_platform = {
 	.ops		= &msm_pcm_ops,
 	.pcm_new	= msm_asoc_pcm_new,
+	.probe		= msm_pcm_voip_probe,
 };
 
 static __devinit int msm_pcm_probe(struct platform_device *pdev)
@@ -701,6 +765,7 @@ static int __init msm_soc_platform_init(void)
 	spin_lock_init(&voip_info.dsp_lock);
 
 	init_waitqueue_head(&voip_info.out_wait);
+	init_waitqueue_head(&voip_info.in_wait);
 
 	INIT_LIST_HEAD(&voip_info.in_queue);
 	INIT_LIST_HEAD(&voip_info.free_in_queue);

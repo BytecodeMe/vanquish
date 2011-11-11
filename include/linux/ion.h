@@ -65,6 +65,7 @@ enum ion_heap_ids {
 #define ION_VMALLOC_HEAP_NAME	"vmalloc"
 #define ION_EBI1_HEAP_NAME	"EBI1"
 #define ION_ADSP_HEAP_NAME	"adsp"
+#define ION_SMI_HEAP_NAME	"smi"
 
 #define CACHED          1
 #define UNCACHED        0
@@ -76,6 +77,7 @@ enum ion_heap_ids {
 #define ION_IS_CACHED(__flags)	((__flags) & (1 << ION_CACHE_SHIFT))
 
 #ifdef __KERNEL__
+#include <linux/err.h>
 #include <mach/ion.h>
 struct ion_device;
 struct ion_heap;

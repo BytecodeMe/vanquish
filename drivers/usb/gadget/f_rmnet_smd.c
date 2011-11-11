@@ -42,6 +42,11 @@
 
 #include "gadget_chips.h"
 
+#ifndef CONFIG_MSM_SMD
+#define CONFIG_RMNET_SMD_CTL_CHANNEL	""
+#define CONFIG_RMNET_SMD_DATA_CHANNEL	""
+#endif
+
 static char *rmnet_ctl_ch = CONFIG_RMNET_SMD_CTL_CHANNEL;
 module_param(rmnet_ctl_ch, charp, S_IRUGO);
 MODULE_PARM_DESC(rmnet_ctl_ch, "RmNet control SMD channel");
@@ -1218,7 +1223,7 @@ struct dentry *dent_smd_status;
 static void rmnet_smd_debugfs_init(struct rmnet_smd_dev *dev)
 {
 
-	dent_smd = debugfs_create_dir("usb_rmnet", 0);
+	dent_smd = debugfs_create_dir("usb_rmnet_smd", 0);
 	if (IS_ERR(dent_smd))
 		return;
 

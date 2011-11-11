@@ -23,6 +23,7 @@
 #include <linux/bitops.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 
 #define BMS_CONTROL		0x224
 #define BMS_OUTPUT0		0x230
@@ -35,13 +36,18 @@
 #define CCADC_DATA1		0x245
 #define CCADC_OFFSET_TRIM1	0x34A
 #define CCADC_OFFSET_TRIM0	0x34B
+#define CCADC_FULLSCALE_TRIM1	0x34C
+#define CCADC_FULLSCALE_TRIM0	0x34D
 
 #define ADC_ARB_SECP_CNTRL	0x190
 #define ADC_ARB_SECP_AMUX_CNTRL	0x191
 #define ADC_ARB_SECP_ANA_PARAM	0x192
+#define ADC_ARB_SECP_DIG_PARAM	0x193
 #define ADC_ARB_SECP_RSV	0x194
 #define ADC_ARB_SECP_DATA1	0x195
 #define ADC_ARB_SECP_DATA0	0x196
+
+#define ADC_ARB_BMS_CNTRL	0x18D
 
 enum pmic_bms_interrupts {
 	PM8921_BMS_SBI_WRITE_OK,
@@ -51,19 +57,10 @@ enum pmic_bms_interrupts {
 	PM8921_BMS_OCV_FOR_R,
 	PM8921_BMS_GOOD_OCV,
 	PM8921_BMS_VSENSE_AVG,
+	PM8921_BMS_CCADC_EOC,
 	PM_BMS_MAX_INTS,
 };
 
-/**
- * struct pm8921_bms_chip -device information
- * @dev:	device pointer to access the parent
- * @dent:	debugfs directory
- * @r_sense:	batt sense resistance value
- * @i_test:	peak current
- * @v_failure:	battery dead voltage
- * @fcc:	battery capacity
- *
- */
 struct pm8921_bms_chip {
 	struct device		*dev;
 	struct dentry		*dent;
@@ -76,7 +73,10 @@ struct pm8921_bms_chip {
 	struct pc_temp_ocv_lut	*pc_temp_ocv_lut;
 	struct pc_sf_lut	*pc_sf_lut;
 	struct work_struct	calib_hkadc_work;
+	struct delayed_work	calib_ccadc_work;
 	unsigned int		calib_delay_ms;
+	int			ccadc_gain_uv;
+	u16			ccadc_result_offset;
 	unsigned int		revision;
 	unsigned int		xoadc_v0625;
 	unsigned int		xoadc_v125;
@@ -88,30 +88,122 @@ struct pm8921_bms_chip {
 	unsigned int		pmic_bms_irq[PM_BMS_MAX_INTS];
 	DECLARE_BITMAP(enabled_irqs, PM_BMS_MAX_INTS);
 	spinlock_t		bms_output_lock;
+	struct single_row_lut	*adjusted_fcc_temp_lut;
 };
 
 static struct pm8921_bms_chip *the_chip;
 
 #define DEFAULT_RBATT_MOHMS		128
-#define DEFAULT_UNUSABLE_CHARGE_MAH	10
 #define DEFAULT_OCV_MICROVOLTS		3900000
-#define DEFAULT_REMAINING_CHARGE_MAH	990
-#define DEFAULT_COULUMB_COUNTER		0
 #define DEFAULT_CHARGE_CYCLES		0
+
+static int last_chargecycles = DEFAULT_CHARGE_CYCLES;
+static int last_charge_increase;
+module_param(last_chargecycles, int, 0644);
+module_param(last_charge_increase, int, 0644);
 
 static int last_rbatt = -EINVAL;
 static int last_ocv_uv = -EINVAL;
 static int last_soc = -EINVAL;
 static int last_real_fcc = -EINVAL;
+static int last_real_fcc_batt_temp = -EINVAL;
 
-static int last_chargecycles = DEFAULT_CHARGE_CYCLES;
-static int last_charge_increase;
+static int bms_ops_set(const char *val, const struct kernel_param *kp)
+{
+	if (*(int *)kp->arg == -EINVAL)
+		return param_set_int(val, kp);
+	else
+		return 0;
+}
 
-module_param(last_rbatt, int, 0644);
-module_param(last_ocv_uv, int, 0644);
-module_param(last_chargecycles, int, 0644);
-module_param(last_charge_increase, int, 0644);
-module_param(last_real_fcc, int, 0644);
+static struct kernel_param_ops bms_param_ops = {
+	.set = bms_ops_set,
+	.get = param_get_int,
+};
+
+module_param_cb(last_rbatt, &bms_param_ops, &last_rbatt, 0644);
+module_param_cb(last_ocv_uv, &bms_param_ops, &last_ocv_uv, 0644);
+module_param_cb(last_soc, &bms_param_ops, &last_soc, 0644);
+
+static int interpolate_fcc(struct pm8921_bms_chip *chip, int batt_temp);
+static void readjust_fcc_table(void)
+{
+	struct single_row_lut *temp, *old;
+	int i, fcc, ratio;
+
+	if (!the_chip->fcc_temp_lut) {
+		pr_err("The static fcc lut table is NULL\n");
+		return;
+	}
+
+	temp = kzalloc(sizeof(struct single_row_lut), GFP_KERNEL);
+	if (!temp) {
+		pr_err("Cannot allocate memory for adjusted fcc table\n");
+		return;
+	}
+
+	fcc = interpolate_fcc(the_chip, last_real_fcc_batt_temp);
+
+	temp->cols = the_chip->fcc_temp_lut->cols;
+	for (i = 0; i < the_chip->fcc_temp_lut->cols; i++) {
+		temp->x[i] = the_chip->fcc_temp_lut->x[i];
+		ratio = div_u64(the_chip->fcc_temp_lut->y[i] * 1000, fcc);
+		temp->y[i] =  (ratio * last_real_fcc);
+		temp->y[i] /= 1000;
+		pr_debug("temp=%d, staticfcc=%d, adjfcc=%d, ratio=%d\n",
+				temp->x[i], the_chip->fcc_temp_lut->y[i],
+				temp->y[i], ratio);
+	}
+
+	old = the_chip->adjusted_fcc_temp_lut;
+	the_chip->adjusted_fcc_temp_lut = temp;
+	kfree(old);
+}
+
+static int bms_last_real_fcc_set(const char *val,
+				const struct kernel_param *kp)
+{
+	int rc = 0;
+
+	if (last_real_fcc == -EINVAL)
+		rc = param_set_int(val, kp);
+	if (rc) {
+		pr_err("Failed to set last_real_fcc rc=%d\n", rc);
+		return rc;
+	}
+	if (last_real_fcc_batt_temp != -EINVAL)
+		readjust_fcc_table();
+	return rc;
+}
+static struct kernel_param_ops bms_last_real_fcc_param_ops = {
+	.set = bms_last_real_fcc_set,
+	.get = param_get_int,
+};
+module_param_cb(last_real_fcc, &bms_last_real_fcc_param_ops,
+					&last_real_fcc, 0644);
+
+static int bms_last_real_fcc_batt_temp_set(const char *val,
+				const struct kernel_param *kp)
+{
+	int rc = 0;
+
+	if (last_real_fcc_batt_temp == -EINVAL)
+		rc = param_set_int(val, kp);
+	if (rc) {
+		pr_err("Failed to set last_real_fcc_batt_temp rc=%d\n", rc);
+		return rc;
+	}
+	if (last_real_fcc != -EINVAL)
+		readjust_fcc_table();
+	return rc;
+}
+
+static struct kernel_param_ops bms_last_real_fcc_batt_temp_param_ops = {
+	.set = bms_last_real_fcc_batt_temp_set,
+	.get = param_get_int,
+};
+module_param_cb(last_real_fcc_batt_temp, &bms_last_real_fcc_batt_temp_param_ops,
+					&last_real_fcc_batt_temp, 0644);
 
 static int pm_bms_get_rt_status(struct pm8921_bms_chip *chip, int irq_id)
 {
@@ -247,25 +339,34 @@ static int pm_bms_read_output_data(struct pm8921_bms_chip *chip, int type,
 	return 0;
 }
 
-#define V_PER_BIT_MUL_FACTOR	293
-#define INTRINSIC_OFFSET	0x6000
-static int vbatt_to_microvolt(unsigned int a)
+#define V_PER_BIT_MUL_FACTOR	97656
+#define V_PER_BIT_DIV_FACTOR	1000
+#define XOADC_INTRINSIC_OFFSET	0x6000
+static int xoadc_reading_to_microvolt(unsigned int a)
 {
-	if (a <= INTRINSIC_OFFSET)
+	if (a <= XOADC_INTRINSIC_OFFSET)
 		return 0;
 
-	return (a - INTRINSIC_OFFSET) * V_PER_BIT_MUL_FACTOR;
+	return (a - XOADC_INTRINSIC_OFFSET)
+			* V_PER_BIT_MUL_FACTOR / V_PER_BIT_DIV_FACTOR;
 }
 
 #define XOADC_CALIB_UV		625000
-static int adjust_xo_reading(struct pm8921_bms_chip *chip, unsigned int uv)
+#define VBATT_MUL_FACTOR	3
+static int adjust_xo_vbatt_reading(struct pm8921_bms_chip *chip,
+							unsigned int uv)
 {
-	u64 numerator = ((u64)uv - chip->xoadc_v0625) * XOADC_CALIB_UV;
-	u64 denominator =  chip->xoadc_v125 - chip->xoadc_v0625;
+	u64 numerator, denominator;
 
+	if (uv == 0)
+		return 0;
+
+	numerator = ((u64)uv - chip->xoadc_v0625) * XOADC_CALIB_UV;
+	denominator =  chip->xoadc_v125 - chip->xoadc_v0625;
 	if (denominator == 0)
-		return uv;
-	return XOADC_CALIB_UV + div_u64(numerator, denominator);
+		return uv * VBATT_MUL_FACTOR;
+	return (XOADC_CALIB_UV + div_u64(numerator, denominator))
+						* VBATT_MUL_FACTOR;
 }
 
 #define CC_RESOLUTION_N_V1	1085069
@@ -288,9 +389,59 @@ static s64 cc_to_microvolt(struct pm8921_bms_chip *chip, s64 cc)
 	 * resolution (the value of a single bit) was changed after revision 2.0
 	 * for more accurate readings
 	 */
-	return (chip->revision < PM8XXX_REVISION_8901_2p0) ?
+	return (chip->revision < PM8XXX_REVISION_8921_2p0) ?
 				cc_to_microvolt_v1((s64)cc) :
 				cc_to_microvolt_v2((s64)cc);
+}
+
+#define CCADC_READING_RESOLUTION_N_V1	1085069
+#define CCADC_READING_RESOLUTION_D_V1	100000
+#define CCADC_READING_RESOLUTION_N_V2	542535
+#define CCADC_READING_RESOLUTION_D_V2	100000
+static s64 ccadc_reading_to_microvolt_v1(s64 cc)
+{
+	return div_s64(cc * CCADC_READING_RESOLUTION_N_V1,
+					CCADC_READING_RESOLUTION_D_V1);
+}
+
+static s64 ccadc_reading_to_microvolt_v2(s64 cc)
+{
+	return div_s64(cc * CCADC_READING_RESOLUTION_N_V2,
+					CCADC_READING_RESOLUTION_D_V2);
+}
+
+static s64 ccadc_reading_to_microvolt(struct pm8921_bms_chip *chip, s64 cc)
+{
+	/*
+	 * resolution (the value of a single bit) was changed after revision 2.0
+	 * for more accurate readings
+	 */
+	return (chip->revision < PM8XXX_REVISION_8921_2p0) ?
+				ccadc_reading_to_microvolt_v1((s64)cc) :
+				ccadc_reading_to_microvolt_v2((s64)cc);
+}
+
+static s64 microvolt_to_ccadc_reading_v1(s64 uv)
+{
+	return div_s64(uv * CCADC_READING_RESOLUTION_D_V1,
+				CCADC_READING_RESOLUTION_N_V1);
+}
+
+static s64 microvolt_to_ccadc_reading_v2(s64 uv)
+{
+	return div_s64(uv * CCADC_READING_RESOLUTION_D_V2,
+				CCADC_READING_RESOLUTION_N_V2);
+}
+
+static s64 microvolt_to_ccadc_reading(struct pm8921_bms_chip *chip, s64 cc)
+{
+	/*
+	 * resolution (the value of a single bit) was changed after revision 2.0
+	 * for more accurate readings
+	 */
+	return (chip->revision < PM8XXX_REVISION_8921_2p0) ?
+				microvolt_to_ccadc_reading_v1((s64)cc) :
+				microvolt_to_ccadc_reading_v2((s64)cc);
 }
 
 #define CC_READING_TICKS	55
@@ -300,6 +451,19 @@ static s64 ccmicrovolt_to_uvh(s64 cc_uv)
 {
 	return div_s64(cc_uv * CC_READING_TICKS,
 			SLEEP_CLK_HZ * SECONDS_PER_HOUR);
+}
+
+#define GAIN_REFERENCE_UV 25000
+/*
+ * gain compensation for ccadc readings - common for vsense based and
+ * couloumb counter based readings
+ */
+static s64 cc_adjust_for_gain(struct pm8921_bms_chip *chip, s64 cc)
+{
+	if (chip->ccadc_gain_uv == 0)
+		return cc;
+
+	return div_s64(cc * GAIN_REFERENCE_UV, chip->ccadc_gain_uv);
 }
 
 /* returns the signed value read from the hardware */
@@ -333,8 +497,12 @@ static int read_last_good_ocv(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read LAST_GOOD_OCV_VALUE rc = %d\n", rc);
 		return rc;
 	}
-	*result = vbatt_to_microvolt(reading);
-	pr_debug("raw = %04x ocv_microV = %u\n", reading, *result);
+	*result = xoadc_reading_to_microvolt(reading);
+	pr_debug("raw = %04x ocv_uV = %u\n", reading, *result);
+	*result = adjust_xo_vbatt_reading(chip, *result);
+	pr_debug("after adj ocv_uV = %u\n", *result);
+	if (*result != 0)
+		last_ocv_uv = *result;
 	return 0;
 }
 
@@ -348,8 +516,10 @@ static int read_vbatt_for_rbatt(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read VBATT_FOR_RBATT rc = %d\n", rc);
 		return rc;
 	}
-	*result = vbatt_to_microvolt(reading);
+	*result = xoadc_reading_to_microvolt(reading);
 	pr_debug("raw = %04x vbatt_for_r_microV = %u\n", reading, *result);
+	*result = adjust_xo_vbatt_reading(chip, *result);
+	pr_debug("after adj vbatt_for_r_uV = %u\n", *result);
 	return 0;
 }
 
@@ -363,8 +533,10 @@ static int read_vsense_for_rbatt(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read VSENSE_FOR_RBATT rc = %d\n", rc);
 		return rc;
 	}
-	*result = cc_to_microvolt(chip, reading);
-	pr_debug("raw = %04x vsense_for_r_microV = %u\n", reading, *result);
+	*result = ccadc_reading_to_microvolt(chip, reading);
+	pr_debug("raw = %04x vsense_for_r_uV = %u\n", reading, *result);
+	*result = cc_adjust_for_gain(chip, *result);
+	pr_debug("after adj vsense_for_r_uV = %u\n", *result);
 	return 0;
 }
 
@@ -378,8 +550,10 @@ static int read_ocv_for_rbatt(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read OCV_FOR_RBATT rc = %d\n", rc);
 		return rc;
 	}
-	*result = vbatt_to_microvolt(reading);
-	pr_debug("read = %04x ocv_for_r_microV = %u\n", reading, *result);
+	*result = xoadc_reading_to_microvolt(reading);
+	pr_debug("raw = %04x ocv_for_r_uV = %u\n", reading, *result);
+	*result = adjust_xo_vbatt_reading(chip, *result);
+	pr_debug("after adj ocv_for_r_uV = %u\n", *result);
 	return 0;
 }
 
@@ -393,8 +567,10 @@ static int read_vsense_avg(struct pm8921_bms_chip *chip, int *result)
 		pr_err("fail to read VSENSE_AVG rc = %d\n", rc);
 		return rc;
 	}
-	*result = cc_to_microvolt(chip, reading);
-	pr_debug("read = %04x vsense = %d\n", reading, *result);
+	*result = ccadc_reading_to_microvolt(chip, reading);
+	pr_debug("raw = %04x vsense = %d\n", reading, *result);
+	*result = cc_adjust_for_gain(the_chip, (s64)*result);
+	pr_debug("after adj vsense = %d\n", *result);
 	return 0;
 }
 
@@ -442,6 +618,11 @@ static int interpolate_single_lut(struct single_row_lut *lut, int x)
 static int interpolate_fcc(struct pm8921_bms_chip *chip, int batt_temp)
 {
 	return interpolate_single_lut(chip->fcc_temp_lut, batt_temp);
+}
+
+static int interpolate_fcc_adjusted(struct pm8921_bms_chip *chip, int batt_temp)
+{
+	return interpolate_single_lut(chip->adjusted_fcc_temp_lut, batt_temp);
 }
 
 static int interpolate_scalingfactor_fcc(struct pm8921_bms_chip *chip,
@@ -642,14 +823,12 @@ static int calculate_rbatt(struct pm8921_bms_chip *chip)
 		pr_err("fail to read ocv_for_rbatt rc = %d\n", rc);
 		ocv = 0;
 	}
-	ocv = adjust_xo_reading(chip, ocv);
 
 	rc = read_vbatt_for_rbatt(chip, &vbatt);
 	if (rc) {
 		pr_err("fail to read vbatt_for_rbatt rc = %d\n", rc);
 		ocv = 0;
 	}
-	vbatt = adjust_xo_reading(chip, vbatt);
 
 	rc = read_vsense_for_rbatt(chip, &vsense);
 	if (rc) {
@@ -665,6 +844,7 @@ static int calculate_rbatt(struct pm8921_bms_chip *chip)
 		return -EINVAL;
 	}
 	r_batt = ((ocv - vbatt) * chip->r_sense) / vsense;
+	last_rbatt = r_batt;
 	pr_debug("r_batt = %umilliOhms", r_batt);
 	return r_batt;
 }
@@ -674,16 +854,18 @@ static int calculate_fcc(struct pm8921_bms_chip *chip, int batt_temp,
 {
 	int initfcc, result, scalefactor = 0;
 
-	initfcc = interpolate_fcc(chip, batt_temp);
-	pr_debug("intfcc = %umAh batt_temp = %d\n", initfcc, batt_temp);
+	if (chip->adjusted_fcc_temp_lut == NULL) {
+		initfcc = interpolate_fcc(chip, batt_temp);
 
-	scalefactor = interpolate_scalingfactor_fcc(chip, chargecycles);
-	pr_debug("scalefactor = %d batt_temp = %d\n", scalefactor, batt_temp);
+		scalefactor = interpolate_scalingfactor_fcc(chip, chargecycles);
 
-	/* Multiply the initial FCC value by the scale factor. */
-	result = (initfcc * scalefactor) / 100;
-	pr_debug("fcc mAh = %d\n", result);
-	return result;
+		/* Multiply the initial FCC value by the scale factor. */
+		result = (initfcc * scalefactor) / 100;
+		pr_debug("fcc mAh = %d\n", result);
+		return result;
+	} else {
+		return interpolate_fcc_adjusted(chip, batt_temp);
+	}
 }
 
 static int get_battery_uvolts(struct pm8921_bms_chip *chip, int *uvolts)
@@ -711,20 +893,18 @@ static int adc_based_ocv(struct pm8921_bms_chip *chip, int *ocv)
 	rc = get_battery_uvolts(chip, &vbatt);
 	if (rc) {
 		pr_err("failed to read vbatt from adc rc = %d\n", rc);
-		last_ocv_uv = DEFAULT_OCV_MICROVOLTS;
 		return rc;
 	}
 
 	rc =  pm8921_bms_get_battery_current(&ibatt);
 	if (rc) {
 		pr_err("failed to read batt current rc = %d\n", rc);
-		last_ocv_uv = DEFAULT_OCV_MICROVOLTS;
 		return rc;
 	}
 
 	rbatt = calculate_rbatt(the_chip);
 	if (rbatt < 0)
-		rbatt = DEFAULT_RBATT_MOHMS;
+		rbatt = (last_rbatt < 0) ? DEFAULT_RBATT_MOHMS : last_rbatt;
 	*ocv = vbatt + ibatt * rbatt;
 	return 0;
 }
@@ -755,6 +935,7 @@ static void calculate_cc_mah(struct pm8921_bms_chip *chip, int64_t *val,
 	rc = read_cc(the_chip, coulumb_counter);
 	cc_voltage_uv = (int64_t)*coulumb_counter;
 	cc_voltage_uv = cc_to_microvolt(chip, cc_voltage_uv);
+	cc_voltage_uv = cc_adjust_for_gain(chip, cc_voltage_uv);
 	pr_debug("cc_voltage_uv = %lld microvolts\n", cc_voltage_uv);
 	cc_uvh = ccmicrovolt_to_uvh(cc_voltage_uv);
 	pr_debug("cc_uvh = %lld micro_volt_hour\n", cc_uvh);
@@ -771,8 +952,6 @@ static int calculate_unusable_charge_mah(struct pm8921_bms_chip *chip,
 	if (rbatt < 0) {
 		rbatt = (last_rbatt < 0) ? DEFAULT_RBATT_MOHMS : last_rbatt;
 		pr_debug("rbatt unavailable assuming %d\n", rbatt);
-	} else {
-		last_rbatt = rbatt;
 	}
 
 	/* calculate unusable charge */
@@ -800,9 +979,6 @@ static int calculate_remaining_charge_mah(struct pm8921_bms_chip *chip, int fcc,
 	if (ocv == 0) {
 		ocv = last_ocv_uv;
 		pr_debug("ocv not available using last_ocv_uv=%d\n", ocv);
-	} else {
-		/* update the usespace param since a good ocv is available */
-		last_ocv_uv = ocv;
 	}
 
 	pc = calculate_pc(chip, ocv, batt_temp, chargecycles);
@@ -941,7 +1117,8 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 #define HKADC_V_PER_BIT_DIV_FACTOR	10
 static int calib_hkadc_convert_microvolt(unsigned int phy)
 {
-	return phy * HKADC_V_PER_BIT_MUL_FACTOR / HKADC_V_PER_BIT_DIV_FACTOR;
+	return (phy - 0x6000) *
+			HKADC_V_PER_BIT_MUL_FACTOR / HKADC_V_PER_BIT_DIV_FACTOR;
 }
 
 static void calib_hkadc(struct pm8921_bms_chip *chip)
@@ -954,10 +1131,10 @@ static void calib_hkadc(struct pm8921_bms_chip *chip)
 		pr_err("ADC failed for 1.25volts rc = %d\n", rc);
 		return;
 	}
-	voltage = calib_hkadc_convert_microvolt(result.physical);
+	voltage = calib_hkadc_convert_microvolt(result.adc_code);
 
-	pr_debug("result 1.25v = 0x%llx, voltage = %dmV adc_meas = %lld\n",
-				result.physical, voltage, result.measurement);
+	pr_debug("result 1.25v = 0x%x, voltage = %duV adc_meas = %lld\n",
+				result.adc_code, voltage, result.measurement);
 
 	/* check for valid range */
 	if (voltage > XOADC_MAX_1P25V)
@@ -971,9 +1148,9 @@ static void calib_hkadc(struct pm8921_bms_chip *chip)
 		pr_err("ADC failed for 1.25volts rc = %d\n", rc);
 		return;
 	}
-	voltage = calib_hkadc_convert_microvolt(result.physical);
-	pr_debug("result 0.625V = 0x%llx, voltage = %dmV adc_mead = %lld\n",
-				result.physical, voltage, result.measurement);
+	voltage = calib_hkadc_convert_microvolt(result.adc_code);
+	pr_debug("result 0.625V = 0x%x, voltage = %duV adc_mead = %lld\n",
+				result.adc_code, voltage, result.measurement);
 	/* check for valid range */
 	if (voltage > XOADC_MAX_0P625V)
 		voltage = XOADC_MAX_0P625V;
@@ -989,6 +1166,391 @@ static void calibrate_hkadc_work(struct work_struct *work)
 				struct pm8921_bms_chip, calib_hkadc_work);
 
 	calib_hkadc(chip);
+}
+
+#define START_CONV_BIT	BIT(7)
+#define EOC_CONV_BIT	BIT(6)
+#define SEL_CCADC_BIT	BIT(1)
+#define EN_ARB_BIT	BIT(0)
+
+#define CCADC_CALIB_DIG_PARAM	0xE3
+#define CCADC_CALIB_RSV_GND	0x40
+#define CCADC_CALIB_RSV_25MV	0x80
+#define CCADC_CALIB_ANA_PARAM	0x1B
+#define SAMPLE_COUNT		16
+#define ADC_WAIT_COUNT		10
+
+#define CCADC_MAX_25MV		30000
+#define CCADC_MIN_25MV		20000
+#define CCADC_MAX_0UV		-4000
+#define CCADC_MIN_0UV		-7000
+
+#define CCADC_INTRINSIC_OFFSET  0xC000
+
+#define REG_SBI_CONFIG		0x04F
+#define PAGE3_ENABLE_MASK	0x6
+
+static int calib_ccadc_enable_trim_access(struct pm8921_bms_chip *chip,
+								u8 *sbi_config)
+{
+	u8 reg;
+	int rc;
+
+	rc = pm8xxx_readb(chip->dev->parent, REG_SBI_CONFIG, sbi_config);
+	if (rc) {
+		pr_err("error = %d reading sbi config reg\n", rc);
+		return rc;
+	}
+
+	reg = *sbi_config | PAGE3_ENABLE_MASK;
+	return pm8xxx_writeb(chip->dev->parent, REG_SBI_CONFIG, reg);
+}
+
+static int calib_ccadc_restore_trim_access(struct pm8921_bms_chip *chip,
+							u8 sbi_config)
+{
+	return pm8xxx_writeb(chip->dev->parent, REG_SBI_CONFIG, sbi_config);
+}
+
+static int calib_ccadc_enable_arbiter(struct pm8921_bms_chip *chip)
+{
+	int rc;
+
+	/* enable Arbiter, must be sent twice */
+	rc = pm_bms_masked_write(chip, ADC_ARB_SECP_CNTRL,
+			SEL_CCADC_BIT | EN_ARB_BIT, SEL_CCADC_BIT | EN_ARB_BIT);
+	if (rc < 0) {
+		pr_err("error = %d enabling arbiter for offset\n", rc);
+		return rc;
+	}
+	rc = pm_bms_masked_write(chip, ADC_ARB_SECP_CNTRL,
+			SEL_CCADC_BIT | EN_ARB_BIT, SEL_CCADC_BIT | EN_ARB_BIT);
+	if (rc < 0) {
+		pr_err("error = %d writing ADC_ARB_SECP_CNTRL\n", rc);
+		return rc;
+	}
+	return 0;
+}
+
+static int calib_start_conv(struct pm8921_bms_chip *chip,
+					u16 *result)
+{
+	int rc, i;
+	u8 data_msb, data_lsb, reg;
+
+	/* Start conversion */
+	rc = pm_bms_masked_write(chip, ADC_ARB_SECP_CNTRL,
+					START_CONV_BIT, START_CONV_BIT);
+	if (rc < 0) {
+		pr_err("error = %d starting offset meas\n", rc);
+		return rc;
+	}
+
+	/* Wait for End of conversion */
+	for (i = 0; i < ADC_WAIT_COUNT; i++) {
+		rc = pm8xxx_readb(chip->dev->parent,
+					ADC_ARB_SECP_CNTRL, &reg);
+		if (rc < 0) {
+			pr_err("error = %d read eoc for offset\n", rc);
+			return rc;
+		}
+		if ((reg & (START_CONV_BIT | EOC_CONV_BIT)) != EOC_CONV_BIT)
+			msleep(60);
+		else
+			break;
+	}
+	if (i == ADC_WAIT_COUNT) {
+		pr_err("waited too long for offset eoc\n");
+		return rc;
+	}
+
+	rc = pm8xxx_readb(chip->dev->parent, ADC_ARB_SECP_DATA0, &data_lsb);
+	if (rc < 0) {
+		pr_err("error = %d reading offset lsb\n", rc);
+		return rc;
+	}
+
+	rc = pm8xxx_readb(chip->dev->parent, ADC_ARB_SECP_DATA1, &data_msb);
+	if (rc < 0) {
+		pr_err("error = %d reading offset msb\n", rc);
+		return rc;
+	}
+
+	*result = (data_msb << 8) | data_lsb;
+	return 0;
+}
+
+static int calib_ccadc_read_trim(struct pm8921_bms_chip *chip,
+					int addr, u8 *data_msb, u8 *data_lsb)
+{
+	int rc;
+	u8 sbi_config;
+
+	calib_ccadc_enable_trim_access(chip, &sbi_config);
+	rc = pm8xxx_readb(chip->dev->parent, addr, data_msb);
+	if (rc < 0) {
+		pr_err("error = %d read msb\n", rc);
+		return rc;
+	}
+	rc = pm8xxx_readb(chip->dev->parent, addr + 1, data_lsb);
+	if (rc < 0) {
+		pr_err("error = %d read lsb\n", rc);
+		return rc;
+	}
+	calib_ccadc_restore_trim_access(chip, sbi_config);
+	return 0;
+}
+
+static int calib_ccadc_read_gain_uv(struct pm8921_bms_chip *chip)
+{
+	s8 data_msb;
+	u8 data_lsb;
+	int rc, gain, offset;
+
+	rc = calib_ccadc_read_trim(chip, CCADC_FULLSCALE_TRIM1,
+						&data_msb, &data_lsb);
+	gain = (data_msb << 8) | data_lsb;
+
+	rc = calib_ccadc_read_trim(chip, CCADC_OFFSET_TRIM1,
+						&data_msb, &data_lsb);
+	offset = (data_msb << 8) | data_lsb;
+
+	pr_debug("raw gain trim = 0x%x offset trim =0x%x\n", gain, offset);
+	gain = ccadc_reading_to_microvolt(chip, (s64)gain - offset);
+	return gain;
+}
+
+#define CCADC_PROGRAM_TRIM_COUNT	2
+#define ADC_ARB_BMS_CNTRL_CCADC_SHIFT	4
+#define ADC_ARB_BMS_CNTRL_CONV_MASK	0x03
+#define BMS_CONV_IN_PROGRESS		0x2
+
+static int calib_ccadc_program_trim(struct pm8921_bms_chip *chip,
+					int addr, u8 data_msb, u8 data_lsb,
+					int wait)
+{
+	int i, rc, loop;
+	u8 cntrl, sbi_config;
+	bool in_progress = 0;
+
+	loop = wait ? CCADC_PROGRAM_TRIM_COUNT : 0;
+
+	calib_ccadc_enable_trim_access(chip, &sbi_config);
+
+	for (i = 0; i < loop; i++) {
+		rc = pm8xxx_readb(chip->dev->parent, ADC_ARB_BMS_CNTRL, &cntrl);
+		if (rc < 0) {
+			pr_err("error = %d reading ADC_ARB_BMS_CNTRL\n", rc);
+			return rc;
+		}
+
+		/* break if a ccadc conversion is not happening */
+		in_progress = (((cntrl >> ADC_ARB_BMS_CNTRL_CCADC_SHIFT)
+			& ADC_ARB_BMS_CNTRL_CONV_MASK) == BMS_CONV_IN_PROGRESS);
+
+		if (!in_progress)
+			break;
+	}
+
+	if (in_progress) {
+		pr_debug("conv in progress cannot write trim,returing EBUSY\n");
+		return -EBUSY;
+	}
+
+	rc = pm8xxx_writeb(chip->dev->parent, addr, data_msb);
+	if (rc < 0) {
+		pr_err("error = %d write msb = 0x%x\n", rc, data_msb);
+		return rc;
+	}
+	rc = pm8xxx_writeb(chip->dev->parent, addr + 1, data_lsb);
+	if (rc < 0) {
+		pr_err("error = %d write lsb = 0x%x\n", rc, data_lsb);
+		return rc;
+	}
+	calib_ccadc_restore_trim_access(chip, sbi_config);
+	return 0;
+}
+
+static void calib_ccadc(struct pm8921_bms_chip *chip)
+{
+	u8 data_msb, data_lsb, sec_cntrl;
+	int result_offset, voltage_offset, result_gain;
+	u16 result;
+	int i, rc;
+
+	rc = pm8xxx_readb(chip->dev->parent, ADC_ARB_SECP_CNTRL, &sec_cntrl);
+	if (rc < 0) {
+		pr_err("error = %d reading ADC_ARB_SECP_CNTRL\n", rc);
+		return;
+	}
+
+	rc = calib_ccadc_enable_arbiter(chip);
+	if (rc < 0) {
+		pr_err("error = %d enabling arbiter for offset\n", rc);
+		goto bail;
+	}
+
+	/*
+	 * Set decimation ratio to 4k, lower ratio may be used in order to speed
+	 * up, pending verification through bench
+	 */
+	rc = pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_DIG_PARAM,
+							CCADC_CALIB_DIG_PARAM);
+	if (rc < 0) {
+		pr_err("error = %d writing ADC_ARB_SECP_DIG_PARAM\n", rc);
+		goto bail;
+	}
+
+	result_offset = 0;
+	for (i = 0; i < SAMPLE_COUNT; i++) {
+		/* Short analog inputs to CCADC internally to ground */
+		rc = pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_RSV,
+							CCADC_CALIB_RSV_GND);
+		if (rc < 0) {
+			pr_err("error = %d selecting gnd voltage\n", rc);
+			goto bail;
+		}
+
+		/* Enable CCADC */
+		rc = pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_ANA_PARAM,
+							CCADC_CALIB_ANA_PARAM);
+		if (rc < 0) {
+			pr_err("error = %d enabling ccadc\n", rc);
+			goto bail;
+		}
+
+		rc = calib_start_conv(chip, &result);
+		if (rc < 0) {
+			pr_err("error = %d for zero volt measurement\n", rc);
+			goto bail;
+		}
+
+		result_offset += result;
+	}
+
+	result_offset = result_offset / SAMPLE_COUNT;
+
+	voltage_offset = ccadc_reading_to_microvolt(chip,
+			((s64)result_offset - CCADC_INTRINSIC_OFFSET));
+
+	pr_debug("offset result_offset = 0x%x, voltage = %d microVolts\n",
+				result_offset, voltage_offset);
+
+	/* Sanity Check */
+	if (voltage_offset > CCADC_MAX_0UV) {
+		pr_err("offset voltage = %d is huge limiting to %d\n",
+					voltage_offset, CCADC_MAX_0UV);
+		result_offset = CCADC_INTRINSIC_OFFSET
+			+ microvolt_to_ccadc_reading(chip, (s64)CCADC_MAX_0UV);
+	} else if (voltage_offset < CCADC_MIN_0UV) {
+		pr_err("offset voltage = %d is too low limiting to %d\n",
+					voltage_offset, CCADC_MIN_0UV);
+		result_offset = CCADC_INTRINSIC_OFFSET
+			+ microvolt_to_ccadc_reading(chip, (s64)CCADC_MIN_0UV);
+	}
+
+	chip->ccadc_result_offset = result_offset;
+	data_msb = chip->ccadc_result_offset >> 8;
+	data_lsb = chip->ccadc_result_offset;
+
+	rc = calib_ccadc_program_trim(chip, CCADC_OFFSET_TRIM1,
+						data_msb, data_lsb, 1);
+	if (rc) {
+		pr_debug("error = %d programming offset trim 0x%02x 0x%02x\n",
+					rc, data_msb, data_lsb);
+		/* enable the interrupt and write it when it fires */
+		pm8921_bms_enable_irq(chip, PM8921_BMS_CCADC_EOC);
+	}
+
+	rc = calib_ccadc_enable_arbiter(chip);
+	if (rc < 0) {
+		pr_err("error = %d enabling arbiter for gain\n", rc);
+		goto bail;
+	}
+
+	/*
+	 * Set decimation ratio to 4k, lower ratio may be used in order to speed
+	 * up, pending verification through bench
+	 */
+	rc = pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_DIG_PARAM,
+							CCADC_CALIB_DIG_PARAM);
+	if (rc < 0) {
+		pr_err("error = %d enabling decimation ration for gain\n", rc);
+		goto bail;
+	}
+
+	result_gain = 0;
+	for (i = 0; i < SAMPLE_COUNT; i++) {
+		rc = pm8xxx_writeb(chip->dev->parent,
+					ADC_ARB_SECP_RSV, CCADC_CALIB_RSV_25MV);
+		if (rc < 0) {
+			pr_err("error = %d selecting 25mV for gain\n", rc);
+			goto bail;
+		}
+
+		/* Enable CCADC */
+		rc = pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_ANA_PARAM,
+							CCADC_CALIB_ANA_PARAM);
+		if (rc < 0) {
+			pr_err("error = %d enabling ccadc\n", rc);
+			goto bail;
+		}
+
+		rc = calib_start_conv(chip, &result);
+		if (rc < 0) {
+			pr_err("error = %d for adc reading 25mV\n", rc);
+			goto bail;
+		}
+
+		result_gain += result;
+	}
+	result_gain = result_gain / SAMPLE_COUNT;
+
+	/*
+	 * result_offset includes INTRINSIC OFFSET
+	 * chip->ccadc_gain_uv will be the actual voltage
+	 * measured for 25000UV
+	 */
+	chip->ccadc_gain_uv = ccadc_reading_to_microvolt(chip,
+				((s64)result_gain - result_offset));
+
+	pr_debug("gain result_gain = 0x%x, voltage = %d microVolts\n",
+							result_gain,
+							chip->ccadc_gain_uv);
+	/* Sanity Check */
+	if (chip->ccadc_gain_uv > CCADC_MAX_25MV) {
+		pr_err("gain voltage = %d is huge limiting to %d\n",
+					chip->ccadc_gain_uv, CCADC_MAX_25MV);
+		chip->ccadc_gain_uv = CCADC_MAX_25MV;
+		result_gain = result_offset +
+			microvolt_to_ccadc_reading(chip, CCADC_MAX_25MV);
+	} else if (chip->ccadc_gain_uv < CCADC_MIN_25MV) {
+		pr_err("gain voltage = %d is too low limiting to %d\n",
+					chip->ccadc_gain_uv, CCADC_MIN_25MV);
+		chip->ccadc_gain_uv = CCADC_MIN_25MV;
+		result_gain = result_offset +
+			microvolt_to_ccadc_reading(chip, CCADC_MIN_25MV);
+	}
+
+	data_msb = result_gain >> 8;
+	data_lsb = result_gain;
+	rc = calib_ccadc_program_trim(chip, CCADC_FULLSCALE_TRIM1,
+						data_msb, data_lsb, 0);
+	if (rc)
+		pr_debug("error = %d programming gain trim\n", rc);
+bail:
+	pm8xxx_writeb(chip->dev->parent, ADC_ARB_SECP_CNTRL, sec_cntrl);
+}
+
+static void calibrate_ccadc_work(struct work_struct *work)
+{
+	struct pm8921_bms_chip *chip = container_of(work,
+				struct pm8921_bms_chip, calib_ccadc_work.work);
+
+	calib_ccadc(chip);
+	schedule_delayed_work(&chip->calib_ccadc_work,
+			round_jiffies_relative(msecs_to_jiffies
+			(chip->calib_delay_ms)));
 }
 
 int pm8921_bms_get_vsense_avg(int *result)
@@ -1012,6 +1574,7 @@ EXPORT_SYMBOL(pm8921_bms_get_vsense_avg);
 int pm8921_bms_get_battery_current(int *result)
 {
 	unsigned long flags;
+	int vsense;
 
 	if (!the_chip) {
 		pr_err("called before initialization\n");
@@ -1024,12 +1587,13 @@ int pm8921_bms_get_battery_current(int *result)
 
 	spin_lock_irqsave(&the_chip->bms_output_lock, flags);
 	pm_bms_lock_output_data(the_chip);
-	read_vsense_avg(the_chip, result);
+	read_vsense_avg(the_chip, &vsense);
 	pm_bms_unlock_output_data(the_chip);
 	spin_unlock_irqrestore(&the_chip->bms_output_lock, flags);
-	pr_debug("vsense=%d\n", *result);
+	pr_debug("vsense=%d\n", vsense);
 	/* cast for signed division */
-	*result = *result / (int)the_chip->r_sense;
+	*result = vsense / (int)the_chip->r_sense;
+
 	return 0;
 }
 EXPORT_SYMBOL(pm8921_bms_get_battery_current);
@@ -1107,6 +1671,8 @@ void pm8921_bms_charging_end(int is_battery_full)
 		batt_temp = (int)result.physical;
 		last_real_fcc = calculate_real_fcc(the_chip,
 						batt_temp, last_chargecycles);
+		last_real_fcc_batt_temp = batt_temp;
+		readjust_fcc_table();
 	}
 
 charge_cycle_calculation:
@@ -1174,6 +1740,23 @@ static irqreturn_t pm8921_bms_vsense_avg_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t pm8921_bms_ccadc_eoc_handler(int irq, void *data)
+{
+	u8 data_msb, data_lsb;
+	struct pm8921_bms_chip *chip = data;
+	int rc;
+
+	pr_debug("irq = %d triggered\n", irq);
+	data_msb = chip->ccadc_result_offset >> 8;
+	data_lsb = chip->ccadc_result_offset;
+
+	rc = calib_ccadc_program_trim(chip, CCADC_OFFSET_TRIM1,
+						data_msb, data_lsb, 0);
+	pm8921_bms_disable_irq(chip, PM8921_BMS_CCADC_EOC);
+
+	return IRQ_HANDLED;
+}
+
 struct pm_bms_irq_init_data {
 	unsigned int	irq_id;
 	char		*name;
@@ -1204,6 +1787,8 @@ struct pm_bms_irq_init_data bms_irq_data[] = {
 				pm8921_bms_good_ocv_handler),
 	BMS_IRQ(PM8921_BMS_VSENSE_AVG, IRQF_TRIGGER_RISING,
 				pm8921_bms_vsense_avg_handler),
+	BMS_IRQ(PM8921_BMS_CCADC_EOC, IRQF_TRIGGER_RISING,
+				pm8921_bms_ccadc_eoc_handler),
 };
 
 static void free_irqs(struct pm8921_bms_chip *chip)
@@ -1272,13 +1857,19 @@ static void check_initial_ocv(struct pm8921_bms_chip *chip)
 	int ocv, rc;
 
 	/*
-	 * Check if a last_good_ocv is available,
-	 * if not compute it here at boot time.
+	 * Check if a ocv is available in bms hw,
+	 * if not compute it here at boot time and save it
+	 * in the last_ocv_uv.
 	 */
+	ocv = 0;
 	rc = read_last_good_ocv(chip, &ocv);
 	if (rc || ocv == 0) {
-		rc = adc_based_ocv(chip, &last_ocv_uv);
-		pr_err("failed to read ocv from adc and bms rc = %d\n", rc);
+		rc = adc_based_ocv(chip, &ocv);
+		if (rc) {
+			pr_err("failed to read adc based ocv rc = %d\n", rc);
+			ocv = DEFAULT_OCV_MICROVOLTS;
+		}
+		last_ocv_uv = ocv;
 	}
 	pr_debug("ocv = %d last_ocv_uv = %d\n", ocv, last_ocv_uv);
 }
@@ -1336,6 +1927,7 @@ enum {
 	CALC_PC,
 	CALC_SOC,
 	CALIB_HKADC,
+	CALIB_CCADC,
 };
 
 static int test_batt_temp = 5;
@@ -1410,6 +2002,11 @@ static int get_calc(void *data, u64 * val)
 		/* reading this will trigger calibration */
 		*val = 0;
 		calib_hkadc(the_chip);
+		break;
+	case CALIB_CCADC:
+		/* reading this will trigger calibration */
+		*val = 0;
+		calib_ccadc(the_chip);
 		break;
 	default:
 		ret = -EINVAL;
@@ -1562,6 +2159,8 @@ static void create_debugfs_entries(struct pm8921_bms_chip *chip)
 				(void *)CALC_SOC, &calc_fops);
 	debugfs_create_file("calib_hkadc", 0644, chip->dent,
 				(void *)CALIB_HKADC, &calc_fops);
+	debugfs_create_file("calib_ccadc", 0644, chip->dent,
+				(void *)CALIB_CCADC, &calc_fops);
 
 	for (i = 0; i < ARRAY_SIZE(bms_irq_data); i++) {
 		if (chip->pmic_bms_irq[bms_irq_data[i].irq_id])
@@ -1575,9 +2174,11 @@ static void create_debugfs_entries(struct pm8921_bms_chip *chip)
 static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 {
 	int rc = 0;
+	int vbatt;
 	struct pm8921_bms_chip *chip;
 	const struct pm8921_bms_platform_data *pdata
 				= pdev->dev.platform_data;
+
 	if (!pdata) {
 		pr_err("missing platform data\n");
 		return -EINVAL;
@@ -1608,16 +2209,16 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	chip->revision = pm8xxx_get_revision(chip->dev->parent);
 	INIT_WORK(&chip->calib_hkadc_work, calibrate_hkadc_work);
 
-	rc = pm8921_bms_hw_init(chip);
-	if (rc) {
-		pr_err("couldn't init hardware rc = %d\n", rc);
-		goto free_chip;
-	}
-
 	rc = request_irqs(chip, pdev);
 	if (rc) {
 		pr_err("couldn't register interrupts rc = %d\n", rc);
 		goto free_chip;
+	}
+
+	rc = pm8921_bms_hw_init(chip);
+	if (rc) {
+		pr_err("couldn't init hardware rc = %d\n", rc);
+		goto free_irqs;
 	}
 
 	platform_set_drvdata(pdev, chip);
@@ -1625,15 +2226,27 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	create_debugfs_entries(chip);
 
 	check_initial_ocv(chip);
+	chip->ccadc_gain_uv = calib_ccadc_read_gain_uv(chip);
 
+	INIT_DELAYED_WORK(&chip->calib_ccadc_work, calibrate_ccadc_work);
+	/* begin calibration only on chips > 2.0 */
+	if (chip->revision >= PM8XXX_REVISION_8921_2p0)
+		calibrate_ccadc_work(&(chip->calib_ccadc_work.work));
+
+	/* initial hkadc calibration */
+	schedule_work(&chip->calib_hkadc_work);
 	/* enable the vbatt reading interrupts for scheduling hkadc calib */
 	pm8921_bms_enable_irq(chip, PM8921_BMS_GOOD_OCV);
 	pm8921_bms_enable_irq(chip, PM8921_BMS_OCV_FOR_R);
 
-	pr_info("OK battery_capacity_at_boot=%d\n",
-				pm8921_bms_get_percent_charge());
+	get_battery_uvolts(chip, &vbatt);
+	pr_info("OK battery_capacity_at_boot=%d volt = %d ocv = %d\n",
+				pm8921_bms_get_percent_charge(),
+				vbatt, last_ocv_uv);
 	return 0;
 
+free_irqs:
+	free_irqs(chip);
 free_chip:
 	kfree(chip);
 	return rc;
@@ -1644,6 +2257,7 @@ static int __devexit pm8921_bms_remove(struct platform_device *pdev)
 	struct pm8921_bms_chip *chip = platform_get_drvdata(pdev);
 
 	free_irqs(chip);
+	kfree(chip->adjusted_fcc_temp_lut);
 	platform_set_drvdata(pdev, NULL);
 	the_chip = NULL;
 	kfree(chip);
