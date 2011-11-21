@@ -24,6 +24,7 @@
 #include <mach/board.h>
 #include <media/msm_camera.h>
 #include <mach/msm_subsystem_map.h>
+#include <linux/ion.h>
 
 #define CONFIG_MSM_CAMERA_DEBUG
 #ifdef CONFIG_MSM_CAMERA_DEBUG
@@ -41,7 +42,7 @@
 #define NUM_AUTOFOCUS_MULTI_WINDOW_GRIDS 16
 #define NUM_STAT_OUTPUT_BUFFERS      3
 #define NUM_AF_STAT_OUTPUT_BUFFERS      3
-#define max_control_command_size 260
+#define max_control_command_size 512
 #define CROP_LEN 36
 
 enum vfe_mode_of_operation{
@@ -474,6 +475,7 @@ struct msm_pmem_region {
 	struct msm_pmem_info info;
 	struct msm_mapped_buffer *msm_buffer;
 	int subsys_id;
+	struct ion_handle *handle;
 };
 
 struct axidata {
@@ -615,6 +617,11 @@ enum msm_cam_mode {
 	MODE_DUAL
 };
 
+struct msm_cam_clk_info {
+	const char *clk_name;
+	long clk_rate;
+};
+
 int msm_camio_enable(struct platform_device *dev);
 int msm_camio_jpeg_clk_enable(void);
 int msm_camio_jpeg_clk_disable(void);
@@ -663,4 +670,7 @@ void msm_camio_set_perf_lvl(enum msm_bus_perf_setting);
 void *msm_isp_sync_alloc(int size, gfp_t gfp);
 
 void msm_isp_sync_free(void *ptr);
+
+int msm_cam_clk_enable(struct device *dev, struct msm_cam_clk_info *clk_info,
+		struct clk **clk_ptr, int num_clk, int enable);
 #endif

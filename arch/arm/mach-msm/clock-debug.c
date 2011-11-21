@@ -33,13 +33,10 @@ static int clock_debug_rate_set(void *data, u64 val)
 	 * for debugging purposes so we don't check for error. */
 	if (clock->flags & CLKFLAG_MAX)
 		clk_set_max_rate(clock, val);
-	if (clock->flags & CLKFLAG_MIN)
-		ret = clk_set_min_rate(clock, val);
-	else
-		ret = clk_set_rate(clock, val);
-	if (ret != 0)
-		printk(KERN_ERR "clk_set%s_rate failed (%d)\n",
-			(clock->flags & CLKFLAG_MIN) ? "_min" : "", ret);
+	ret = clk_set_rate(clock, val);
+	if (ret)
+		pr_err("clk_set_rate failed (%d)\n", ret);
+
 	return ret;
 }
 
@@ -141,9 +138,24 @@ int __init clock_debug_init(struct clock_init_data *data)
 	return ret;
 }
 
+
+static int clock_debug_print_clock(struct clk *c)
+{
+	size_t ln = 0;
+	char s[128];
+
+	if (!c || !c->count)
+		return 0;
+
+	ln += snprintf(s, sizeof(s), "\t%s", c->dbg_name);
+	while (ln < sizeof(s) && (c = clk_get_parent(c)))
+		ln += snprintf(s + ln, sizeof(s) - ln, " -> %s", c->dbg_name);
+	pr_info("%s\n", s);
+	return 1;
+}
+
 void clock_debug_print_enabled(void)
 {
-	struct clk *clk;
 	unsigned i;
 	int cnt = 0;
 
@@ -151,14 +163,8 @@ void clock_debug_print_enabled(void)
 		return;
 
 	pr_info("Enabled clocks:\n");
-	for (i = 0; i < num_msm_clocks; i++) {
-		clk = msm_clocks[i].clk;
-
-		if (clk && clk->ops->is_enabled && clk->ops->is_enabled(clk)) {
-			pr_info("\t%s\n", clk->dbg_name);
-			cnt++;
-		}
-	}
+	for (i = 0; i < num_msm_clocks; i++)
+		cnt += clock_debug_print_clock(msm_clocks[i].clk);
 
 	if (cnt)
 		pr_info("Enabled clock count: %d\n", cnt);

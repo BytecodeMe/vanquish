@@ -657,18 +657,22 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 			{
 				.gpu_freq = 266667000,
 				.bus_freq = 4,
+				.io_fraction = 0,
 			},
 			{
 				.gpu_freq = 228571000,
 				.bus_freq = 3,
+				.io_fraction = 33,
 			},
 			{
 				.gpu_freq = 200000000,
 				.bus_freq = 2,
+				.io_fraction = 100,
 			},
 			{
 				.gpu_freq = 177778000,
-				.bus_freq = 1
+				.bus_freq = 1,
+				.io_fraction = 100,
 			},
 			{
 				.gpu_freq = 27000000,
@@ -2146,7 +2150,12 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
-	.memtype = MEMTYPE_SMI_KERNEL
+	.memtype = MEMTYPE_SMI_KERNEL,
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	.enable_ion = 1,
+#else
+	.enable_ion = 0,
+#endif
 };
 
 struct platform_device msm_device_vidc = {

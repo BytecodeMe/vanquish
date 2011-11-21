@@ -774,11 +774,21 @@ static int msm_camera_v4l2_reqbufs(struct file *f, void *pctx,
 	}
 	if (!pb->count) {
 		/* Deallocation. free buf_offset array */
-		D("%s freeing buffer offsets array ", __func__);
+		D("%s Inst %p freeing buffer offsets array",
+			__func__, pcam_inst);
 		for (j = 0 ; j < pcam_inst->buf_count ; j++)
 			kfree(pcam_inst->buf_offset[j]);
 		kfree(pcam_inst->buf_offset);
+		pcam_inst->buf_offset = NULL;
+		/* If the userspace has deallocated all the
+		 * buffers, then release the vb2 queue */
+		if (pcam_inst->vbqueue_initialized) {
+			vb2_queue_release(&pcam_inst->vid_bufq);
+			pcam_inst->vbqueue_initialized = 0;
+		}
 	} else {
+		D("%s Inst %p Allocating buf_offset array",
+			__func__, pcam_inst);
 		/* Allocation. allocate buf_offset array */
 		pcam_inst->buf_offset = (struct msm_cam_buf_offset **)
 			kzalloc(pb->count * sizeof(struct msm_cam_buf_offset *),
@@ -796,6 +806,7 @@ static int msm_camera_v4l2_reqbufs(struct file *f, void *pctx,
 				for (j = i-1 ; j >= 0; j--)
 					kfree(pcam_inst->buf_offset[j]);
 				kfree(pcam_inst->buf_offset);
+				pcam_inst->buf_offset = NULL;
 				return -ENOMEM;
 			}
 		}
@@ -828,7 +839,18 @@ static int msm_camera_v4l2_qbuf(struct file *f, void *pctx,
 
 	D("%s Inst = %p\n", __func__, pcam_inst);
 	WARN_ON(pctx != f->private_data);
+
+	if (!pcam_inst->buf_offset) {
+		pr_err("%s Buffer is already released. Returning. ", __func__);
+		return -EINVAL;
+	}
+
 	if (pb->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		/* Reject the buffer if planes array was not allocated */
+		if (pb->m.planes == NULL) {
+			pr_err("%s Planes array is null ", __func__);
+			return -EINVAL;
+		}
 		for (i = 0; i < pcam_inst->plane_info.num_planes; i++) {
 			D("%s stored offsets for plane %d as"
 				"addr offset %d, data offset %d",
@@ -1093,7 +1115,7 @@ static int msm_camera_v4l2_s_fmt_cap_mplane(struct file *f, void *pctx,
 	pcam_inst = container_of(f->private_data,
 			struct msm_cam_v4l2_dev_inst, eventHandle);
 
-	D("%s\n", __func__);
+	D("%s Inst %p\n", __func__, pcam_inst);
 	WARN_ON(pctx != f->private_data);
 
 	if (!pcam_inst->vbqueue_initialized) {
@@ -1427,7 +1449,9 @@ static int msm_open(struct file *f)
 			mutex_unlock(&pcam->vid_lock);
 			return rc;
 		}
-
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+		pcam->mctl.client = msm_ion_client_create(-1, "camera");
+#endif
 		/* Should be set to sensor ops if any but right now its OK!! */
 		if (!pcam->mctl.mctl_open) {
 			D("%s: media contoller is not inited\n",
@@ -1449,7 +1473,7 @@ static int msm_open(struct file *f)
 
 		/* Register isp subdev */
 		rc = v4l2_device_register_subdev(&pcam->v4l2_dev,
-					&pcam->mctl.isp_sdev->sd);
+					pcam->mctl.isp_sdev->sd);
 		if (rc < 0) {
 			mutex_unlock(&pcam->vid_lock);
 			pr_err("%s: v4l2_device_register_subdev failed rc = %d\n",
@@ -1457,7 +1481,7 @@ static int msm_open(struct file *f)
 			return rc;
 		}
 		rc = v4l2_device_register_subdev(&pcam->v4l2_dev,
-					&pcam->mctl.isp_sdev->sd_vpe);
+					pcam->mctl.isp_sdev->sd_vpe);
 		if (rc < 0) {
 			mutex_unlock(&pcam->vid_lock);
 			pr_err("%s: vpe v4l2_device_register_subdev failed rc = %d\n",
@@ -1589,8 +1613,8 @@ static int msm_close(struct file *f)
 	f->private_data = NULL;
 
 	if (pcam->use_count == 0) {
-		v4l2_device_unregister_subdev(&pcam->mctl.isp_sdev->sd);
-		v4l2_device_unregister_subdev(&pcam->mctl.isp_sdev->sd_vpe);
+		v4l2_device_unregister_subdev(pcam->mctl.isp_sdev->sd);
+		v4l2_device_unregister_subdev(pcam->mctl.isp_sdev->sd_vpe);
 		rc = msm_cam_server_close_session(&g_server_dev, pcam);
 		if (rc < 0)
 			pr_err("msm_cam_server_close_session fails %d\n", rc);
@@ -1603,7 +1627,9 @@ static int msm_close(struct file *f)
 			if (rc < 0)
 				pr_err("mctl_release fails %d\n", rc);
 		}
-
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+		ion_client_destroy(pcam->mctl.client);
+#endif
 		dma_release_declared_memory(&pcam->pdev->dev);
 	}
 	mutex_unlock(&pcam->vid_lock);
@@ -1903,13 +1929,13 @@ static long msm_ioctl_config(struct file *fp, unsigned int cmd,
 	case MSM_CAM_IOCTL_REGISTER_PMEM:
 		return msm_register_pmem(
 			&config_cam->p_mctl->sync.pmem_stats,
-			(void __user *)arg);
+			(void __user *)arg, config_cam->p_mctl->client);
 		break;
 
 	case MSM_CAM_IOCTL_UNREGISTER_PMEM:
 		return msm_pmem_table_del(
 			&config_cam->p_mctl->sync.pmem_stats,
-			(void __user *)arg);
+			(void __user *)arg, config_cam->p_mctl->client);
 		break;
 	case VIDIOC_SUBSCRIBE_EVENT:
 		if (copy_from_user(&temp_sub,

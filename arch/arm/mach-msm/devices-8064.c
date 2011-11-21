@@ -71,18 +71,18 @@ struct platform_device msm8064_device_watchdog = {
 
 static struct resource msm_dmov_resource[] = {
 	{
-		.start = ADM_0_SCSS_0_IRQ,
+		.start = ADM_0_SCSS_1_IRQ,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
-		.start = 0x18300000,
-		.end = 0x18300000 + SZ_1M - 1,
+		.start = 0x18320000,
+		.end = 0x18320000 + SZ_1M - 1,
 		.flags = IORESOURCE_MEM,
 	},
 };
 
 static struct msm_dmov_pdata msm_dmov_pdata = {
-	.sd = 0,
+	.sd = 1,
 	.sd_size = 0x800,
 };
 
@@ -664,8 +664,8 @@ static struct clk_lookup msm_clocks_8064_dummy[] = {
 	CLK_DUMMY("iface_clk",		SDC2_P_CLK,		NULL, OFF),
 	CLK_DUMMY("iface_clk",		SDC3_P_CLK,		NULL, OFF),
 	CLK_DUMMY("iface_clk",		SDC4_P_CLK,		NULL, OFF),
-	CLK_DUMMY("core_clk",		ADM0_CLK,		NULL, OFF),
-	CLK_DUMMY("iface_clk",		ADM0_P_CLK,		NULL, OFF),
+	CLK_DUMMY("core_clk",		ADM0_CLK,	"msm_dmov", OFF),
+	CLK_DUMMY("iface_clk",		ADM0_P_CLK,	"msm_dmov", OFF),
 	CLK_DUMMY("iface_clk",		PMIC_ARB0_P_CLK,	NULL, OFF),
 	CLK_DUMMY("iface_clk",		PMIC_ARB1_P_CLK,	NULL, OFF),
 	CLK_DUMMY("core_clk",		PMIC_SSBI2_CLK,		NULL, OFF),
@@ -760,6 +760,7 @@ static struct clk_lookup msm_clocks_8064_dummy[] = {
 	CLK_DUMMY("bus_clk",		DFAB_SDC4_CLK,		NULL, 0),
 	CLK_DUMMY("dfab_clk",		DFAB_CLK,		NULL, 0),
 	CLK_DUMMY("dma_bam_pclk",	DMA_BAM_P_CLK,		NULL, 0),
+	CLK_DUMMY("mem_clk",		EBI1_ADM_CLK,	  "msm_dmov", 0),
 };
 
 struct clock_init_data apq8064_dummy_clock_init_data __initdata = {

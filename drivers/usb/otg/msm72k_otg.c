@@ -141,7 +141,7 @@ static void enable_idgnd(struct msm_otg *dev)
 
 	ulpi_write(dev, (1<<4), 0x0E);
 	ulpi_write(dev, (1<<4), 0x11);
-	writel(readl(USB_OTGSC) | OTGSC_IDIE, USB_OTGSC);
+	writel_relaxed(readl_relaxed(USB_OTGSC) | OTGSC_IDIE, USB_OTGSC);
 }
 
 static void disable_idgnd(struct msm_otg *dev)
@@ -152,7 +152,7 @@ static void disable_idgnd(struct msm_otg *dev)
 
 	ulpi_write(dev, (1<<4), 0x0F);
 	ulpi_write(dev, (1<<4), 0x12);
-	writel(readl(USB_OTGSC) & ~OTGSC_IDIE, USB_OTGSC);
+	writel_relaxed(readl_relaxed(USB_OTGSC) & ~OTGSC_IDIE, USB_OTGSC);
 }
 #endif
 

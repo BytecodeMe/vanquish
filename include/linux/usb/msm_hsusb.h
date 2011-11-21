@@ -144,6 +144,7 @@ enum usb_chg_type {
  * @pclk_src_name: pclk is derived from ebi1_usb_clk in case of 7x27 and 8k
  *              dfab_usb_hs_clk in case of 8660 and 8960.
  * @pmic_id_irq: IRQ number assigned for PMIC USB ID line.
+ * @mhl_enable: indicates MHL connector or not.
  */
 struct msm_otg_platform_data {
 	int *phy_init_seq;
@@ -157,6 +158,7 @@ struct msm_otg_platform_data {
 	char *pclk_src_name;
 	int pmic_id_irq;
 	struct platform_device *accy_pdev;
+	bool mhl_enable;
 };
 
 /**

@@ -28,7 +28,7 @@
 #include <sound/dai.h>
 #include "q6core.h"
 
-#define DMA_ALLOC_BUF_SZ		(SZ_4K * 6)
+#define DMA_ALLOC_BUF_SZ		(SZ_4K * 16)
 
 #define HDMI_AUDIO_FIFO_WATER_MARK	4
 
@@ -74,8 +74,6 @@ static irqreturn_t lpa_if_irq(int intrsrc, void *data)
 	pending = (intrsrc
 		   & (UNDER_CH(dma_ch) | PER_CH(dma_ch) | ERR_CH(dma_ch)));
 
-	pr_debug("pending = 0x%08x\n", pending);
-
 	if (pending & UNDER_CH(dma_ch))
 		pr_err("under run\n");
 	if (pending & ERR_CH(dma_ch))
@@ -104,10 +102,9 @@ int lpa_if_start(struct lpa_if *lpa_if)
 
 	dai_start_hdmi(lpa_if->dma_ch);
 
-	mb();
-
 	hdmi_audio_enable(1, HDMI_AUDIO_FIFO_WATER_MARK);
-	mb();
+
+	hdmi_audio_packet_enable(1);
 	return 0;
 }
 
@@ -121,7 +118,7 @@ int lpa_if_config(struct lpa_if *lpa_if)
 	dma_params.period_size = lpa_if->dma_period_sz;
 	dma_params.channels = 2;
 
-	lpa_if->dma_ch = 0;
+	lpa_if->dma_ch = 4;
 	dai_set_params(lpa_if->dma_ch, &dma_params);
 
 	register_dma_irq_handler(lpa_if->dma_ch, lpa_if_irq, (void *)lpa_if);
@@ -191,7 +188,7 @@ static long lpa_if_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			pr_debug("%s:failed to copy from user\n", __func__);
 			rc = -EFAULT;
 		}
-		if (lpa_if->dma_period_sz > DMA_ALLOC_BUF_SZ) {
+		if ((lpa_if->dma_period_sz * 2) > DMA_ALLOC_BUF_SZ) {
 			pr_err("Dma buffer size greater than allocated size\n");
 			return -EINVAL;
 		}
@@ -228,8 +225,11 @@ static int lpa_if_open(struct inode *inode, struct file *file)
 
 	file->private_data = lpa_if_ptr;
 	dma_buf_index = 0;
+	lpa_if_ptr->cpu_buf = 0;
+	lpa_if_ptr->dma_buf = 0;
 
 	core_req_bus_bandwith(AUDIO_IF_BUS_ID, 100000, 0);
+	mb();
 
 	return 0;
 }
@@ -241,9 +241,6 @@ static ssize_t lpa_if_write(struct file *file, const char __user *buf,
 	struct audio_buffer *ab;
 	const char __user *start = buf;
 	int xfer, rc;
-
-	pr_debug("count %u cpu_buf %d dma_buf %d\n",
-		(unsigned int)count, lpa_if->cpu_buf, lpa_if->dma_buf);
 
 	mutex_lock(&lpa_if->lock);
 
@@ -257,6 +254,7 @@ static ssize_t lpa_if_write(struct file *file, const char __user *buf,
 			goto end;
 
 		}
+		mb();
 		pr_debug("prefill: count %u  audio_buf[%u].size %u\n",
 			 count, dma_buf_index, ab->size);
 
@@ -313,15 +311,20 @@ end:
 static int lpa_if_release(struct inode *inode, struct file *file)
 {
 	struct lpa_if *lpa_if = file->private_data;
-	hdmi_audio_enable(0, HDMI_AUDIO_FIFO_WATER_MARK);
 
-	smp_mb();
+	hdmi_audio_packet_enable(0);
+
+	wait_for_dma_cnt_stop(lpa_if->dma_ch);
+
+	hdmi_audio_enable(0, HDMI_AUDIO_FIFO_WATER_MARK);
 
 	if (lpa_if->config) {
 		unregister_dma_irq_handler(lpa_if->dma_ch);
 		dai_stop_hdmi(lpa_if->dma_ch);
 		lpa_if->config = 0;
 	}
+	core_req_bus_bandwith(AUDIO_IF_BUS_ID, 0, 0);
+
 	return 0;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -493,7 +493,6 @@ static u32 vid_enc_close_client(struct video_client_ctx *client_ctx)
 		mutex_unlock(&vid_enc_device_p->lock);
 		return false;
 	}
-
 	memset((void *)client_ctx, 0,
 		sizeof(struct video_client_ctx));
 
@@ -546,6 +545,13 @@ static int vid_enc_open(struct inode *inode, struct file *file)
 	mutex_init(&client_ctx->msg_queue_lock);
 	INIT_LIST_HEAD(&client_ctx->msg_queue);
 	init_waitqueue_head(&client_ctx->msg_wait);
+	if (vcd_get_ion_status()) {
+		client_ctx->user_ion_client = vcd_get_ion_client();
+		if (!client_ctx->user_ion_client) {
+			ERR("vcd_open ion get client failed");
+			return -EFAULT;
+		}
+	}
 	vcd_status = vcd_open(vid_enc_device_p->device_handle, false,
 		vid_enc_vcd_cb, client_ctx);
 	client_ctx->stop_msg = 0;
@@ -966,8 +972,15 @@ static long vid_enc_ioctl(struct file *file,
 	}
 	case VEN_IOCTL_FREE_RECON_BUFFER:
 	{
+		struct venc_recon_addr venc_recon;
 		DBG("VEN_IOCTL_FREE_RECON_BUFFER\n");
-		result = vid_enc_free_recon_buffers(client_ctx);
+		if (copy_from_user(&venc_msg, arg, sizeof(venc_msg)))
+			return -EFAULT;
+		if (copy_from_user(&venc_recon, venc_msg.in,
+				sizeof(venc_recon)))
+				return -EFAULT;
+		result = vid_enc_free_recon_buffers(client_ctx,
+				&venc_recon);
 		if (!result) {
 			ERR("VEN_IOCTL_FREE_RECON_BUFFER failed\n");
 			return -EIO;

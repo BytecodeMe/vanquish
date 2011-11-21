@@ -1024,8 +1024,6 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 
 	if (data->flags & MMC_DATA_READ)
 		datactrl |= (MCI_DPSM_DIRECTION | MCI_RX_DATA_PEND);
-	else if (data->flags & MMC_DATA_WRITE)
-		datactrl |= MCI_DATA_PEND;
 
 	clks = (unsigned long long)data->timeout_ns * host->clk_rate;
 	do_div(clks, 1000000000UL);
@@ -1364,6 +1362,9 @@ static void msmsdcc_do_cmdirq(struct msmsdcc_host *host, uint32_t status)
 			msmsdcc_start_command(host, host->curr.mrq->cmd, 0);
 		else
 			msmsdcc_request_start(host, host->curr.mrq);
+	} else if (cmd->data) {
+		if (!(cmd->data->flags & MMC_DATA_READ))
+			msmsdcc_start_data(host, cmd->data, NULL, 0);
 	}
 }
 
@@ -1570,9 +1571,9 @@ msmsdcc_irq(int irq, void *dev_id)
 static void
 msmsdcc_request_start(struct msmsdcc_host *host, struct mmc_request *mrq)
 {
-	if (mrq->data) {
+	if (mrq->data && mrq->data->flags & MMC_DATA_READ) {
 		/* Queue/read data, daisy-chain command when data starts */
-		if (mrq->sbc && (mrq->data->flags & MMC_DATA_READ))
+		if (mrq->sbc)
 			msmsdcc_start_data(host, mrq->data, mrq->sbc, 0);
 		else
 			msmsdcc_start_data(host, mrq->data, mrq->cmd, 0);
@@ -2489,7 +2490,7 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 	usleep_range(5000, 5500);
 
 	spin_lock_irqsave(&host->lock, flags);
-	/* Start SD CLK output. */
+	/* Disable PWRSAVE would make sure that SD CLK is always running */
 	writel_relaxed((readl_relaxed(host->base + MMCICLOCK)
 			& ~MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
 	msmsdcc_delay(host);
@@ -2513,6 +2514,9 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 	}
 
 out_unlock:
+	/* Enable PWRSAVE */
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
+			MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
 	spin_unlock_irqrestore(&host->lock, flags);
 out:
 	return rc;
@@ -3523,9 +3527,10 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (pdev->id < 1 || pdev->id > 5)
 		return -EINVAL;
 
-	if (plat->is_sdio_al_client)
-		if (!plat->sdio_lpm_gpio_setup || !plat->sdiowakeup_irq)
-			return -EINVAL;
+	if (plat->is_sdio_al_client && !plat->sdiowakeup_irq) {
+		pr_err("%s: No wakeup IRQ for sdio_al client\n", __func__);
+		return -EINVAL;
+	}
 
 	if (pdev->resource == NULL || pdev->num_resources < 2) {
 		pr_err("%s: Invalid resource\n", __func__);
@@ -4095,7 +4100,8 @@ int msmsdcc_sdio_al_lpm(struct mmc_host *mmc, bool enable)
 			host->clks_on = 0;
 		}
 
-		if (!host->sdio_gpio_lpm) {
+		if (host->plat->sdio_lpm_gpio_setup &&
+				!host->sdio_gpio_lpm) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			host->plat->sdio_lpm_gpio_setup(mmc_dev(mmc), 0);
 			spin_lock_irqsave(&host->lock, flags);
@@ -4114,7 +4120,8 @@ int msmsdcc_sdio_al_lpm(struct mmc_host *mmc, bool enable)
 			msmsdcc_disable_irq_wake(host);
 		}
 
-		if (host->sdio_gpio_lpm) {
+		if (host->plat->sdio_lpm_gpio_setup &&
+				host->sdio_gpio_lpm) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			host->plat->sdio_lpm_gpio_setup(mmc_dev(mmc), 1);
 			spin_lock_irqsave(&host->lock, flags);

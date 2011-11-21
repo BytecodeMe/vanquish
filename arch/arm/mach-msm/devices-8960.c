@@ -36,6 +36,7 @@
 #include "devices-msm8x60.h"
 #include "footswitch.h"
 #include "msm_watchdog.h"
+#include "rpm_stats.h"
 
 #ifdef CONFIG_MSM_MPM
 #include "mpm.h"
@@ -536,7 +537,12 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
-	.memtype = MEMTYPE_EBI1
+	.memtype = MEMTYPE_EBI1,
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	.enable_ion = 1,
+#else
+	.enable_ion = 0,
+#endif
 };
 
 struct platform_device msm_device_vidc = {
@@ -977,92 +983,8 @@ struct platform_device msm8960_device_qup_i2c_gsbi12 = {
 #ifdef CONFIG_MSM_CAMERA
 struct resource msm_camera_resources[] = {
 	{
-		.name	= "vfe",
-		.start	= 0x04500000,
-		.end	= 0x04500000 + SZ_1M - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "vfe",
-		.start	= VFE_IRQ,
-		.end	= VFE_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "vpe",
-		.start	= 0x05300000,
-		.end	= 0x05300000 + SZ_1M - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "vpe",
-		.start	= VPE_IRQ,
-		.end	= VPE_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
 		.name	= "vid_buf",
 		.flags	= IORESOURCE_DMA,
-	},
-	{
-		.name	= "ispif",
-		.start	= 0x04800800,
-		.end	= 0x04800800 + SZ_1K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "ispif",
-		.start	= ISPIF_IRQ,
-		.end	= ISPIF_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "csid0",
-		.start	= 0x04800000,
-		.end	= 0x04800000 + SZ_1K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "csid0",
-		.start	= CSI_0_IRQ,
-		.end	= CSI_0_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "csiphy0",
-		.start	= 0x04800C00,
-		.end	= 0x04800C00 + SZ_1K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "csiphy0",
-		.start	= CSIPHY_4LN_IRQ,
-		.end	= CSIPHY_4LN_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "csid1",
-		.start	= 0x04800400,
-		.end	= 0x04800400 + SZ_1K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "csid1",
-		.start	= CSI_1_IRQ,
-		.end	= CSI_1_IRQ,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "csiphy1",
-		.start	= 0x04801000,
-		.end	= 0x04801000 + SZ_1K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "csiphy1",
-		.start	= MSM8960_CSIPHY_2LN_IRQ,
-		.end	= MSM8960_CSIPHY_2LN_IRQ,
-		.flags	= IORESOURCE_IRQ,
 	},
 	{
 		.name   = "s3d_rw",
@@ -1076,7 +998,6 @@ struct resource msm_camera_resources[] = {
 		.end    = 0x008020B8 + SZ_16 - 1,
 		.flags  = IORESOURCE_MEM,
 	},
-
 };
 
 int __init msm_get_cam_resources(struct msm_camera_sensor_info *s_info)
@@ -1085,6 +1006,160 @@ int __init msm_get_cam_resources(struct msm_camera_sensor_info *s_info)
 	s_info->num_resources = ARRAY_SIZE(msm_camera_resources);
 	return 0;
 }
+
+static struct resource msm_csiphy0_resources[] = {
+	{
+		.name	= "csiphy",
+		.start	= 0x04800C00,
+		.end	= 0x04800C00 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csiphy",
+		.start	= CSIPHY_4LN_IRQ,
+		.end	= CSIPHY_4LN_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msm_csiphy1_resources[] = {
+	{
+		.name	= "csiphy",
+		.start	= 0x04801000,
+		.end	= 0x04801000 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csiphy",
+		.start	= MSM8960_CSIPHY_2LN_IRQ,
+		.end	= MSM8960_CSIPHY_2LN_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_csiphy0 = {
+	.name           = "msm_csiphy",
+	.id             = 0,
+	.resource       = msm_csiphy0_resources,
+	.num_resources  = ARRAY_SIZE(msm_csiphy0_resources),
+};
+
+struct platform_device msm8960_device_csiphy1 = {
+	.name           = "msm_csiphy",
+	.id             = 1,
+	.resource       = msm_csiphy1_resources,
+	.num_resources  = ARRAY_SIZE(msm_csiphy1_resources),
+};
+
+static struct resource msm_csid0_resources[] = {
+	{
+		.name	= "csid",
+		.start	= 0x04800000,
+		.end	= 0x04800000 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csid",
+		.start	= CSI_0_IRQ,
+		.end	= CSI_0_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msm_csid1_resources[] = {
+	{
+		.name	= "csid",
+		.start	= 0x04800400,
+		.end	= 0x04800400 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csid",
+		.start	= CSI_1_IRQ,
+		.end	= CSI_1_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_csid0 = {
+	.name           = "msm_csid",
+	.id             = 0,
+	.resource       = msm_csid0_resources,
+	.num_resources  = ARRAY_SIZE(msm_csid0_resources),
+};
+
+struct platform_device msm8960_device_csid1 = {
+	.name           = "msm_csid",
+	.id             = 1,
+	.resource       = msm_csid1_resources,
+	.num_resources  = ARRAY_SIZE(msm_csid1_resources),
+};
+
+struct resource msm_ispif_resources[] = {
+	{
+		.name	= "ispif",
+		.start	= 0x04800800,
+		.end	= 0x04800800 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "ispif",
+		.start	= ISPIF_IRQ,
+		.end	= ISPIF_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_ispif = {
+	.name           = "msm_ispif",
+	.id             = 0,
+	.resource       = msm_ispif_resources,
+	.num_resources  = ARRAY_SIZE(msm_ispif_resources),
+};
+
+static struct resource msm_vfe_resources[] = {
+	{
+		.name	= "vfe32",
+		.start	= 0x04500000,
+		.end	= 0x04500000 + SZ_1M - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "vfe32",
+		.start	= VFE_IRQ,
+		.end	= VFE_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_vfe = {
+	.name           = "msm_vfe",
+	.id             = 0,
+	.resource       = msm_vfe_resources,
+	.num_resources  = ARRAY_SIZE(msm_vfe_resources),
+};
+
+static struct resource msm_vpe_resources[] = {
+	{
+		.name	= "vpe",
+		.start	= 0x05300000,
+		.end	= 0x05300000 + SZ_1M - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "vpe",
+		.start	= VPE_IRQ,
+		.end	= VPE_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_vpe = {
+	.name           = "msm_vpe",
+	.id             = 0,
+	.resource       = msm_vpe_resources,
+	.num_resources  = ARRAY_SIZE(msm_vpe_resources),
+};
 #endif
 
 static struct resource resources_ssbi_pm8921[] = {
@@ -1131,6 +1206,12 @@ static struct resource resources_qup_spi_gsbi1[] = {
 		.name   = "spi_cs",
 		.start  = 8,
 		.end    = 8,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_cs1",
+		.start  = 14,
+		.end    = 14,
 		.flags  = IORESOURCE_IO,
 	},
 	{
@@ -1962,18 +2043,22 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 			{
 				.gpu_freq = 400000000,
 				.bus_freq = 4,
+				.io_fraction = 0,
 			},
 			{
 				.gpu_freq = 300000000,
 				.bus_freq = 3,
+				.io_fraction = 33,
 			},
 			{
 				.gpu_freq = 200000000,
 				.bus_freq = 2,
+				.io_fraction = 100,
 			},
 			{
 				.gpu_freq = 128000000,
 				.bus_freq = 1,
+				.io_fraction = 100,
 			},
 			{
 				.gpu_freq = 27000000,
@@ -2239,6 +2324,18 @@ struct platform_device msm_rpm_device = {
 	.id     = -1,
 };
 
+static struct msm_rpmstats_platform_data msm_rpm_stat_pdata = {
+	.phys_addr_base = 0x0010D204,
+	.phys_size = SZ_8K,
+};
+
+struct platform_device msm_rpm_stat_device = {
+	.name = "msm_rpm_stat",
+	.id = -1,
+	.dev = {
+		.platform_data = &msm_rpm_stat_pdata,
+	},
+};
 
 struct platform_device msm_bus_sys_fabric = {
 	.name  = "msm_bus_fabric",
@@ -2317,6 +2414,7 @@ struct platform_device msm_dsps_device = {
 #define MSM_ETB_PHYS_BASE		(MSM_QDSS_PHYS_BASE + 0x1000)
 #define MSM_TPIU_PHYS_BASE		(MSM_QDSS_PHYS_BASE + 0x3000)
 #define MSM_FUNNEL_PHYS_BASE		(MSM_QDSS_PHYS_BASE + 0x4000)
+#define MSM_DEBUG_PHYS_BASE		(MSM_QDSS_PHYS_BASE + 0x10000)
 #define MSM_PTM_PHYS_BASE		(MSM_QDSS_PHYS_BASE + 0x1C000)
 
 static struct resource msm_etb_resources[] = {
@@ -2362,6 +2460,26 @@ struct platform_device msm_funnel_device = {
 	.id            = 0,
 	.num_resources = ARRAY_SIZE(msm_funnel_resources),
 	.resource      = msm_funnel_resources,
+};
+
+static struct resource msm_debug_resources[] = {
+	{
+		.start = MSM_DEBUG_PHYS_BASE,
+		.end   = MSM_DEBUG_PHYS_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = MSM_DEBUG_PHYS_BASE + (SZ_4K * 2),
+		.end   = MSM_DEBUG_PHYS_BASE + (SZ_4K * 2) + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm_debug_device = {
+	.name          = "msm_debug",
+	.id            = 0,
+	.num_resources = ARRAY_SIZE(msm_debug_resources),
+	.resource      = msm_debug_resources,
 };
 
 static struct resource msm_ptm_resources[] = {

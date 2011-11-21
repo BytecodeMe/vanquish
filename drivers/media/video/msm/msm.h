@@ -31,6 +31,7 @@
 #include <media/msm_isp.h>
 #include <mach/camera.h>
 #include <media/msm_isp.h>
+#include <linux/ion.h>
 
 #define MSM_V4L2_DIMENSION_SIZE 96
 #define MAX_DEV_NAME_LEN 50
@@ -39,6 +40,12 @@
 				__func__, __LINE__, ((to) ? "to" : "from"))
 #define ERR_COPY_FROM_USER() ERR_USER_COPY(0)
 #define ERR_COPY_TO_USER() ERR_USER_COPY(1)
+
+#define MSM_CSIPHY_DRV_NAME "msm_csiphy"
+#define MSM_CSID_DRV_NAME "msm_csid"
+#define MSM_ISPIF_DRV_NAME "msm_ispif"
+#define MSM_VFE_DRV_NAME "msm_vfe"
+#define MSM_VPE_DRV_NAME "msm_vpe"
 
 /* msm queue management APIs*/
 
@@ -112,6 +119,8 @@ enum msm_camera_v4l2_subdev_notify {
 	NOTIFY_ISPIF_STREAM, /* arg = enable parameter for s_stream */
 	NOTIFY_VPE_MSG_EVT,
 	NOTIFY_PCLK_CHANGE, /* arg = pclk */
+	NOTIFY_CSIPHY_CFG, /* arg = msm_camera_csiphy_params */
+	NOTIFY_CSID_CFG, /* arg = msm_camera_csid_params */
 	NOTIFY_INVALID
 };
 
@@ -214,11 +223,14 @@ struct msm_cam_media_controller {
 	struct v4l2_subdev *vpe_sdev;    /* vpe sub device : VPE */
 	struct v4l2_subdev *flash_sdev;    /* vpe sub device : VPE */
 	struct msm_cam_config_dev *config_device;
+	struct v4l2_subdev *csiphy_sdev; /*csiphy sub device*/
+	struct v4l2_subdev *csid_sdev; /*csid sub device*/
 	struct v4l2_subdev *ispif_sdev; /* ispif sub device */
 	struct v4l2_subdev *act_sdev; /* actuator sub device */
 
 	struct pm_qos_request_list pm_qos_req_list;
 	struct msm_mctl_pp_info pp_info;
+	struct ion_client *client;
 };
 
 /* abstract camera device represents a VFE and connected sensor */
@@ -237,8 +249,8 @@ struct msm_isp_ops {
 		 struct msm_mctl_pp_cmd, void *data);
 
 	/* vfe subdevice */
-	struct v4l2_subdev sd;
-	struct v4l2_subdev sd_vpe;
+	struct v4l2_subdev *sd;
+	struct v4l2_subdev *sd_vpe;
 };
 
 struct msm_isp_buf_info {
@@ -402,8 +414,10 @@ int msm_mctl_reserve_free_buf(struct msm_cam_media_controller *pmctl,
 int msm_mctl_release_free_buf(struct msm_cam_media_controller *pmctl,
 				int path, struct msm_free_buf *free_buf);
 /*Memory(PMEM) functions*/
-int msm_register_pmem(struct hlist_head *ptype, void __user *arg);
-int msm_pmem_table_del(struct hlist_head *ptype, void __user *arg);
+int msm_register_pmem(struct hlist_head *ptype, void __user *arg,
+				struct ion_client *client);
+int msm_pmem_table_del(struct hlist_head *ptype, void __user *arg,
+				struct ion_client *client);
 int msm_pmem_region_get_phy_addr(struct hlist_head *ptype,
 	struct msm_mem_map_info *mem_map, int32_t *phyaddr);
 uint8_t msm_pmem_region_lookup(struct hlist_head *ptype,

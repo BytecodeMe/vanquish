@@ -194,11 +194,10 @@ enum vdd_dig_levels {
 
 static int set_vdd_dig(struct clk_vdd_class *vdd_class, int level)
 {
-	/* TODO: Update these voltages when info becomes available. */
 	static const int vdd_uv[] = {
-		[VDD_DIG_NONE]    = 1150000,
-		[VDD_DIG_LOW]     = 1150000,
-		[VDD_DIG_NOMINAL] = 1150000,
+		[VDD_DIG_NONE]    =       0,
+		[VDD_DIG_LOW]     =  945000,
+		[VDD_DIG_NOMINAL] = 1050000,
 		[VDD_DIG_HIGH]    = 1150000
 	};
 
@@ -1407,7 +1406,7 @@ static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 }
 
 /* Sample clock for 'ticks' reference clock ticks. */
-static u32 run_measurement(unsigned ticks)
+static unsigned long run_measurement(unsigned ticks)
 {
 	/* Stop counters and set the XO4 counter start value. */
 	writel_relaxed(ticks, RINGOSC_TCXO_CTL_REG);
@@ -1431,7 +1430,7 @@ static u32 run_measurement(unsigned ticks)
 
 /* Perform a hardware rate measurement for a given clock.
    FOR DEBUG USE ONLY: Measurements take ~15 ms! */
-static unsigned measure_clk_get_rate(struct clk *c)
+static unsigned long measure_clk_get_rate(struct clk *c)
 {
 	unsigned long flags;
 	u32 pdm_reg_backup, ringosc_reg_backup;
@@ -1484,7 +1483,7 @@ static int measure_clk_set_parent(struct clk *clk, struct clk *parent)
 	return -EINVAL;
 }
 
-static unsigned measure_clk_get_rate(struct clk *clk)
+static unsigned long measure_clk_get_rate(struct clk *clk)
 {
 	return 0;
 }

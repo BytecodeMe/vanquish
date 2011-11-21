@@ -74,7 +74,7 @@ static inline bool msm_chg_check_aca_intr(struct msm_otg *motg)
 #define USB_PHY_1P8_HPM_LOAD	50000	/* uA */
 #define USB_PHY_1P8_LPM_LOAD	4000	/* uA */
 
-#define USB_PHY_VDD_DIG_VOL_MIN	1000000 /* uV */
+#define USB_PHY_VDD_DIG_VOL_MIN	1045000 /* uV */
 #define USB_PHY_VDD_DIG_VOL_MAX	1320000 /* uV */
 
 static struct msm_otg *the_msm_otg;
@@ -289,6 +289,34 @@ static int msm_hsusb_ldo_enable(struct msm_otg *motg, int on)
 
 	pr_debug("reg (%s)\n", on ? "HPM" : "LPM");
 	return ret < 0 ? ret : 0;
+}
+
+static void msm_hsusb_mhl_switch_enable(struct msm_otg *motg, bool on)
+{
+	static struct regulator *mhl_analog_switch;
+	struct msm_otg_platform_data *pdata = motg->pdata;
+
+	if (!pdata->mhl_enable)
+		return;
+
+	if (on) {
+		mhl_analog_switch = regulator_get(motg->otg.dev,
+					       "mhl_ext_3p3v");
+		if (IS_ERR(mhl_analog_switch)) {
+			pr_err("Unable to get mhl_analog_switch\n");
+			return;
+		}
+
+		if (regulator_enable(mhl_analog_switch)) {
+			pr_err("unable to enable mhl_analog_switch\n");
+			goto put_analog_switch;
+		}
+		return;
+	}
+
+	regulator_disable(mhl_analog_switch);
+put_analog_switch:
+	regulator_put(mhl_analog_switch);
 }
 
 static int ulpi_read(struct otg_transceiver *otg, u32 reg)
@@ -604,6 +632,9 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	if (motg->core_clk)
 		clk_disable(motg->core_clk);
 
+	if (!IS_ERR(motg->system_clk))
+		clk_disable(motg->system_clk);
+
 	if (!IS_ERR(motg->pclk_src))
 		clk_disable(motg->pclk_src);
 
@@ -612,8 +643,10 @@ static int msm_otg_suspend(struct msm_otg *motg)
 		motg->lpm_flags |= PHY_PWR_COLLAPSED;
 	}
 
-	if (motg->lpm_flags & PHY_RETENTIONED)
+	if (motg->lpm_flags & PHY_RETENTIONED) {
 		msm_hsusb_config_vddcx(0);
+		msm_hsusb_mhl_switch_enable(motg, 0);
+	}
 
 	if (device_may_wakeup(otg->dev)) {
 		enable_irq_wake(motg->irq);
@@ -646,6 +679,9 @@ static int msm_otg_resume(struct msm_otg *motg)
 	if (!IS_ERR(motg->pclk_src))
 		clk_enable(motg->pclk_src);
 
+	if (!IS_ERR(motg->system_clk))
+		clk_enable(motg->system_clk);
+
 	clk_enable(motg->pclk);
 	if (motg->core_clk)
 		clk_enable(motg->core_clk);
@@ -656,6 +692,7 @@ static int msm_otg_resume(struct msm_otg *motg)
 	}
 
 	if (motg->lpm_flags & PHY_RETENTIONED) {
+		msm_hsusb_mhl_switch_enable(motg, 1);
 		msm_hsusb_config_vddcx(1);
 		writel_relaxed(readl_relaxed(USB_PHY_CTRL) | PHY_RETEN,
 				USB_PHY_CTRL);
@@ -2078,6 +2115,8 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		motg->otg.state = OTG_STATE_B_IDLE;
 	}
 
+	msm_hsusb_mhl_switch_enable(motg, 1);
+
 	platform_set_drvdata(pdev, motg);
 	device_init_wakeup(&pdev->dev, 1);
 	motg->mA_port = IUNIT;
@@ -2161,6 +2200,7 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	wake_lock_destroy(&motg->wlock);
 
+	msm_hsusb_mhl_switch_enable(motg, 0);
 	if (motg->pdata->pmic_id_irq)
 		free_irq(motg->pdata->pmic_id_irq, motg);
 	otg_set_transceiver(NULL);
@@ -2185,6 +2225,8 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 	clk_disable(motg->pclk);
 	if (motg->core_clk)
 		clk_disable(motg->core_clk);
+	if (!IS_ERR(motg->system_clk))
+		clk_disable(motg->system_clk);
 	if (!IS_ERR(motg->pclk_src)) {
 		clk_disable(motg->pclk_src);
 		clk_put(motg->pclk_src);

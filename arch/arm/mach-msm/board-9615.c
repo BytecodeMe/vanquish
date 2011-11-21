@@ -419,7 +419,7 @@ static struct msm_gpiomux_config msm9615_sdcc2_configs[] __initdata = {
 		.gpio      = 26,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
+			[GPIOMUX_SUSPENDED] = &sdcc2_cmd_data_0_3_actv_cfg,
 		},
 	},
 	{
@@ -439,7 +439,7 @@ static struct msm_gpiomux_config msm9615_sdcc2_configs[] __initdata = {
 		},
 	},
 	{
-		/* SDC2_CMD GSBI1 */
+		/* SDC2_CMD */
 		.gpio      = 29,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
@@ -447,7 +447,7 @@ static struct msm_gpiomux_config msm9615_sdcc2_configs[] __initdata = {
 		},
 	},
 	{
-		/* SDC2_CLK GSBI1 */
+		/* SDC2_CLK */
 		.gpio      = 30,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &sdcc2_clk_actv_cfg,
@@ -509,6 +509,9 @@ static struct mmc_platform_data sdc1_data = {
 	.status_irq	= MSM_GPIO_TO_INT(GPIO_SDC1_HW_DET),
 	.irq_flags	= IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 #endif
+	.xpc_cap	= 1,
+	.uhs_caps	= (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+			   MMC_CAP_MAX_CURRENT_400)
 };
 static struct mmc_platform_data *msm9615_sdc1_pdata = &sdc1_data;
 #else
@@ -636,6 +639,16 @@ static struct platform_device android_usb_device = {
 	},
 };
 
+static struct platform_device msm_wlan_ar6000_pm_device = {
+	.name           = "wlan_ar6000_pm_dev",
+	.id             = -1,
+};
+
+static int __init msm9615_init_ar6000pm(void)
+{
+	return platform_device_register(&msm_wlan_ar6000_pm_device);
+}
+
 static struct platform_device *common_devices[] = {
 	&msm9615_device_dmov,
 	&msm_device_smd,
@@ -650,6 +663,7 @@ static struct platform_device *common_devices[] = {
 	&msm_device_sps,
 	&msm9615_device_tsens,
 	&msm_device_nand,
+	&msm_device_bam_dmux,
 	&msm_rpm_device,
 #ifdef CONFIG_HW_RANDOM_MSM
 	&msm_device_rng,
@@ -692,6 +706,9 @@ static void __init msm9615_common_init(void)
 
 	msm_clock_init(&msm9615_clock_init_data);
 	acpuclk_init(&acpuclk_9615_soc_data);
+
+	/* Ensure ar6000pm device is registered before MMC/SDC */
+	msm9615_init_ar6000pm();
 
 	msm9615_init_mmc();
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));

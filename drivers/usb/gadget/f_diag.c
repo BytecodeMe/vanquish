@@ -531,7 +531,6 @@ static int diag_function_set_alt(struct usb_function *f,
 	struct diag_context  *dev = func_to_diag(f);
 	struct usb_composite_dev *cdev = f->config->cdev;
 	unsigned long flags;
-	struct legacy_diag_ch *ch;
 	int rc = 0;
 
 	dev->in_desc = ep_choose(cdev->gadget,
@@ -555,14 +554,9 @@ static int diag_function_set_alt(struct usb_function *f,
 	}
 	schedule_work(&dev->config_work);
 
-	list_for_each_entry(ch, &legacy_diag_ch_list, list) {
-		struct diag_context *ctxt;
-
-		ctxt = ch->priv_channel;
-		ctxt->dpkts_tolaptop = 0;
-		ctxt->dpkts_tomodem = 0;
-		ctxt->dpkts_tolaptop_pending = 0;
-	}
+	dev->dpkts_tolaptop = 0;
+	dev->dpkts_tomodem = 0;
+	dev->dpkts_tolaptop_pending = 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
 	dev->configured = 1;

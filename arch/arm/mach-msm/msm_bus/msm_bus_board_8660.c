@@ -22,7 +22,8 @@
 #include "msm_bus_core.h"
 
 #define NMASTERS 39
-#define NSLAVES 67
+#define NSLAVES 68
+#define NFAB_8660 5
 
 enum msm_bus_fabric_tiered_slave_type {
 	MSM_BUS_SYSTEM_TIERED_SLAVE_FAB_APPSS = 1,
@@ -830,6 +831,7 @@ static int msm_bus_board_8660_get_iid(int id)
 }
 
 static struct msm_bus_board_algorithm msm_bus_board_algo = {
+	.board_nfab = NFAB_8660,
 	.get_iid = msm_bus_board_8660_get_iid,
 	.assign_iids = msm_bus_board_assign_iids,
 };

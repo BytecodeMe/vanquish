@@ -19,7 +19,6 @@
 #include <linux/suspend.h>
 #include <linux/syscalls.h> /* sys_sync */
 #include <linux/wakelock.h>
-#include <linux/syscore_ops.h>
 #ifdef CONFIG_WAKELOCK_STAT
 #include <linux/proc_fs.h>
 #endif
@@ -53,8 +52,6 @@ struct workqueue_struct *suspend_work_queue;
 struct wake_lock main_wake_lock;
 suspend_state_t requested_suspend_state = PM_SUSPEND_MEM;
 static struct wake_lock unknown_wakeup;
-/* flag to warn/bug if wakelocks are taken after suspend_noirq */
-static int msm_suspend_check_done;
 
 #ifdef CONFIG_WAKELOCK_STAT
 static struct wake_lock deleted_wake_locks;
@@ -386,9 +383,6 @@ static int power_suspend_late(struct device *dev)
 #endif
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("power_suspend_late return %d\n", ret);
-
-	if (ret == 0)
-		msm_suspend_check_done = 1;
 	return ret;
 }
 
@@ -402,14 +396,6 @@ static struct platform_driver power_driver = {
 };
 static struct platform_device power_device = {
 	.name = "power",
-};
-
-static void power_resume_early(void)
-{
-	msm_suspend_check_done = 0;
-}
-static struct syscore_ops wakelock_syscore_ops = {
-	.resume = power_resume_early,
 };
 
 void wake_lock_init(struct wake_lock *lock, int type, const char *name)
@@ -544,24 +530,12 @@ static void wake_lock_internal(
 
 void wake_lock(struct wake_lock *lock)
 {
-	/*
-	 * if wake lock is being called too late in the suspend sequence,
-	 * call bug so we get to analyze the callstack
-	 */
-	BUG_ON(msm_suspend_check_done);
-
 	wake_lock_internal(lock, 0, 0);
 }
 EXPORT_SYMBOL(wake_lock);
 
 void wake_lock_timeout(struct wake_lock *lock, long timeout)
 {
-	/*
-	 * if wake lock is being called too late in the suspend sequence,
-	 * call bug so we get to analyze the callstack
-	 */
-	BUG_ON(msm_suspend_check_done);
-
 	wake_lock_internal(lock, timeout, 1);
 }
 EXPORT_SYMBOL(wake_lock_timeout);
@@ -663,7 +637,6 @@ static int __init wakelocks_init(void)
 	proc_create("wakelocks", S_IRUGO, NULL, &wakelock_stats_fops);
 #endif
 
-	register_syscore_ops(&wakelock_syscore_ops);
 	return 0;
 
 err_suspend_work_queue:

@@ -58,6 +58,13 @@ extern struct platform_device msm8960_device_qup_i2c_gsbi10;
 extern struct platform_device msm8960_device_qup_i2c_gsbi12;
 extern struct platform_device msm8960_device_qup_spi_gsbi1;
 extern struct platform_device msm8960_gemini_device;
+extern struct platform_device msm8960_device_csiphy0;
+extern struct platform_device msm8960_device_csiphy1;
+extern struct platform_device msm8960_device_csid0;
+extern struct platform_device msm8960_device_csid1;
+extern struct platform_device msm8960_device_ispif;
+extern struct platform_device msm8960_device_vfe;
+extern struct platform_device msm8960_device_vpe;
 
 extern struct platform_device apq8064_device_uart_gsbi1;
 extern struct platform_device apq8064_device_uart_gsbi3;
@@ -191,6 +198,7 @@ extern struct platform_device led_pdev;
 
 extern struct platform_device ion_dev;
 extern struct platform_device msm_rpm_device;
+extern struct platform_device msm_rpm_stat_device;
 extern struct platform_device msm_device_rng;
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
@@ -206,4 +214,10 @@ extern struct platform_device msm8960_device_watchdog;
 extern struct platform_device msm8660_device_watchdog;
 extern struct platform_device msm8064_device_watchdog;
 extern struct platform_device msm9615_device_watchdog;
+
+extern struct platform_device msm_etb_device;
+extern struct platform_device msm_tpiu_device;
+extern struct platform_device msm_funnel_device;
+extern struct platform_device msm_debug_device;
+extern struct platform_device msm_ptm_device;
 #endif

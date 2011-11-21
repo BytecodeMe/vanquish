@@ -332,6 +332,11 @@ struct platform_device msm_device_smd = {
 	.id		= -1,
 };
 
+struct platform_device msm_device_bam_dmux = {
+	.name		= "BAM_RMNT",
+	.id		= -1,
+};
+
 #ifdef CONFIG_HW_RANDOM_MSM
 /* PRNG device */
 #define MSM_PRNG_PHYS		0x1A500000
@@ -784,20 +789,32 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] __initdata = {
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		true,
-		1, 8000, 100000, 1,
+		100, 8000, 100000, 1,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		true,
-		1500, 5000, 60100000, 3000,
+		2000, 5000, 60100000, 3000,
 	},
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		false,
-		2800, 5000, 60350000, 3500,
+		6300, 5000, 60350000, 3500,
+	},
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, MAX, ACTIVE),
+		false,
+		13300, 2000, 71850000, 6800,
+	},
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, RET_HIGH, RET_LOW),
+		false,
+		28300, 0, 76350000, 9800,
 	},
 };
 
