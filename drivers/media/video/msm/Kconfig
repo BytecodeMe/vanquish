@@ -40,11 +40,11 @@ config IMX074
 config MOTSOC1
     bool "Sensor MOTSOC1 (13MP)"
     depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
-    default y
+    default n
 config MT9M114
     bool "Sensor MT9M114 (YUV 1.26M)"
     depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
-    default y
+    default n
     ---help---
     APTINA 1.26 MP yuv Sensor
 config OV5640
