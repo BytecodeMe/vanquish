@@ -62,6 +62,18 @@ static volatile int hlt_counter;
 
 #include <mach/system.h>
 
+#ifdef CONFIG_SMP
+void arch_trigger_all_cpu_backtrace(void)
+{
+	smp_send_all_cpu_backtrace();
+}
+#else
+void arch_trigger_all_cpu_backtrace(void)
+{
+	dump_stack();
+}
+#endif
+
 void disable_hlt(void)
 {
 	hlt_counter++;
@@ -141,6 +153,9 @@ void arm_machine_restart(char mode, const char *cmd)
 
 	/* Push out any further dirty data, and ensure cache is empty */
 	flush_cache_all();
+
+	/*Push out the dirty data from external caches */
+	outer_disable();
 
 	/*
 	 * Now call the architecture specific reboot code.
@@ -236,8 +251,8 @@ void cpu_idle(void)
 				local_irq_enable();
 			}
 		}
-		idle_notifier_call_chain(IDLE_END);
 		tick_nohz_restart_sched_tick();
+		idle_notifier_call_chain(IDLE_END);
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();

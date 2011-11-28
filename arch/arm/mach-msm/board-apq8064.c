@@ -228,7 +228,6 @@ static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC1 : eMMC card connected */
 	[SDCC1] = {
 		.name = "sdc_vdd",
-		.set_voltage_sup = 1,
 		.high_vol_level = 2950000,
 		.low_vol_level = 2950000,
 		.always_on = 1,
@@ -239,7 +238,6 @@ static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC3 : External card slot connected */
 	[SDCC3] = {
 		.name = "sdc_vdd",
-		.set_voltage_sup = 1,
 		.high_vol_level = 2950000,
 		.low_vol_level = 2950000,
 		.hpm_uA = 600000, /* 600mA */
@@ -251,7 +249,6 @@ static struct msm_mmc_reg_data mmc_vccq_reg_data[1] = {
 	/* SDCC1 : eMMC card connected */
 	[SDCC1] = {
 		.name = "sdc_vccq",
-		.set_voltage_sup = 1,
 		.always_on = 1,
 		.high_vol_level = 1800000,
 		.low_vol_level = 1800000,
@@ -264,7 +261,6 @@ static struct msm_mmc_reg_data mmc_vddp_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC3 : External card slot connected */
 	[SDCC3] = {
 		.name = "sdc_vddp",
-		.set_voltage_sup = 1,
 		.high_vol_level = 2950000,
 		.low_vol_level = 1850000,
 		.always_on = 1,
@@ -405,7 +401,6 @@ static struct mmc_platform_data sdc1_data = {
 	.sup_clk_cnt	= ARRAY_SIZE(sdc1_sup_clk_rates),
 	.pin_data	= &mmc_slot_pin_data[SDCC1],
 	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
-	.sdcc_v4_sup	= true,
 };
 static struct mmc_platform_data *apq8064_sdc1_pdata = &sdc1_data;
 #else
@@ -424,7 +419,6 @@ static struct mmc_platform_data sdc3_data = {
 	.sup_clk_cnt	= ARRAY_SIZE(sdc3_sup_clk_rates),
 	.pin_data	= &mmc_slot_pin_data[SDCC3],
 	.vreg_data	= &mmc_slot_vreg_data[SDCC3],
-	.sdcc_v4_sup	= true,
 };
 static struct mmc_platform_data *apq8064_sdc3_pdata = &sdc3_data;
 #else
@@ -760,7 +754,6 @@ static void __init apq8064_common_init(void)
 	apq8064_device_ssbi_pmic2.dev.platform_data =
 				&apq8064_ssbi_pm8821_pdata;
 	apq8064_device_otg.dev.platform_data = &msm_otg_pdata;
-	apq8064_device_gadget_peripheral.dev.parent = &apq8064_device_otg.dev;
 	apq8064_pm8921_platform_data.num_regulators =
 					msm8064_pm8921_regulator_pdata_len;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));

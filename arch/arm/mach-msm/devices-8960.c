@@ -15,6 +15,7 @@
 #include <linux/list.h>
 #include <linux/platform_device.h>
 #include <linux/msm_rotator.h>
+#include <linux/ion.h>
 #include <linux/gpio.h>
 #include <asm/clkdev.h>
 #include <linux/msm_kgsl.h>
@@ -414,13 +415,13 @@ static struct msm_bus_vectors vidc_venc_1080p_vectors[] = {
 		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 372244480,
-		.ib  = 1861222400,
+		.ib  = 2560000000U,
 	},
 	{
 		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 501219328,
-		.ib  = 2004877312,
+		.ib  = 2560000000U,
 	},
 	{
 		.src = MSM_BUS_MASTER_AMPSS_M0,
@@ -440,13 +441,13 @@ static struct msm_bus_vectors vidc_vdec_1080p_vectors[] = {
 		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 222298112,
-		.ib  = 1778384896,
+		.ib  = 2560000000U,
 	},
 	{
 		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 330301440,
-		.ib  = 1321205760,
+		.ib  = 2560000000U,
 	},
 	{
 		.src = MSM_BUS_MASTER_AMPSS_M0,
@@ -537,10 +538,11 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
-	.memtype = MEMTYPE_EBI1,
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	.memtype = ION_HEAP_EBI_ID,
 	.enable_ion = 1,
 #else
+	.memtype = MEMTYPE_EBI1,
 	.enable_ion = 0,
 #endif
 };
@@ -982,10 +984,6 @@ struct platform_device msm8960_device_qup_i2c_gsbi12 = {
 
 #ifdef CONFIG_MSM_CAMERA
 struct resource msm_camera_resources[] = {
-	{
-		.name	= "vid_buf",
-		.flags	= IORESOURCE_DMA,
-	},
 	{
 		.name   = "s3d_rw",
 		.start  = 0x008003E0,

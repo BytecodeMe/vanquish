@@ -27,6 +27,7 @@
 #include <linux/mfd/pm8xxx/pm8xxx-adc.h>
 #include <linux/leds.h>
 #include <linux/leds-pm8xxx.h>
+#include <mach/msm_bus_board.h>
 #include "timer.h"
 #include "devices.h"
 #include "board-9615.h"
@@ -301,7 +302,6 @@ static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
 		 * This is a gpio-regulator and does not support
 		 * regulator_set_voltage and regulator_set_optimum_mode
 		 */
-		.set_voltage_sup = false,
 		.high_vol_level = 2950000,
 		.low_vol_level = 2950000,
 		.hpm_uA = 600000, /* 600mA */
@@ -313,7 +313,6 @@ static struct msm_mmc_reg_data mmc_vddp_reg_data[MAX_SDCC_CONTROLLER] = {
 	/* SDCC1 : External card slot connected */
 	[SDCC1] = {
 		.name = "sdc_vddp",
-		.set_voltage_sup = true,
 		.high_vol_level = 2950000,
 		.low_vol_level = 1850000,
 		.always_on = true,
@@ -501,7 +500,6 @@ static struct mmc_platform_data sdc1_data = {
 	.sup_clk_table	= sdc1_sup_clk_rates,
 	.sup_clk_cnt	= ARRAY_SIZE(sdc1_sup_clk_rates),
 	.pclk_src_dfab	= true,
-	.sdcc_v4_sup    = true,
 	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
 	.pin_data	= &mmc_slot_pin_data[SDCC1],
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
@@ -529,7 +527,6 @@ static struct mmc_platform_data sdc2_data = {
 	.sup_clk_table	= sdc2_sup_clk_rates,
 	.sup_clk_cnt	= ARRAY_SIZE(sdc2_sup_clk_rates),
 	.pclk_src_dfab	= 1,
-	.sdcc_v4_sup    = true,
 	.pin_data	= &mmc_slot_pin_data[SDCC2],
 #ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
 	.sdiowakeup_irq = MSM_GPIO_TO_INT(GPIO_SDC2_DAT1_WAKEUP),
@@ -606,6 +603,17 @@ static int __init gpiomux_init(void)
 	return 0;
 }
 
+static void __init msm9615_init_buses(void)
+{
+#ifdef CONFIG_MSM_BUS_SCALING
+	msm_bus_rpm_set_mt_mask();
+	msm_bus_9615_sys_fabric_pdata.rpm_enabled = 1;
+	msm_bus_9615_sys_fabric.dev.platform_data =
+		&msm_bus_9615_sys_fabric_pdata;
+	msm_bus_def_fab.dev.platform_data = &msm_bus_9615_def_fab_pdata;
+#endif
+}
+
 static struct msm_spi_platform_data msm9615_qup_spi_gsbi3_pdata = {
 	.max_clock_speed = 24000000,
 };
@@ -679,6 +687,8 @@ static struct platform_device *common_devices[] = {
 	&msm9615_qcedev_device,
 #endif
 	&msm9615_device_watchdog,
+	&msm_bus_9615_sys_fabric,
+	&msm_bus_def_fab,
 };
 
 static void __init msm9615_i2c_init(void)
@@ -694,6 +704,8 @@ static void __init msm9615_common_init(void)
 	msm9615_i2c_init();
 	regulator_suppress_info_printing();
 	platform_device_register(&msm9615_device_rpm_regulator);
+	msm_clock_init(&msm9615_clock_init_data);
+	msm9615_init_buses();
 	msm9615_device_qup_spi_gsbi3.dev.platform_data =
 				&msm9615_qup_spi_gsbi3_pdata;
 	msm9615_device_ssbi_pmic1.dev.platform_data =
@@ -701,10 +713,8 @@ static void __init msm9615_common_init(void)
 	pm8018_platform_data.num_regulators = msm_pm8018_regulator_pdata_len;
 
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
-	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 
-	msm_clock_init(&msm9615_clock_init_data);
 	acpuclk_init(&acpuclk_9615_soc_data);
 
 	/* Ensure ar6000pm device is registered before MMC/SDC */

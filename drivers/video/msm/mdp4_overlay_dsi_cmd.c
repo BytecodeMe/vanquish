@@ -56,6 +56,11 @@ void mdp4_overlay_dsi_state_set(int state)
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 }
 
+int mdp4_overlay_dsi_state_get(void)
+{
+	return dsi_state;
+}
+
 static void dsi_clock_tout(unsigned long data)
 {
 	if (mipi_dsi_clk_on) {
@@ -134,7 +139,7 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
-		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0, 0);
+		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0);
 		if (pipe == NULL)
 			printk(KERN_INFO "%s: pipe_alloc failed\n", __func__);
 		pipe->pipe_used++;
@@ -530,6 +535,7 @@ void mdp4_dsi_cmd_overlay_restore(void)
 	/* mutex holded by caller */
 	if (dsi_mfd && dsi_pipe) {
 		mdp4_dsi_cmd_dma_busy_wait(dsi_mfd);
+		mipi_dsi_mdp_busy_wait(dsi_mfd);
 		mdp4_overlay_update_dsi_cmd(dsi_mfd);
 
 		if (dsi_pipe->blt_addr)

@@ -523,12 +523,18 @@ int msm_bam_dmux_open(uint32_t id, void *priv,
 	int rc = 0;
 
 	DBG("%s: opening ch %d\n", __func__, id);
-	if (!bam_mux_initialized)
+	if (!bam_mux_initialized) {
+		DBG("%s: not inititialized\n", __func__);
 		return -ENODEV;
-	if (id >= BAM_DMUX_NUM_CHANNELS)
+	}
+	if (id >= BAM_DMUX_NUM_CHANNELS) {
+		pr_err("%s: invalid channel id %d\n", __func__, id);
 		return -EINVAL;
-	if (notify == NULL)
+	}
+	if (notify == NULL) {
+		pr_err("%s: notify function is NULL\n", __func__);
 		return -EINVAL;
+	}
 
 	hdr = kmalloc(sizeof(struct bam_mux_hdr), GFP_KERNEL);
 	if (hdr == NULL) {
@@ -546,8 +552,7 @@ int msm_bam_dmux_open(uint32_t id, void *priv,
 		DBG("%s: Remote not open; ch: %d\n", __func__, id);
 		spin_unlock_irqrestore(&bam_ch[id].lock, flags);
 		kfree(hdr);
-		rc = -ENODEV;
-		goto open_done;
+		return -ENODEV;
 	}
 
 	bam_ch[id].notify = notify;
@@ -1024,6 +1029,7 @@ static void bam_init(void)
 	a2_props.virt_addr = a2_virt_addr;
 	a2_props.virt_size = A2_PHYS_SIZE;
 	a2_props.irq = A2_BAM_IRQ;
+	a2_props.options = SPS_BAM_OPT_IRQ_WAKEUP;
 	a2_props.num_pipes = A2_NUM_PIPES;
 	a2_props.summing_threshold = A2_SUMMING_THRESHOLD;
 	/* need to free on tear down */
@@ -1261,6 +1267,9 @@ static int bam_dmux_probe(struct platform_device *pdev)
 			platform_device_put(bam_ch[rc].pdev);
 		return -ENOMEM;
 	}
+
+	if (smsm_get_state(SMSM_MODEM_STATE) & SMSM_A2_POWER_CONTROL)
+		bam_dmux_smsm_cb(NULL, 0, smsm_get_state(SMSM_MODEM_STATE));
 
 	return 0;
 }

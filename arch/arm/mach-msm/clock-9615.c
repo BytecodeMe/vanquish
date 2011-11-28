@@ -50,6 +50,8 @@
 #define CLK_HALT_MSS_KPSS_MISC_STATE_REG	REG(0x2FDC)
 #define CLK_HALT_SFPB_MISC_STATE_REG		REG(0x2FD8)
 #define CLK_TEST_REG				REG(0x2FA0)
+#define GPn_MD_REG(n)				REG(0x2D00+(0x20*(n)))
+#define GPn_NS_REG(n)				REG(0x2D24+(0x20*(n)))
 #define GSBIn_HCLK_CTL_REG(n)			REG(0x29C0+(0x20*((n)-1)))
 #define GSBIn_QUP_APPS_MD_REG(n)		REG(0x29C8+(0x20*((n)-1)))
 #define GSBIn_QUP_APPS_NS_REG(n)		REG(0x29CC+(0x20*((n)-1)))
@@ -346,6 +348,47 @@ static struct clk_ops clk_ops_branch = {
 /*
  * Peripheral Clocks
  */
+#define CLK_GP(i, n, h_r, h_b) \
+	struct rcg_clk i##_clk = { \
+		.b = { \
+			.ctl_reg = GPn_NS_REG(n), \
+			.en_mask = BIT(9), \
+			.halt_reg = h_r, \
+			.halt_bit = h_b, \
+		}, \
+		.ns_reg = GPn_NS_REG(n), \
+		.md_reg = GPn_MD_REG(n), \
+		.root_en_mask = BIT(11), \
+		.ns_mask = (BM(23, 16) | BM(6, 0)), \
+		.set_rate = set_rate_mnd, \
+		.freq_tbl = clk_tbl_gp, \
+		.current_freq = &rcg_dummy_freq, \
+		.c = { \
+			.dbg_name = #i "_clk", \
+			.ops = &clk_ops_rcg_9615, \
+			VDD_DIG_FMAX_MAP1(LOW, 27000000), \
+			CLK_INIT(i##_clk.c), \
+		}, \
+	}
+#define F_GP(f, s, d, m, n) \
+	{ \
+		.freq_hz = f, \
+		.src_clk = &s##_clk.c, \
+		.md_val = MD8(16, m, 0, n), \
+		.ns_val = NS(23, 16, n, m, 5, 4, 3, d, 2, 0, s##_to_bb_mux), \
+		.mnd_en_mask = BIT(8) * !!(n), \
+	}
+static struct clk_freq_tbl clk_tbl_gp[] = {
+	F_GP(        0, gnd,  1, 0, 0),
+	F_GP(  9600000, cxo,  2, 0, 0),
+	F_GP( 19200000, cxo,  1, 0, 0),
+	F_END
+};
+
+static CLK_GP(gp0, 0, CLK_HALT_SFPB_MISC_STATE_REG, 7);
+static CLK_GP(gp1, 1, CLK_HALT_SFPB_MISC_STATE_REG, 6);
+static CLK_GP(gp2, 2, CLK_HALT_SFPB_MISC_STATE_REG, 5);
+
 #define CLK_GSBI_UART(i, n, h_r, h_b) \
 	struct rcg_clk i##_clk = { \
 		.b = { \
@@ -1277,6 +1320,7 @@ static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sdc1_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sdc2_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sps_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_bam_dmux_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(ebi1_msmbus_clk, &ebi1_clk.c);
 
 /*
@@ -1297,6 +1341,9 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_LS(0x13), &sdc1_clk.c },
 	{ TEST_PER_LS(0x14), &sdc2_p_clk.c },
 	{ TEST_PER_LS(0x15), &sdc2_clk.c },
+	{ TEST_PER_LS(0x1F), &gp0_clk.c },
+	{ TEST_PER_LS(0x20), &gp1_clk.c },
+	{ TEST_PER_LS(0x21), &gp2_clk.c },
 	{ TEST_PER_LS(0x26), &pmem_clk.c },
 	{ TEST_PER_LS(0x25), &dfab_clk.c },
 	{ TEST_PER_LS(0x25), &dfab_a_clk.c },
@@ -1523,6 +1570,10 @@ static struct clk_lookup msm_clocks_9615[] = {
 	CLK_LOOKUP("sfpb_clk",		sfpb_clk.c,	NULL),
 	CLK_LOOKUP("sfpb_a_clk",	sfpb_a_clk.c,	NULL),
 
+	CLK_LOOKUP("core_clk",		gp0_clk.c,	NULL),
+	CLK_LOOKUP("core_clk",		gp1_clk.c,	NULL),
+	CLK_LOOKUP("core_clk",		gp2_clk.c,	NULL),
+
 	CLK_LOOKUP("core_clk", gsbi1_uart_clk.c, NULL),
 	CLK_LOOKUP("core_clk", gsbi2_uart_clk.c, NULL),
 	CLK_LOOKUP("core_clk", gsbi3_uart_clk.c, NULL),
@@ -1585,7 +1636,7 @@ static struct clk_lookup msm_clocks_9615[] = {
 	CLK_LOOKUP("bus_clk",		dfab_sdc1_clk.c,	"msm_sdcc.1"),
 	CLK_LOOKUP("bus_clk",		dfab_sdc2_clk.c,	"msm_sdcc.2"),
 	CLK_LOOKUP("dfab_clk",		dfab_sps_clk.c,		"msm_sps"),
-
+	CLK_LOOKUP("bus_clk",		dfab_bam_dmux_clk.c,	"BAM_RMNT"),
 	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
 	CLK_LOOKUP("mem_clk",		ebi1_adm_clk.c, "msm_dmov"),
 

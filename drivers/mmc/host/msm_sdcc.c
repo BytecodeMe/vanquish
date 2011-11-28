@@ -19,6 +19,7 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/ioport.h>
+#include <linux/of.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -244,7 +245,7 @@ static void msmsdcc_hard_reset(struct msmsdcc_host *host)
 
 static void msmsdcc_reset_and_restore(struct msmsdcc_host *host)
 {
-	if (host->plat->sdcc_v4_sup) {
+	if (host->sdcc_version) {
 		if (host->is_sps_mode) {
 			/* Reset DML first */
 			msmsdcc_dml_reset(host);
@@ -345,7 +346,7 @@ static inline void msmsdcc_delay(struct msmsdcc_host *host)
 	mb();
 	udelay(host->reg_write_delay);
 
-	if (host->plat->sdcc_v4_sup &&
+	if (host->sdcc_version &&
 		(readl_relaxed(host->base + MCI_STATUS2) &
 			MCI_MCLK_REG_WR_ACTIVE)) {
 		start = ktime_get();
@@ -965,6 +966,9 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 	unsigned long long clks;
 	void __iomem *base = host->base;
 	unsigned int pio_irqmask = 0;
+
+	BUG_ON(!data->sg);
+	BUG_ON(!data->sg_len);
 
 	host->curr.data = data;
 	host->curr.xfer_size = data->blksz * data->blocks;
@@ -1631,7 +1635,7 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	if (mrq->data && (mrq->data->flags & MMC_DATA_WRITE)) {
 		if (mrq->cmd->opcode == SD_IO_RW_EXTENDED ||
 			mrq->cmd->opcode == 54) {
-			if (!host->plat->sdcc_v4_sup)
+			if (!host->sdcc_version)
 				host->dummy_52_needed = 1;
 			else
 				/*
@@ -1716,7 +1720,12 @@ static inline int msmsdcc_vreg_init_reg(struct msm_mmc_reg_data *vreg,
 		rc = PTR_ERR(vreg->reg);
 		pr_err("%s: regulator_get(%s) failed. rc=%d\n",
 			__func__, vreg->name, rc);
+		goto out;
 	}
+
+	if (regulator_count_voltages(vreg->reg) > 0)
+		vreg->set_voltage_sup = 1;
+
 out:
 	return rc;
 }
@@ -3500,10 +3509,112 @@ static void msmsdcc_req_tout_timer_hdlr(unsigned long data)
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
+static struct mmc_platform_data *msmsdcc_populate_pdata(struct device *dev)
+{
+	int i, ret;
+	struct mmc_platform_data *pdata;
+	struct device_node *np = dev->of_node;
+	u32 bus_width = 0;
+	u32 *clk_table;
+	int clk_table_len;
+	u32 *sup_voltages;
+	int sup_volt_len;
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		dev_err(dev, "could not allocate memory for platform data\n");
+		goto err;
+	}
+
+	of_property_read_u32(np, "qcom,sdcc-bus-width", &bus_width);
+	if (bus_width == 8) {
+		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
+	} else if (bus_width == 4) {
+		pdata->mmc_bus_width = MMC_CAP_4_BIT_DATA;
+	} else {
+		dev_notice(dev, "Invalid bus width, default to 1 bit mode\n");
+		pdata->mmc_bus_width = 0;
+	}
+
+	if (of_get_property(np, "qcom,sdcc-sup-voltages", &sup_volt_len)) {
+		size_t sz;
+		sz = sup_volt_len / sizeof(*sup_voltages);
+		if (sz > 0) {
+			sup_voltages = devm_kzalloc(dev,
+					sz * sizeof(*sup_voltages), GFP_KERNEL);
+			if (!sup_voltages) {
+				dev_err(dev, "No memory for supported voltage\n");
+				goto err;
+			}
+
+			ret = of_property_read_u32_array(np,
+				"qcom,sdcc-sup-voltages", sup_voltages, sz);
+			if (ret < 0) {
+				dev_err(dev, "error while reading voltage"
+						"ranges %d\n", ret);
+				goto err;
+			}
+		} else {
+			dev_err(dev, "No supported voltages\n");
+			goto err;
+		}
+		for (i = 0; i < sz; i += 2) {
+			u32 mask;
+
+			mask = mmc_vddrange_to_ocrmask(sup_voltages[i],
+					sup_voltages[i + 1]);
+			if (!mask)
+				dev_err(dev, "Invalide voltage range %d\n", i);
+			pdata->ocr_mask |= mask;
+		}
+		dev_dbg(dev, "OCR mask=0x%x\n", pdata->ocr_mask);
+	} else {
+		dev_err(dev, "Supported voltage range not specified\n");
+	}
+
+	if (of_get_property(np, "qcom,sdcc-clk-rates", &clk_table_len)) {
+		size_t sz;
+		sz = clk_table_len / sizeof(*clk_table);
+
+		if (sz > 0) {
+			clk_table = devm_kzalloc(dev, sz * sizeof(*clk_table),
+					GFP_KERNEL);
+			if (!clk_table) {
+				dev_err(dev, "No memory for clock table\n");
+				goto err;
+			}
+
+			ret = of_property_read_u32_array(np,
+				"qcom,sdcc-clk-rates", clk_table, sz);
+			if (ret < 0) {
+				dev_err(dev, "error while reading clk"
+						"table %d\n", ret);
+				goto err;
+			}
+		} else {
+			dev_err(dev, "clk_table not specified\n");
+			goto err;
+		}
+		pdata->sup_clk_table = clk_table;
+		pdata->sup_clk_cnt = sz;
+	} else {
+		dev_err(dev, "Supported clock rates not specified\n");
+	}
+
+	if (of_get_property(np, "qcom,sdcc-nonremovable", NULL))
+		pdata->nonremovable = true;
+	if (of_get_property(np, "qcom,sdcc-disable_cmd23", NULL))
+		pdata->disable_cmd23 = true;
+
+	return pdata;
+err:
+	return NULL;
+}
+
 static int
 msmsdcc_probe(struct platform_device *pdev)
 {
-	struct mmc_platform_data *plat = pdev->dev.platform_data;
+	struct mmc_platform_data *plat;
 	struct msmsdcc_host *host;
 	struct mmc_host *mmc;
 	unsigned long flags;
@@ -3516,6 +3627,14 @@ msmsdcc_probe(struct platform_device *pdev)
 	struct resource *dma_crci_res = NULL;
 	int ret = 0;
 	int i;
+
+	if (pdev->dev.of_node) {
+		plat = msmsdcc_populate_pdata(&pdev->dev);
+		of_property_read_u32((&pdev->dev)->of_node,
+				"cell-index", &pdev->id);
+	} else {
+		plat = pdev->dev.platform_data;
+	}
 
 	/* must have platform data */
 	if (!plat) {
@@ -3536,35 +3655,54 @@ msmsdcc_probe(struct platform_device *pdev)
 		pr_err("%s: Invalid resource\n", __func__);
 		return -ENXIO;
 	}
+	if (pdev->dev.of_node) {
+		/*
+		 * Device tree iomem resources are only accessible by index.
+		 * index = 0 -> SDCC register interface
+		 * index = 1 -> DML register interface
+		 * index = 2 -> BAM register interface
+		 * IRQ resources:
+		 * index = 0 -> SDCC IRQ
+		 * index = 1 -> BAM IRQ
+		 */
+		core_memres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		dml_memres = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+		bam_memres = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+		core_irqres = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+		bam_irqres = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
+	} else {
+		for (i = 0; i < pdev->num_resources; i++) {
+			if (pdev->resource[i].flags & IORESOURCE_MEM) {
+				if (!strncmp(pdev->resource[i].name,
+						"sdcc_dml_addr",
+						sizeof("sdcc_dml_addr")))
+					dml_memres = &pdev->resource[i];
+				else if (!strncmp(pdev->resource[i].name,
+						"sdcc_bam_addr",
+						sizeof("sdcc_bam_addr")))
+					bam_memres = &pdev->resource[i];
+				else
+					core_memres = &pdev->resource[i];
 
-	for (i = 0; i < pdev->num_resources; i++) {
-		if (pdev->resource[i].flags & IORESOURCE_MEM) {
-			if (!strcmp(pdev->resource[i].name,
-					"sdcc_dml_addr"))
-				dml_memres = &pdev->resource[i];
-			else if (!strcmp(pdev->resource[i].name,
-					"sdcc_bam_addr"))
-				bam_memres = &pdev->resource[i];
-			else
-				core_memres = &pdev->resource[i];
-
-		}
-		if (pdev->resource[i].flags & IORESOURCE_IRQ) {
-			if (!strcmp(pdev->resource[i].name,
-					"sdcc_bam_irq"))
-				bam_irqres = &pdev->resource[i];
-			else
-				core_irqres = &pdev->resource[i];
-		}
-		if (pdev->resource[i].flags & IORESOURCE_DMA) {
-			if (!strncmp(pdev->resource[i].name,
-					"sdcc_dma_chnl",
-					sizeof("sdcc_dma_chnl")))
-				dmares = &pdev->resource[i];
-			else if (!strncmp(pdev->resource[i].name,
-					"sdcc_dma_crci",
-					sizeof("sdcc_dma_crci")))
-				dma_crci_res = &pdev->resource[i];
+			}
+			if (pdev->resource[i].flags & IORESOURCE_IRQ) {
+				if (!strncmp(pdev->resource[i].name,
+						"sdcc_bam_irq",
+						sizeof("sdcc_bam_irq")))
+					bam_irqres = &pdev->resource[i];
+				else
+					core_irqres = &pdev->resource[i];
+			}
+			if (pdev->resource[i].flags & IORESOURCE_DMA) {
+				if (!strncmp(pdev->resource[i].name,
+						"sdcc_dma_chnl",
+						sizeof("sdcc_dma_chnl")))
+					dmares = &pdev->resource[i];
+				else if (!strncmp(pdev->resource[i].name,
+						"sdcc_dma_crci",
+						sizeof("sdcc_dma_crci")))
+					dma_crci_res = &pdev->resource[i];
+			}
 		}
 	}
 
@@ -3696,6 +3834,14 @@ msmsdcc_probe(struct platform_device *pdev)
 	host->clk_rate = clk_get_rate(host->clk);
 	if (!host->clk_rate)
 		dev_err(&pdev->dev, "Failed to read MCLK\n");
+
+	/*
+	* Lookup the Controller Version, to identify the supported features
+	* Version number read as 0 would indicate SDCC3 or earlier versions
+	*/
+	host->sdcc_version = readl_relaxed(host->base + MCI_VERSION);
+	pr_info("%s: mci-version: %x\n", mmc_hostname(host->mmc),
+		host->sdcc_version);
 	/*
 	 * Set the register write delay according to min. clock frequency
 	 * supported and update later when the host->clk_rate changes.
@@ -3747,7 +3893,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	 * status is to use the AUTO_PROG_DONE status provided by SDCC4
 	 * controller. So let's enable the CMD23 for SDCC4 only.
 	 */
-	if (!plat->disable_cmd23 && host->plat->sdcc_v4_sup)
+	if (!plat->disable_cmd23 && host->sdcc_version)
 		mmc->caps |= MMC_CAP_CMD23;
 
 	mmc->caps |= plat->uhs_caps;
@@ -4365,12 +4511,19 @@ static const struct dev_pm_ops msmsdcc_dev_pm_ops = {
 	.resume		 = msmsdcc_pm_resume,
 };
 
+static const struct of_device_id msmsdcc_dt_match[] = {
+	{.compatible = "qcom,msm-sdcc"},
+
+};
+MODULE_DEVICE_TABLE(of, msmsdcc_dt_match);
+
 static struct platform_driver msmsdcc_driver = {
 	.probe		= msmsdcc_probe,
 	.remove		= msmsdcc_remove,
 	.driver		= {
 		.name	= "msm_sdcc",
 		.pm	= &msmsdcc_dev_pm_ops,
+		.of_match_table = msmsdcc_dt_match,
 	},
 };
 

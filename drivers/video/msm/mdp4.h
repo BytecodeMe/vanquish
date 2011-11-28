@@ -138,19 +138,16 @@ enum {
 	OVERLAY_PIPE_MAX
 };
 
-/* 2 VG pipes can be shared by RGB and VIDEO */
-#define MDP4_MAX_PIPE (OVERLAY_PIPE_MAX + 2)
-
-#define OVERLAY_TYPE_RGB	0x01
-#define	OVERLAY_TYPE_VIDEO	0x02
+enum {
+	OVERLAY_TYPE_RGB,
+	OVERLAY_TYPE_VIDEO
+};
 
 enum {
 	MDP4_MIXER0,
 	MDP4_MIXER1,
 	MDP4_MIXER_MAX
 };
-
-#define MDP4_MAX_MIXER	2
 
 enum {
 	OVERLAY_PLANE_INTERLEAVED,
@@ -222,6 +219,15 @@ enum {
 
 #define MDP4_MAX_PLANE		4
 
+struct mdp4_hsic_regs {
+	int32_t params[NUM_HSIC_PARAM];
+	int32_t conv_matrix[3][3];
+	int32_t	pre_limit[6];
+	int32_t post_limit[6];
+	int32_t pre_bias[3];
+	int32_t post_bias[3];
+	int32_t dirty;
+};
 
 struct mdp4_overlay_pipe {
 	uint32 pipe_used;
@@ -298,17 +304,9 @@ struct mdp4_overlay_pipe {
 	uint32 dmap_cnt;
 	uint32 blt_end;
 	uint32 luma_align_size;
+	struct mdp4_hsic_regs hsic_regs;
 	struct completion dmas_comp;
 	struct mdp_overlay req_data;
-};
-
-#define MDP4_MAX_SHARE	2
-
-struct mdp4_pipe_desc {
-	int share;
-	int ref_cnt;
-	int ndx_list[MDP4_MAX_SHARE];
-	struct mdp4_overlay_pipe *player;
 };
 
 struct mdp4_statistic {
@@ -331,7 +329,7 @@ struct mdp4_statistic {
 	ulong overlay_set[MDP4_MIXER_MAX];
 	ulong overlay_unset[MDP4_MIXER_MAX];
 	ulong overlay_play[MDP4_MIXER_MAX];
-	ulong pipe[MDP4_MAX_PIPE];
+	ulong pipe[OVERLAY_PIPE_MAX];
 	ulong dsi_clkoff;
 	ulong err_mixer;
 	ulong err_zorder;
@@ -410,6 +408,7 @@ void mdp4_overlay0_done_dsi_video(struct mdp_dma_data *dma);
 void mdp4_overlay0_done_dsi_cmd(struct mdp_dma_data *dma);
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd);
 void mdp4_overlay_dsi_state_set(int state);
+int mdp4_overlay_dsi_state_get(void);
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all);
 void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe);
@@ -429,8 +428,7 @@ void mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
 int mdp4_overlay_play_wait(struct fb_info *info,
 	struct msmfb_overlay_data *req);
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req);
-struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, int mixer,
-				int req_share);
+struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, int mixer);
 void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_dmap_cfg(struct msm_fb_data_type *mfd, int lcdc);
 void mdp4_overlay_dmap_xy(struct mdp4_overlay_pipe *pipe);
@@ -636,4 +634,6 @@ void mdp4_writeback_dma_stop(struct msm_fb_data_type *mfd);
 int mdp4_writeback_init(struct fb_info *info);
 int mdp4_writeback_terminate(struct fb_info *info);
 
+void mdp4_hsic_set(struct mdp4_overlay_pipe *pipe, struct dpp_ctrl *ctrl);
+void mdp4_hsic_update(struct mdp4_overlay_pipe *pipe);
 #endif /* MDP_H */

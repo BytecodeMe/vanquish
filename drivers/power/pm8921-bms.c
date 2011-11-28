@@ -89,6 +89,12 @@ struct pm8921_bms_chip {
 	DECLARE_BITMAP(enabled_irqs, PM_BMS_MAX_INTS);
 	spinlock_t		bms_output_lock;
 	struct single_row_lut	*adjusted_fcc_temp_lut;
+	unsigned int		charging_began;
+	unsigned int		start_percent;
+	unsigned int		end_percent;
+
+	uint16_t		ocv_reading_at_100;
+	int			cc_reading_at_100;
 };
 
 static struct pm8921_bms_chip *the_chip;
@@ -484,6 +490,9 @@ static int read_cc(struct pm8921_bms_chip *chip, int *result)
 	}
 	*result = msw << 16 | lsw;
 	pr_debug("msw = %04x lsw = %04x cc = %d\n", msw, lsw, *result);
+	*result = *result - chip->cc_reading_at_100;
+	pr_debug("cc = %d after subtracting %d\n",
+					*result, chip->cc_reading_at_100);
 	return 0;
 }
 
@@ -497,12 +506,29 @@ static int read_last_good_ocv(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read LAST_GOOD_OCV_VALUE rc = %d\n", rc);
 		return rc;
 	}
-	*result = xoadc_reading_to_microvolt(reading);
-	pr_debug("raw = %04x ocv_uV = %u\n", reading, *result);
-	*result = adjust_xo_vbatt_reading(chip, *result);
-	pr_debug("after adj ocv_uV = %u\n", *result);
-	if (*result != 0)
-		last_ocv_uv = *result;
+
+	if (chip->ocv_reading_at_100 != reading) {
+		chip->ocv_reading_at_100 = 0;
+		chip->cc_reading_at_100 = 0;
+		*result = xoadc_reading_to_microvolt(reading);
+		pr_debug("raw = %04x ocv_uV = %u\n", reading, *result);
+		*result = adjust_xo_vbatt_reading(chip, *result);
+		pr_debug("after adj ocv_uV = %u\n", *result);
+		if (*result != 0)
+			last_ocv_uv = *result;
+	} else {
+		/*
+		 * force 100% ocv by selecting the highest profiled ocv
+		 * This is the first row last column entry in the ocv
+		 * lookup table
+		 */
+		int cols = chip->pc_temp_ocv_lut->cols;
+
+		pr_debug("Forcing max voltage %d\n",
+				1000 * chip->pc_temp_ocv_lut->ocv[0][cols-1]);
+		*result = 1000 * chip->pc_temp_ocv_lut->ocv[0][cols-1];
+	}
+
 	return 0;
 }
 
@@ -628,18 +654,33 @@ static int interpolate_fcc_adjusted(struct pm8921_bms_chip *chip, int batt_temp)
 static int interpolate_scalingfactor_fcc(struct pm8921_bms_chip *chip,
 								int cycles)
 {
-	return interpolate_single_lut(chip->fcc_sf_lut, cycles);
+	/*
+	 * sf table could be null when no battery aging data is available, in
+	 * that case return 100%
+	 */
+	if (chip->fcc_sf_lut)
+		return interpolate_single_lut(chip->fcc_sf_lut, cycles);
+	else
+		return 100;
 }
 
 static int interpolate_scalingfactor_pc(struct pm8921_bms_chip *chip,
 				int cycles, int pc)
 {
 	int i, scalefactorrow1, scalefactorrow2, scalefactor;
+	int rows, cols;
 	int row1 = 0;
 	int row2 = 0;
-	int rows = chip->pc_sf_lut->rows;
-	int cols = chip->pc_sf_lut->cols;
 
+	/*
+	 * sf table could be null when no battery aging data is available, in
+	 * that case return 100%
+	 */
+	if (!chip->pc_sf_lut)
+		return 100;
+
+	rows = chip->pc_sf_lut->rows;
+	cols = chip->pc_sf_lut->cols;
 	if (pc > chip->pc_sf_lut->percent[0]) {
 		pr_debug("pc %d greater than known pc ranges for sfd\n", pc);
 		row1 = 0;
@@ -1016,10 +1057,10 @@ static void calculate_charging_params(struct pm8921_bms_chip *chip,
 
 	/* calculate cc milli_volt_hour */
 	calculate_cc_mah(chip, cc_mah, &coulumb_counter);
+	pr_debug("cc_mah = %lldmAh cc = %d\n", *cc_mah, coulumb_counter);
 
 	pm_bms_unlock_output_data(chip);
 	spin_unlock_irqrestore(&chip->bms_output_lock, flags);
-	pr_debug("cc_mah = %lldmAh cc = %d\n", *cc_mah, coulumb_counter);
 }
 
 static int calculate_real_fcc(struct pm8921_bms_chip *chip,
@@ -1037,7 +1078,8 @@ static int calculate_real_fcc(struct pm8921_bms_chip *chip,
 						&cc_mah);
 
 	real_fcc = remaining_charge - cc_mah;
-
+	pr_debug("real_fcc = %d, RC = %d CC = %lld\n",
+			real_fcc, remaining_charge, cc_mah);
 	return real_fcc;
 }
 /*
@@ -1102,9 +1144,23 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		update_userspace = 0;
 	}
 
-	if (update_userspace) {
-		last_soc = soc;
+	if (last_soc == -EINVAL || soc <= last_soc) {
+		last_soc = update_userspace ? soc : last_soc;
+		return soc;
 	}
+
+	/*
+	 * soc > last_soc
+	 * the device must be charging for reporting a higher soc, if not ignore
+	 * this soc and continue reporting the last_soc
+	 */
+	if (the_chip->start_percent != 0) {
+		last_soc = soc;
+	} else {
+		pr_debug("soc = %d reporting last_soc = %d\n", soc, last_soc);
+		soc = last_soc;
+	}
+
 	return soc;
 }
 
@@ -1645,19 +1701,18 @@ int pm8921_bms_get_fcc(void)
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_fcc);
 
-static int start_percent;
-static int end_percent;
 void pm8921_bms_charging_began(void)
 {
-	start_percent = pm8921_bms_get_percent_charge();
-	pr_debug("start_percent = %u%%\n", start_percent);
+	the_chip->start_percent = pm8921_bms_get_percent_charge();
+	pr_debug("start_percent = %u%%\n", the_chip->start_percent);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_began);
 
 void pm8921_bms_charging_end(int is_battery_full)
 {
 	if (is_battery_full && the_chip != NULL) {
-		int batt_temp, rc;
+		unsigned long flags;
+		int batt_temp, rc, cc_reading;
 		struct pm8921_adc_chan_result result;
 
 		rc = pm8921_adc_read(the_chip->batt_temp_channel, &result);
@@ -1673,12 +1728,25 @@ void pm8921_bms_charging_end(int is_battery_full)
 						batt_temp, last_chargecycles);
 		last_real_fcc_batt_temp = batt_temp;
 		readjust_fcc_table();
+
+		spin_lock_irqsave(&the_chip->bms_output_lock, flags);
+		pm_bms_lock_output_data(the_chip);
+		pm_bms_read_output_data(the_chip, LAST_GOOD_OCV_VALUE,
+						&the_chip->ocv_reading_at_100);
+		read_cc(the_chip, &cc_reading);
+		pm_bms_unlock_output_data(the_chip);
+		spin_unlock_irqrestore(&the_chip->bms_output_lock, flags);
+		the_chip->cc_reading_at_100 = cc_reading;
+		pr_debug("EOC ocv_reading = 0x%x cc_reading = %d\n",
+				the_chip->ocv_reading_at_100,
+				the_chip->cc_reading_at_100);
 	}
 
 charge_cycle_calculation:
-	end_percent = pm8921_bms_get_percent_charge();
-	if (end_percent > start_percent) {
-		last_charge_increase = end_percent - start_percent;
+	the_chip->end_percent = pm8921_bms_get_percent_charge();
+	if (the_chip->end_percent > the_chip->start_percent) {
+		last_charge_increase =
+			the_chip->end_percent - the_chip->start_percent;
 		if (last_charge_increase > 100) {
 			last_chargecycles++;
 			last_charge_increase = last_charge_increase % 100;
@@ -1686,9 +1754,11 @@ charge_cycle_calculation:
 	}
 	pr_debug("end_percent = %u%% last_charge_increase = %d"
 			"last_chargecycles = %d\n",
-			end_percent,
+			the_chip->end_percent,
 			last_charge_increase,
 			last_chargecycles);
+	the_chip->start_percent = 0;
+	the_chip->end_percent = 0;
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
 
