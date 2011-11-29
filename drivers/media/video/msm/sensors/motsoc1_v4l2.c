@@ -14,6 +14,7 @@
 #include <asm/mach-types.h>
 #include "msm.h"
 #include "msm_sensor.h"
+#include "msm_ispif.h"
 
 #define MOTSOC1_DEFAULT_MCLK_RATE        24000000
 
@@ -52,16 +53,16 @@ static struct msm_sensor_output_info_t motsoc1_dimensions[] = {
 		.y_output = 0x2D0,
 		.line_length_pclk = 0x500,
 		.frame_length_lines = 0x2D0,
-		.vt_pixel_clk = 96000000,
-		.op_pixel_clk = 96000000,
+		.vt_pixel_clk = 200000000,
+		.op_pixel_clk = 200000000,
 	},
 	{
 		.x_output = 0x500,
 		.y_output = 0x2D0,
 		.line_length_pclk = 0x500,
 		.frame_length_lines = 0x2D0,
-		.vt_pixel_clk = 96000000,
-		.op_pixel_clk = 96000000,
+		.vt_pixel_clk = 200000000,
+		.op_pixel_clk = 200000000,
 	},
 };
 
@@ -251,6 +252,13 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 	struct msm_camera_csiphy_params  motsoc1_csiphy_params;
 
 	printk("motsoc1_sensor_setting ut=%d rt=%d\n", update_type, rt);
+
+	v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+		NOTIFY_ISPIF_STREAM, (void *)ISPIF_STREAM(
+		PIX0, ISPIF_OFF_IMMEDIATELY));
+	/*TODO: add way to ensure we are not streaming*/
+	msleep(30);
+
 	switch (update_type) {
 		case MSM_SENSOR_REG_INIT:
 			//if (rt == SENSOR_PREVIEW_MODE || rt == RES_CAPTURE)
@@ -275,26 +283,29 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 						&motsoc1_vccfg[0];
 					motsoc1_csiphy_params.lane_cnt = 2;
 					motsoc1_csiphy_params.settle_cnt = 7;
-					rc = msm_camio_csid_config(&motsoc1_csid_params);
-					if (rc < 0) {
-						pr_err("motsoc1: failed csid config (%d)",
-								rc);
-						return rc;
-					}
-					v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+					v4l2_subdev_notify(
+							motsoc1_s_ctrl.sensor_v4l2_subdev,
+							NOTIFY_CSID_CFG,
+							&motsoc1_csid_params);
+					v4l2_subdev_notify(
+							motsoc1_s_ctrl.sensor_v4l2_subdev,
 							NOTIFY_CID_CHANGE, NULL);
 					mb();
-					rc = msm_camio_csiphy_config
-						(&motsoc1_csiphy_params);
-					if (rc < 0) {
-						pr_err("motsoc1: failed csiphy config (%d)\n",
-								rc);
-						return rc;
-					}
+					v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+							NOTIFY_CSIPHY_CFG,
+							&motsoc1_csiphy_params);
 					mb();
-					msleep(10);
+					msleep(20);
 					config_csi = 1;
 				}
+
+				v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+						NOTIFY_PCLK_CHANGE,
+						&motsoc1_dimensions[0].op_pixel_clk);
+				v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+						NOTIFY_ISPIF_STREAM,
+						(void *)ISPIF_STREAM(
+							PIX0, ISPIF_ON_FRAME_BOUNDARY));
 
 				if (config_sensor == 0)
 				{
@@ -314,6 +325,7 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 					rc = motsoc1_pollCP1(0x0, 0x0C, 0xFF, 0x02, 20, 10);
 					if (rc < 0)
 						return rc;
+					msleep(30);
 					printk("motsoc1: sensor started\n");
 					config_sensor = 1;
 				}
@@ -422,14 +434,14 @@ static int32_t motsoc1_power_on(const struct msm_camera_sensor_info *data)
 	mutex_lock(&motsoc1_mutex);
 
 	// Teufel P1/P2, Qinara P1 use L17 instead of L8
-	if ((machine_is_teufel() && system_rev <= 0x8200) ||
-		(machine_is_qinara() && system_rev <= 0x8100))
+	if ((machine_is_teufel() && system_rev < 0x8300) ||
+		(machine_is_qinara() && system_rev < 0x8200))
 		use_l17 = 1;
 
 	// Teufel P1/P2, Qinara P1, Vanquish P1 use L29 instead of L4
-	if ((machine_is_teufel() && system_rev <= 0x8200) ||
-		(machine_is_qinara() && system_rev <= 0x8100) ||
-		(machine_is_vanquish() && system_rev <= 0x8100))
+	if ((machine_is_teufel() && system_rev < 0x8300) ||
+		(machine_is_qinara() && system_rev < 0x8200) ||
+		(machine_is_vanquish() && system_rev < 0x8200))
 		use_l29 = 1;
 
 	if (use_l17)
@@ -698,7 +710,6 @@ int motsoc1_sensor_config(void __user *argp)
 				rc = -EFAULT;
 			break;
 		case CFG_SENSOR_INIT:
-			rc = motsoc1_video_config();
 			break;
 		default:
 			pr_err("motsoc1_sensor_config: unhandled %d\n",
