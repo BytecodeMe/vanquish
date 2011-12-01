@@ -28,6 +28,7 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
+#include <linux/reboot.h>
 
 #include <mach/msm_xo.h>
 #include <mach/msm_hsusb.h>
@@ -257,6 +258,7 @@ struct pm8921_chg_chip {
 	struct wake_lock		eoc_wake_lock;
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
+	int 			factory_mode;
 };
 
 static int charging_disabled;
@@ -265,6 +267,12 @@ static int thermal_mitigation;
 static struct pm8921_chg_chip *the_chip;
 
 static struct pm8921_adc_arb_btm_param btm_config;
+
+static int pm8921_charging_reboot(struct notifier_block *, unsigned long,
+				  void *);
+static struct notifier_block pm8921_charging_reboot_notifier = {
+	.notifier_call = pm8921_charging_reboot,
+};
 
 static int pm_chg_masked_write(struct pm8921_chg_chip *chip, u16 addr,
 							u8 mask, u8 val)
@@ -360,6 +368,9 @@ static int pm_chg_get_regulation_loop(struct pm8921_chg_chip *chip)
 #define CHG_USB_SUSPEND_BIT  BIT(2)
 static int pm_chg_usb_suspend_enable(struct pm8921_chg_chip *chip, int enable)
 {
+	if (chip->factory_mode)
+		return 0;
+
 	return pm_chg_masked_write(chip, CHG_CNTRL_3, CHG_USB_SUSPEND_BIT,
 			enable ? CHG_USB_SUSPEND_BIT : 0);
 }
@@ -367,6 +378,9 @@ static int pm_chg_usb_suspend_enable(struct pm8921_chg_chip *chip, int enable)
 #define CHG_EN_BIT	BIT(7)
 static int pm_chg_auto_enable(struct pm8921_chg_chip *chip, int enable)
 {
+	if (chip->factory_mode)
+		return 0;
+
 	return pm_chg_masked_write(chip, CHG_CNTRL_3, CHG_EN_BIT,
 				enable ? CHG_EN_BIT : 0);
 }
@@ -387,6 +401,9 @@ static int pm_chg_failed_clear(struct pm8921_chg_chip *chip, int clear)
 #define CHG_CHARGE_DIS_BIT	BIT(1)
 static int pm_chg_charge_dis(struct pm8921_chg_chip *chip, int disable)
 {
+	if (chip->factory_mode)
+		return 0;
+
 	return pm_chg_masked_write(chip, CHG_CNTRL, CHG_CHARGE_DIS_BIT,
 				disable ? CHG_CHARGE_DIS_BIT : 0);
 }
@@ -555,6 +572,9 @@ static int pm_chg_iterm_get(struct pm8921_chg_chip *chip, int *chg_current)
 static int pm_chg_iusbmax_set(struct pm8921_chg_chip *chip, int reg_val)
 {
 	u8 temp;
+
+	if (chip->factory_mode)
+		return 0;
 
 	if (reg_val < PM8921_CHG_IUSB_MIN || reg_val > PM8921_CHG_IUSB_MAX) {
 		pr_err("bad mA=%d asked to set\n", reg_val);
@@ -919,6 +939,7 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_ENERGY_FULL,
 };
 
@@ -1080,6 +1101,21 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 	return (int)result.physical;
 }
 
+static int get_prop_batt_charge_counter(struct pm8921_chg_chip *chip)
+{
+	int rc;
+	int64_t cc_mas;
+
+	rc = pm8921_bms_get_cc_mas(&cc_mas);
+
+	if (rc) {
+		pr_err("error reading cc_mas rc = %d\n", rc);
+		return rc;
+	}
+
+	return ((int)cc_mas) * 1000 / 3600;	/* mAs to uAh */
+}
+
 static int pm_batt_power_get_property(struct power_supply *psy,
 				       enum power_supply_property psp,
 				       union power_supply_propval *val)
@@ -1120,6 +1156,9 @@ static int pm_batt_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		val->intval = get_prop_batt_temp(chip);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		val->intval = get_prop_batt_charge_counter(chip);
 		break;
 	case POWER_SUPPLY_PROP_ENERGY_FULL:
 		val->intval = get_prop_batt_fcc(chip);
@@ -2437,6 +2476,47 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 	return 0;
 }
 
+static int pm8921_charging_reboot(struct notifier_block *nb,
+				  unsigned long event, void *unused)
+{
+	struct pm8921_adc_chan_result res;
+#define VBUS_OFF_THRESHOLD 2000
+	/*
+	 * Hack to power down when both VBUS and BPLUS are present.
+	 * This targets factory environment, where we need to power down
+	 * units with non-removable batteries between stations so that we
+	 * do not drain batteries to death.
+	 * Poll for VBUS to got away (controlled by external supply)
+	 * before proceeding with shutdown.
+	 */
+	switch (event) {
+	case SYS_POWER_OFF:
+		if (!the_chip) {
+			pr_err("called before pm8921 charging init\n");
+			break;
+		}
+
+		if (!the_chip->factory_mode)
+			break;
+
+		res.physical = 0;
+		do {
+			if (pm8921_adc_read(CHANNEL_USBIN, &res)) {
+				pr_err("VBUS ADC read error\n");
+				break;
+			} else
+				pr_info("VBUS:= %lld mV\n", res.physical);
+			msleep(100);
+		} while (res.physical > VBUS_OFF_THRESHOLD);
+
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_DONE;
+}
+
 static int get_rt_status(void *data, u64 * val)
 {
 	int i = (int)data;
@@ -2651,6 +2731,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->vin_min = pdata->vin_min;
 	chip->thermal_mitigation = pdata->thermal_mitigation;
 	chip->thermal_levels = pdata->thermal_levels;
+	chip->factory_mode = pdata->factory_mode;
 
 	chip->cold_thr = pdata->cold_thr;
 	chip->hot_thr = pdata->hot_thr;
@@ -2728,6 +2809,10 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 		}
 	}
 
+	rc = register_reboot_notifier(&pm8921_charging_reboot_notifier);
+	if (rc)
+		pr_err("%s can't register reboot notifier\n", __func__);
+
 	create_debugfs_entries(chip);
 
 	INIT_WORK(&chip->bms_notify.work, bms_notify);
@@ -2762,6 +2847,7 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 {
 	struct pm8921_chg_chip *chip = platform_get_drvdata(pdev);
 
+	unregister_reboot_notifier(&pm8921_charging_reboot_notifier);
 	free_irqs(chip);
 	platform_set_drvdata(pdev, NULL);
 	the_chip = NULL;
