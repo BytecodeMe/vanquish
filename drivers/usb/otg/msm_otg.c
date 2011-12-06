@@ -1912,7 +1912,6 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		goto out;
 	}
 
-	pm_runtime_get_sync(otg->dev);
 	schedule_work(&motg->sm_work);
 out:
 	return 0;

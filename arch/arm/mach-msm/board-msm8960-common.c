@@ -520,8 +520,6 @@ static struct msm_gpiomux_config msm8960_cam_common_configs[] = {
 
 static uint16_t msm_cam_gpio_2d_tbl[] = {
 	5, /*CAMIF_MCLK*/
-	20, /*CAMIF_I2C_DATA*/
-	21, /*CAMIF_I2C_CLK*/
 };
 
 static struct msm_gpiomux_config msm8960_cam_2d_configs[] = {
@@ -2276,7 +2274,7 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
-static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
+struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
