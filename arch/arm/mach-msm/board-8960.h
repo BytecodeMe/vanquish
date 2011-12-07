@@ -106,6 +106,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #else
 #define MSM_PMEM_SIZE 0x1C00000 /* 28 Mbytes */
 #endif
+#define MSM_LIQUID_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 #define MSM_RAM_CONSOLE_SIZE       128 * SZ_1K
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -113,6 +114,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MSM_ION_EBI_SIZE	(MSM_PMEM_SIZE + 0x600000)
 #define MSM_ION_ADSP_SIZE	MSM_PMEM_ADSP_SIZE
 #define MSM_ION_HEAP_NUM	5
+#define MSM_LIQUID_ION_EBI_SIZE (MSM_LIQUID_PMEM_SIZE + 0x600000)
 #else
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
 #define MSM_ION_HEAP_NUM	2

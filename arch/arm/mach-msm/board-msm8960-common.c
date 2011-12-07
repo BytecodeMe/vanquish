@@ -629,9 +629,11 @@ early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
 
 #ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_size = MSM_PMEM_SIZE;
+static unsigned pmem_param_set;
 static int __init pmem_size_setup(char *p)
 {
 	pmem_size = memparse(p, NULL);
+	pmem_param_set = 1;
 	return 0;
 }
 early_param("pmem_size", pmem_size_setup);
@@ -751,6 +753,9 @@ static void __init size_pmem_devices(void)
 #ifdef CONFIG_ANDROID_PMEM
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	android_pmem_adsp_pdata.size = pmem_adsp_size;
+
+	if (!pmem_param_set && machine_is_msm8960_liquid())
+		pmem_size = MSM_LIQUID_PMEM_SIZE;
 	android_pmem_pdata.size = pmem_size;
 #endif
 	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
@@ -841,10 +846,25 @@ struct platform_device fmem_device = {
 	.dev = { .platform_data = &fmem_pdata },
 };
 
+static unsigned msm_ion_ebi_size = MSM_ION_EBI_SIZE;
+
 static void reserve_ion_memory(void)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
-	msm8960_reserve_table[MEMTYPE_EBI1].size += MSM_ION_EBI_SIZE;
+	unsigned int i;
+
+	if (!pmem_param_set && machine_is_msm8960_liquid()) {
+		msm_ion_ebi_size = MSM_LIQUID_ION_EBI_SIZE;
+		for (i = 0; i < ion_pdata.nr; i++) {
+			if (ion_pdata.heaps[i].id == ION_HEAP_EBI_ID) {
+				ion_pdata.heaps[i].size = msm_ion_ebi_size;
+				pr_debug("msm_ion_ebi_size 0x%x\n",
+					msm_ion_ebi_size);
+				break;
+			}
+		}
+	}
+	msm8960_reserve_table[MEMTYPE_EBI1].size += msm_ion_ebi_size;
 	msm8960_reserve_table[MEMTYPE_EBI1].size += MSM_ION_ADSP_SIZE;
 #endif
 }
