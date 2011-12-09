@@ -1161,8 +1161,20 @@ struct msm_panel_common_pdata mdp_pdata = {
 #endif
 	.mdp_rev = MDP_REV_42,
 	.writeback_offset = writeback_offset,
+	.mdp_writeback_memtype = MEMTYPE_EBI1,
+	.mdp_writeback_phys = NULL,
 };
 
+void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
+{
+	mdp_pdata.mdp_writeback_size_ov0 = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
+	mdp_pdata.mdp_writeback_size_ov1 = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
+
+	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov0;
+	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov1;
+}
 
 static struct gpiomux_setting mdp_vsync_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
