@@ -1142,11 +1142,6 @@ static int mdp_core_clk_rate_table[] = {
 };
 #endif
 
-static int writeback_offset(void)
-{
-	return MSM_FB_WRITEBACK_OFFSET;
-}
-
 struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
@@ -1160,7 +1155,6 @@ struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_42,
-	.writeback_offset = writeback_offset,
 	.mdp_writeback_memtype = MEMTYPE_EBI1,
 	.mdp_writeback_phys = NULL,
 };
