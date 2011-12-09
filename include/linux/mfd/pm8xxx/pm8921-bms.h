@@ -103,6 +103,8 @@ struct pm8xxx_bms_core_data {
  *			calculated or the peak system current (mA)
  * @v_failure:		the voltage at which the battery is considered empty(mV)
  * @calib_delay_ms:	how often should the adc calculate gain and offset
+ * @get_batt_info:      a board specific function to return battery data If NULL
+ *                      default palladium data will be used to meter the battery
  */
 struct pm8921_bms_platform_data {
 	struct pm8xxx_bms_core_data	bms_cdata;
@@ -110,6 +112,10 @@ struct pm8921_bms_platform_data {
 	unsigned int			i_test;
 	unsigned int			v_failure;
 	unsigned int			calib_delay_ms;
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	int64_t (*get_batt_info) (int64_t battery_id,
+				  struct pm8921_bms_battery_data *data);
+#endif
 };
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)

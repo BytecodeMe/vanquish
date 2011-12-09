@@ -242,7 +242,8 @@ obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-mmi-cyttsp3.o \
 	board-mmi-atmxt.o \
 	board-mmi-vibrator.o \
-	board-mmi-melfas-touch.o
+	board-mmi-melfas-touch.o \
+	mmi-bms-batterydata.o
 obj-$(CONFIG_MACH_MSM8930_CDP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
 obj-$(CONFIG_MACH_MSM8930_MTP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
 obj-$(CONFIG_MACH_MSM8930_FLUID) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
