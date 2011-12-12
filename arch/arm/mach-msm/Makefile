@@ -68,6 +68,7 @@ ifdef CONFIG_MSM_PIL
 obj-$(CONFIG_ARCH_MSM8X60) += peripheral-reset.o
 obj-$(CONFIG_ARCH_MSM8960) += peripheral-reset-8960.o
 endif
+obj-$(CONFIG_MSM_PIL_QDSP6V4) += pil-q6v4.o
 obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
 obj-$(CONFIG_ARCH_FSM9XXX) += sirc-fsm9xxx.o
 obj-$(CONFIG_MSM_FIQ_SUPPORT) += fiq_glue.o
@@ -237,15 +238,16 @@ ifdef CONFIG_TOUCHSCREEN_MELFAS100_TS
 obj-$(CONFIG_MACH_MSM8960_MMI) += board-mmi-melfas-touch.o
 endif
 
-obj-$(CONFIG_MACH_MSM8960_SIM) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_CDP) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_MTP) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_FLUID) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8930_CDP) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8930_MTP) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8930_FLUID) += board-msm8960-qcom.o pm8921.o devices-8960.o board-msm8960-regulator.o
-
+board-msm8960-all-objs += board-msm8960.o board-msm8960-camera.o board-msm8960-display.o board-msm8960-pmic.o board-msm8960-storage.o
+board-msm8930-all-objs += board-msm8930.o board-msm8930-camera.o board-msm8930-display.o board-msm8930-pmic.o board-msm8930-storage.o
+obj-$(CONFIG_MACH_MSM8960_SIM) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_CDP) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_MTP) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_FLUID) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_CDP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_MTP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_FLUID) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
 obj-$(CONFIG_ARCH_MSM8960) += bms-batterydata.o
 obj-$(CONFIG_ARCH_APQ8064) += board-apq8064.o devices-8064.o board-apq8064-regulator.o
 obj-$(CONFIG_ARCH_MSM9615) += board-9615.o devices-9615.o board-9615-regulator.o

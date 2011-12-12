@@ -753,7 +753,8 @@ static struct page *
 hotremove_migrate_alloc(struct page *page, unsigned long private, int **x)
 {
 	/* This should be improooooved!! */
-	return alloc_page(GFP_HIGHUSER_MOVABLE);
+	return alloc_page(GFP_HIGHUSER_MOVABLE | __GFP_NORETRY | __GFP_NOWARN |
+				__GFP_NOMEMALLOC);
 }
 
 #define NR_OFFLINE_AT_ONCE_PAGES	(256)
@@ -957,7 +958,10 @@ repeat:
 	/* reset pagetype flags and makes migrate type to be MOVABLE */
 	undo_isolate_page_range(start_pfn, end_pfn);
 	/* removal success */
-	zone->present_pages -= offlined_pages;
+	if (offlined_pages > zone->present_pages)
+		zone->present_pages = 0;
+	else
+		zone->present_pages -= offlined_pages;
 	zone->zone_pgdat->node_present_pages -= offlined_pages;
 	totalram_pages -= offlined_pages;
 

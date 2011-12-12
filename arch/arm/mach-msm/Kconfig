@@ -190,6 +190,9 @@ config ARCH_APQ8064
 	select MSM_SCM if SMP
 	select MSM_GPIOMUX
 	select MSM_REMOTE_SPINLOCK_SFPB
+	select MSM_PIL
+	select MSM_QDSP6_APR
+	select MSM_AUDIO_QDSP6 if SND_SOC
 
 config ARCH_MSMCOPPER
 	bool "MSM Copper"
@@ -252,6 +255,7 @@ config  ARCH_MSM_SCORPION
 
 config  ARCH_MSM_KRAIT
 	bool
+	select ARM_L1_CACHE_SHIFT_6
 
 config  MSM_SMP
 	bool
@@ -603,6 +607,18 @@ config MACH_MSM8930_FLUID
 	bool "MSM8930 FLUID"
 	help
 	  Support for the Qualcomm MSM8930 FLUID device.
+
+config MACH_MSM8627_CDP
+	depends on ARCH_MSM8930
+	bool "MSM8627 CDP"
+	help
+	  Support for the Qualcomm MSM8627 CDP device.
+
+config MACH_MSM8627_MTP
+	depends on ARCH_MSM8930
+	bool "MSM8627 MTP"
+	help
+	  Support for the Qualcomm MSM8627 MTP device.
 
 config MACH_MSM9615_CDP
 	depends on ARCH_MSM9615
@@ -1565,6 +1581,14 @@ config MSM_PIL
 	  brought out of reset.
 
 	  Say yes to support these devices.
+
+config MSM_PIL_QDSP6V4
+	tristate "QDSP6v4 (Hexagon) Boot Support"
+	depends on MSM_PIL
+	help
+	  Support for booting and shutting down QDSP6v4 processors (hexagon).
+	  The QDSP6 is a low power DSP used in audio, modem firmware, and modem
+	  software applications.
 
 config MSM_SCM
 	bool "Secure Channel Manager (SCM) support"

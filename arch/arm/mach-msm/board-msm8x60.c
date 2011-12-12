@@ -144,6 +144,10 @@
 #define DSPS_PIL_GENERIC_NAME		"dsps"
 #define DSPS_PIL_FLUID_NAME		"dsps_fluid"
 
+#ifdef CONFIG_ION_MSM
+static struct platform_device ion_dev;
+#endif
+
 enum {
 	GPIO_EXPANDER_IRQ_BASE  = PM8901_IRQ_BASE + NR_PMIC8901_IRQS,
 	GPIO_EXPANDER_GPIO_BASE = PM8901_GPIO_BASE + PM8901_MPPS,
@@ -1523,7 +1527,7 @@ static struct platform_device android_usb_device = {
 
 
 #endif
-	
+
 #ifdef CONFIG_MSM_VPE
 static struct resource msm_vpe_resources[] = {
 	{
@@ -2657,7 +2661,7 @@ static int writeback_offset(void)
 #define MSM_SMI_SIZE          0x4000000
 
 #define KERNEL_SMI_BASE       (MSM_SMI_BASE)
-#define KERNEL_SMI_SIZE       0x300000
+#define KERNEL_SMI_SIZE       0x600000
 
 #define USER_SMI_BASE         (KERNEL_SMI_BASE + KERNEL_SMI_SIZE)
 #define USER_SMI_SIZE         (MSM_SMI_SIZE - KERNEL_SMI_SIZE)
@@ -5158,7 +5162,7 @@ static struct platform_device *surf_devices[] __initdata = {
 };
 
 #ifdef CONFIG_ION_MSM
-struct ion_platform_data ion_pdata = {
+static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
 		{
@@ -5197,7 +5201,7 @@ struct ion_platform_data ion_pdata = {
 	}
 };
 
-struct platform_device ion_dev = {
+static struct platform_device ion_dev = {
 	.name = "ion-msm",
 	.id = 1,
 	.dev = { .platform_data = &ion_pdata },
@@ -9292,7 +9296,7 @@ static int mipi_dsi_panel_power(int on)
 			goto out;
 	} else {
 		/* set ldo0 to LPM */
-		rc = regulator_set_optimum_mode(ldo0, 9000);
+		rc = regulator_set_optimum_mode(ldo0, 1000);
 		if (rc < 0)
 			goto out;
 	}

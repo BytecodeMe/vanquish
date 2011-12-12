@@ -64,7 +64,7 @@ static void radio_hci_smd_recv_event(unsigned long temp)
 			return;
 		}
 
-		rc = smd_read_from_cb(hsmd->fm_channel, (void *)buf, len);
+		rc = smd_read(hsmd->fm_channel, (void *)buf, len);
 
 		memcpy(skb_put(skb, len), buf, len);
 
@@ -85,8 +85,10 @@ static int radio_hci_smd_send_frame(struct sk_buff *skb)
 	len = smd_write(hs.fm_channel, skb->data, skb->len);
 	if (len < skb->len) {
 		FMDERR("Failed to write Data %d", len);
+		kfree_skb(skb);
 		return -ENODEV;
 	}
+	kfree_skb(skb);
 	return 0;
 }
 

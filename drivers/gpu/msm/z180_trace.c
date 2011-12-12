@@ -11,16 +11,10 @@
  *
  */
 
-#ifndef __LINUX_USB_GADGET_FSERIAL_H__
-#define __LINUX_USB_GADGET_FSERIAL_H__
+#include "kgsl.h"
+#include "z180.h"
+#include "z180_reg.h"
 
-#include <linux/platform_device.h>
-
-enum transport_type {
-	USB_GADGET_FSERIAL_TRANSPORT_TTY,
-	USB_GADGET_FSERIAL_TRANSPORT_SDIO,
-	USB_GADGET_FSERIAL_TRANSPORT_SMD,
-};
-
-#define GSERIAL_NO_PORTS 2
-#endif
+/* Instantiate tracepoints */
+#define CREATE_TRACE_POINTS
+#include "z180_trace.h"

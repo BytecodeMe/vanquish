@@ -21,7 +21,7 @@
 #define PLAT_PHYS_OFFSET UL(CONFIG_PHYS_OFFSET)
 
 #define MAX_PHYSMEM_BITS 32
-#define SECTION_SIZE_BITS 29
+#define SECTION_SIZE_BITS 28
 
 /* Maximum number of Memory Regions */
 #define MAX_NR_REGIONS 4
@@ -57,8 +57,6 @@
 #endif
 
 #endif
-
-#define HAS_ARCH_IO_REMAP_PFN_RANGE
 
 #ifndef __ASSEMBLY__
 void *alloc_bootmem_aligned(unsigned long size, unsigned long alignment);

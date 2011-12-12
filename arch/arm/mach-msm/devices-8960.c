@@ -30,6 +30,7 @@
 #include <mach/rpm.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
+#include <mach/msm_xo.h>
 #include <sound/msm-dai-q6.h>
 #include <sound/apr_audio.h>
 #include "clock.h"
@@ -38,6 +39,8 @@
 #include "footswitch.h"
 #include "msm_watchdog.h"
 #include "rpm_stats.h"
+#include "pil-q6v4.h"
+#include "scm-pas.h"
 
 #ifdef CONFIG_MSM_MPM
 #include "mpm.h"
@@ -816,6 +819,113 @@ struct platform_device msm_device_sdc5 = {
 	},
 };
 
+#define MSM_LPASS_QDSP6SS_PHYS	0x28800000
+#define SFAB_LPASS_Q6_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x23A0)
+
+static struct resource msm_8960_q6_lpass_resources[] = {
+	{
+		.start  = MSM_LPASS_QDSP6SS_PHYS,
+		.end    = MSM_LPASS_QDSP6SS_PHYS + SZ_256 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+static struct pil_q6v4_pdata msm_8960_q6_lpass_data = {
+	.strap_tcm_base  = 0x01460000,
+	.strap_ahb_upper = 0x00290000,
+	.strap_ahb_lower = 0x00000280,
+	.aclk_reg = SFAB_LPASS_Q6_ACLK_CTL,
+	.xo_id = MSM_XO_PXO,
+	.name = "q6",
+	.pas_id = PAS_Q6,
+	.bus_port = MSM_BUS_MASTER_LPASS_PROC,
+};
+
+struct platform_device msm_8960_q6_lpass = {
+	.name = "pil_qdsp6v4",
+	.id = 0,
+	.num_resources  = ARRAY_SIZE(msm_8960_q6_lpass_resources),
+	.resource       = msm_8960_q6_lpass_resources,
+	.dev.platform_data = &msm_8960_q6_lpass_data,
+};
+
+#define MSM_MSS_ENABLE_PHYS	0x08B00000
+#define MSM_FW_QDSP6SS_PHYS	0x08800000
+#define MSS_Q6FW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C6C)
+#define SFAB_MSS_Q6_FW_ACLK_CTL (MSM_CLK_CTL_BASE + 0x2044)
+
+static struct resource msm_8960_q6_mss_fw_resources[] = {
+	{
+		.start  = MSM_FW_QDSP6SS_PHYS,
+		.end    = MSM_FW_QDSP6SS_PHYS + SZ_256 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = MSM_MSS_ENABLE_PHYS,
+		.end    = MSM_MSS_ENABLE_PHYS + 4 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+static struct pil_q6v4_pdata msm_8960_q6_mss_fw_data = {
+	.strap_tcm_base  = 0x00400000,
+	.strap_ahb_upper = 0x00090000,
+	.strap_ahb_lower = 0x00000080,
+	.aclk_reg = SFAB_MSS_Q6_FW_ACLK_CTL,
+	.jtag_clk_reg = MSS_Q6FW_JTAG_CLK_CTL,
+	.xo_id = MSM_XO_TCXO_D0,
+	.name = "modem_fw",
+	.depends = "q6",
+	.pas_id = PAS_MODEM_FW,
+	.bus_port = MSM_BUS_MASTER_MSS_FW_PROC,
+};
+
+struct platform_device msm_8960_q6_mss_fw = {
+	.name = "pil_qdsp6v4",
+	.id = 1,
+	.num_resources  = ARRAY_SIZE(msm_8960_q6_mss_fw_resources),
+	.resource       = msm_8960_q6_mss_fw_resources,
+	.dev.platform_data = &msm_8960_q6_mss_fw_data,
+};
+
+#define MSM_SW_QDSP6SS_PHYS	0x08900000
+#define SFAB_MSS_Q6_SW_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x2040)
+#define MSS_Q6SW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C68)
+
+static struct resource msm_8960_q6_mss_sw_resources[] = {
+	{
+		.start  = MSM_SW_QDSP6SS_PHYS,
+		.end    = MSM_SW_QDSP6SS_PHYS + SZ_256 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = MSM_MSS_ENABLE_PHYS,
+		.end    = MSM_MSS_ENABLE_PHYS + 4 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+static struct pil_q6v4_pdata msm_8960_q6_mss_sw_data = {
+	.strap_tcm_base  = 0x00420000,
+	.strap_ahb_upper = 0x00090000,
+	.strap_ahb_lower = 0x00000080,
+	.aclk_reg = SFAB_MSS_Q6_SW_ACLK_CTL,
+	.jtag_clk_reg = MSS_Q6SW_JTAG_CLK_CTL,
+	.xo_id = MSM_XO_TCXO_D0,
+	.name = "modem",
+	.depends = "modem_fw",
+	.pas_id = PAS_MODEM_SW,
+	.bus_port = MSM_BUS_MASTER_MSS_SW_PROC,
+};
+
+struct platform_device msm_8960_q6_mss_sw = {
+	.name = "pil_qdsp6v4",
+	.id = 2,
+	.num_resources  = ARRAY_SIZE(msm_8960_q6_mss_sw_resources),
+	.resource       = msm_8960_q6_mss_sw_resources,
+	.dev.platform_data = &msm_8960_q6_mss_sw_data,
+};
+
 struct platform_device msm_device_smd = {
 	.name		= "msm_smd",
 	.id		= -1,
@@ -1230,18 +1340,6 @@ static struct resource resources_qup_spi_gsbi1[] = {
 		.flags  = IORESOURCE_IO,
 	},
 	{
-		.name   = "spi_cs",
-		.start  = 8,
-		.end    = 8,
-		.flags  = IORESOURCE_IO,
-	},
-	{
-		.name   = "spi_cs1",
-		.start  = 14,
-		.end    = 14,
-		.flags  = IORESOURCE_IO,
-	},
-	{
 		.name   = "spi_miso",
 		.start  = 7,
 		.end    = 7,
@@ -1251,6 +1349,18 @@ static struct resource resources_qup_spi_gsbi1[] = {
 		.name   = "spi_mosi",
 		.start  = 6,
 		.end    = 6,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_cs",
+		.start  = 8,
+		.end    = 8,
+		.flags  = IORESOURCE_IO,
+	},
+	{
+		.name   = "spi_cs1",
+		.start  = 14,
+		.end    = 14,
 		.flags  = IORESOURCE_IO,
 	},
 };
@@ -2065,52 +2175,41 @@ static struct resource kgsl_3d0_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_3d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 400000000,
-				.bus_freq = 4,
-				.io_fraction = 0,
-			},
-			{
-				.gpu_freq = 300000000,
-				.bus_freq = 3,
-				.io_fraction = 33,
-			},
-			{
-				.gpu_freq = 200000000,
-				.bus_freq = 2,
-				.io_fraction = 100,
-			},
-			{
-				.gpu_freq = 128000000,
-				.bus_freq = 1,
-				.io_fraction = 100,
-			},
-			{
-				.gpu_freq = 27000000,
-				.bus_freq = 0,
-			},
+	.pwrlevel = {
+		{
+			.gpu_freq = 400000000,
+			.bus_freq = 4,
+			.io_fraction = 0,
 		},
-		.init_level = 0,
-		.num_levels = 5,
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/5,
-		.nap_allowed = true,
+		{
+			.gpu_freq = 300000000,
+			.bus_freq = 3,
+			.io_fraction = 33,
+		},
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 2,
+			.io_fraction = 100,
+		},
+		{
+			.gpu_freq = 128000000,
+			.bus_freq = 1,
+			.io_fraction = 100,
+		},
+		{
+			.gpu_freq = 27000000,
+			.bus_freq = 0,
+		},
 	},
-	.clk = {
-		.name = {
-			.clk = "core_clk",
-			.pclk = "iface_clk",
-		},
+	.init_level = 0,
+	.num_levels = 5,
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/5,
+	.nap_allowed = true,
+	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE | KGSL_CLK_MEM_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING
-		.bus_scale_table = &grp3d_bus_scale_pdata,
+	.bus_scale_table = &grp3d_bus_scale_pdata,
 #endif
-	},
-	.imem_clk_name = {
-		.clk = NULL,
-		.pclk = "mem_iface_clk",
-	},
 	.iommu_user_ctx_name = "gfx3d_user",
 	.iommu_priv_ctx_name = NULL,
 };
@@ -2141,33 +2240,25 @@ static struct resource kgsl_2d0_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_2d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 200000000,
-				.bus_freq = 1,
-			},
-			{
-				.gpu_freq = 200000000,
-				.bus_freq = 0,
-			},
+	.pwrlevel = {
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 1,
 		},
-		.init_level = 0,
-		.num_levels = 2,
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/10,
-		.nap_allowed = true,
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 0,
+		},
 	},
-	.clk = {
-		.name = {
-			/* note: 2d clocks disabled on v1 */
-			.clk = "core_clk",
-			.pclk = "iface_clk",
-		},
+	.init_level = 0,
+	.num_levels = 2,
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/10,
+	.nap_allowed = true,
+	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING
-		.bus_scale_table = &grp2d0_bus_scale_pdata,
+	.bus_scale_table = &grp2d0_bus_scale_pdata,
 #endif
-	},
 	.iommu_user_ctx_name = "gfx2d0_2d0",
 	.iommu_priv_ctx_name = NULL,
 };
@@ -2198,32 +2289,25 @@ static struct resource kgsl_2d1_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_2d1_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 200000000,
-				.bus_freq = 1,
-			},
-			{
-				.gpu_freq = 200000000,
-				.bus_freq = 0,
-			},
+	.pwrlevel = {
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 1,
 		},
-		.init_level = 0,
-		.num_levels = 2,
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/10,
-		.nap_allowed = true,
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 0,
+		},
 	},
-	.clk = {
-		.name = {
-			.clk = "core_clk",
-			.pclk = "iface_clk",
-		},
+	.init_level = 0,
+	.num_levels = 2,
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/10,
+	.nap_allowed = true,
+	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING
-		.bus_scale_table = &grp2d1_bus_scale_pdata,
+	.bus_scale_table = &grp2d1_bus_scale_pdata,
 #endif
-	},
 	.iommu_user_ctx_name = "gfx2d1_2d1",
 	.iommu_priv_ctx_name = NULL,
 };

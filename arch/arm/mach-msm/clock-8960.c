@@ -1791,6 +1791,7 @@ static struct clk_freq_tbl clk_tbl_sdc[] = {
 	F_SDC( 48000000, pll8,  4, 1,   2),
 	F_SDC( 64000000, pll8,  3, 1,   2),
 	F_SDC( 96000000, pll8,  4, 0,   0),
+	F_SDC(192000000, pll8,  2, 0,   0),
 	F_END
 };
 
@@ -4479,22 +4480,8 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 		}, \
 	}
 
-#define F_AIF_BIT(d, s) \
-	{ \
-		.freq_hz = d, \
-		.ns_val = (BVAL(14, 14, s) | BVAL(13, 10, (d-1))) \
-	}
-static struct clk_freq_tbl clk_tbl_aif_bit[] = {
-	F_AIF_BIT(0, 1),  /* Use external clock. */
-	F_AIF_BIT(1, 0),  F_AIF_BIT(2, 0),  F_AIF_BIT(3, 0),  F_AIF_BIT(4, 0),
-	F_AIF_BIT(5, 0),  F_AIF_BIT(6, 0),  F_AIF_BIT(7, 0),  F_AIF_BIT(8, 0),
-	F_AIF_BIT(9, 0),  F_AIF_BIT(10, 0), F_AIF_BIT(11, 0), F_AIF_BIT(12, 0),
-	F_AIF_BIT(13, 0), F_AIF_BIT(14, 0), F_AIF_BIT(15, 0), F_AIF_BIT(16, 0),
-	F_END
-};
-
 #define CLK_AIF_BIT(i, ns, h_r) \
-	struct rcg_clk i##_clk = { \
+	struct cdiv_clk i##_clk = { \
 		.b = { \
 			.ctl_reg = ns, \
 			.en_mask = BIT(15), \
@@ -4502,35 +4489,18 @@ static struct clk_freq_tbl clk_tbl_aif_bit[] = {
 			.halt_check = DELAY, \
 		}, \
 		.ns_reg = ns, \
-		.ns_mask = BM(14, 10), \
-		.set_rate = set_rate_nop, \
-		.freq_tbl = clk_tbl_aif_bit, \
-		.current_freq = &rcg_dummy_freq, \
+		.ext_mask = BIT(14), \
+		.div_offset = 10, \
+		.max_div = 16, \
 		.c = { \
 			.dbg_name = #i "_clk", \
-			.ops = &clk_ops_rcg_8960, \
+			.ops = &clk_ops_cdiv, \
 			CLK_INIT(i##_clk.c), \
 		}, \
 	}
 
-#define F_AIF_BIT_D(d, s) \
-	{ \
-		.freq_hz = d, \
-		.ns_val = (BVAL(18, 18, s) | BVAL(17, 10, (d-1))) \
-	}
-static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
-	F_AIF_BIT_D(0, 1),  /* Use external clock. */
-	F_AIF_BIT_D(1, 0), F_AIF_BIT_D(2, 0), F_AIF_BIT_D(3, 0),
-	F_AIF_BIT_D(4, 0), F_AIF_BIT_D(5, 0), F_AIF_BIT_D(6, 0),
-	F_AIF_BIT_D(7, 0), F_AIF_BIT_D(8, 0), F_AIF_BIT_D(9, 0),
-	F_AIF_BIT_D(10, 0), F_AIF_BIT_D(11, 0), F_AIF_BIT_D(12, 0),
-	F_AIF_BIT_D(13, 0), F_AIF_BIT_D(14, 0), F_AIF_BIT_D(15, 0),
-	F_AIF_BIT_D(16, 0),
-	F_END
-};
-
 #define CLK_AIF_BIT_DIV(i, ns, h_r) \
-	struct rcg_clk i##_clk = { \
+	struct cdiv_clk i##_clk = { \
 		.b = { \
 			.ctl_reg = ns, \
 			.en_mask = BIT(19), \
@@ -4538,13 +4508,12 @@ static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
 			.halt_check = ENABLE, \
 		}, \
 		.ns_reg = ns, \
-		.ns_mask = BM(18, 10), \
-		.set_rate = set_rate_nop, \
-		.freq_tbl = clk_tbl_aif_bit_div, \
-		.current_freq = &rcg_dummy_freq, \
+		.ext_mask = BIT(18), \
+		.div_offset = 10, \
+		.max_div = 256, \
 		.c = { \
 			.dbg_name = #i "_clk", \
-			.ops = &clk_ops_rcg_8960, \
+			.ops = &clk_ops_cdiv, \
 			CLK_INIT(i##_clk.c), \
 		}, \
 	}
@@ -4920,9 +4889,9 @@ static struct measure_sel measure_mux[] = {
 
 	{ TEST_LPA_HS(0x00), &q6_func_clk },
 
-	{ TEST_CPUL2(0x1), &l2_m_clk },
-	{ TEST_CPUL2(0x2), &krait0_m_clk },
-	{ TEST_CPUL2(0x3), &krait1_m_clk },
+	{ TEST_CPUL2(0x2), &l2_m_clk },
+	{ TEST_CPUL2(0x0), &krait0_m_clk },
+	{ TEST_CPUL2(0x1), &krait1_m_clk },
 };
 
 static struct measure_sel *find_measure_sel(struct clk *clk)
@@ -5143,7 +5112,7 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("core_clk",		gsbi7_qup_clk.c,	NULL),
 	CLK_LOOKUP("core_clk",		pdm_clk.c,		NULL),
 	CLK_LOOKUP("pmem_clk",		pmem_clk.c,		NULL),
-	CLK_DUMMY("core_clk",           PRNG_CLK,               NULL, OFF),
+	CLK_DUMMY("core_clk",           PRNG_CLK,	"msm_rng.0", OFF),
 	CLK_LOOKUP("core_clk",		sdc1_clk.c,		"msm_sdcc.1"),
 	CLK_LOOKUP("core_clk",		sdc2_clk.c,		"msm_sdcc.2"),
 	CLK_LOOKUP("core_clk",		sdc3_clk.c,		"msm_sdcc.3"),
@@ -5223,7 +5192,7 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("dsi_esc_clk",	dsi2_esc_clk.c,		NULL),
 	CLK_DUMMY("rgb_tv_clk",		RGB_TV_CLK,		NULL, OFF),
 	CLK_DUMMY("npl_tv_clk",		NPL_TV_CLK,		NULL, OFF),
-	CLK_LOOKUP("core_clk",		gfx3d_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		gfx3d_clk.c,	"kgsl-3d0.0"),
 	CLK_LOOKUP("core_clk",		gfx3d_clk.c,	"footswitch-8x60.2"),
 	CLK_LOOKUP("bus_clk",		gfx3d_axi_clk.c, "footswitch-8x60.2"),
 	CLK_LOOKUP("iface_clk",         vcap_p_clk.c,           NULL),
@@ -5244,7 +5213,7 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("core_clk",		rot_clk.c,	"msm_rotator.0"),
 	CLK_LOOKUP("core_clk",		rot_clk.c,	"footswitch-8x60.6"),
 	CLK_DUMMY("tv_src_clk",		TV_SRC_CLK,		NULL, OFF),
-	CLK_LOOKUP("core_clk",		vcodec_clk.c,		NULL),
+	CLK_LOOKUP("core_clk",		vcodec_clk.c,		"msm_vidc.0"),
 	CLK_LOOKUP("core_clk",		vcodec_clk.c,	"footswitch-8x60.7"),
 	CLK_DUMMY("mdp_tv_clk",		MDP_TV_CLK,		NULL, OFF),
 	CLK_DUMMY("hdmi_clk",		HDMI_TV_CLK,		NULL, OFF),
@@ -5267,7 +5236,7 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("dsi_s_pclk",	dsi1_s_p_clk.c,		NULL),
 	CLK_LOOKUP("dsi_m_pclk",	dsi2_m_p_clk.c,		NULL),
 	CLK_LOOKUP("dsi_s_pclk",	dsi2_s_p_clk.c,		NULL),
-	CLK_LOOKUP("iface_clk",		gfx3d_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		gfx3d_p_clk.c,	"kgsl-3d0.0"),
 	CLK_LOOKUP("iface_clk",		gfx3d_p_clk.c,	"footswitch-8x60.2"),
 	CLK_LOOKUP("master_iface_clk",	hdmi_m_p_clk.c,		NULL),
 	CLK_LOOKUP("slave_iface_clk",	hdmi_s_p_clk.c,		NULL),
@@ -5280,7 +5249,7 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("iface_clk",		smmu_p_clk.c,		NULL),
 	CLK_LOOKUP("iface_clk",		rot_p_clk.c,	"msm_rotator.0"),
 	CLK_LOOKUP("iface_clk",		rot_p_clk.c,	"footswitch-8x60.6"),
-	CLK_LOOKUP("iface_clk",		vcodec_p_clk.c,		NULL),
+	CLK_LOOKUP("iface_clk",		vcodec_p_clk.c,		"msm_vidc.0"),
 	CLK_LOOKUP("iface_clk",		vcodec_p_clk.c,	"footswitch-8x60.7"),
 	CLK_LOOKUP("vfe_pclk",		vfe_p_clk.c,		NULL),
 	CLK_LOOKUP("iface_clk",		vfe_p_clk.c,	"footswitch-8x60.8"),

@@ -8,16 +8,12 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
  */
 
+#include "kgsl.h"
+#include "kgsl_device.h"
 
-#ifndef __LINUX_USB_GADGET_RMNET_H__
-#define __LINUX_USB_GADGET_RMNET_H__
-
-#include <linux/platform_device.h>
-
-struct usb_rmnet_pdata {
-	unsigned	num_instances;
-};
-
-#endif
+/* Instantiate tracepoints */
+#define CREATE_TRACE_POINTS
+#include "kgsl_trace.h"

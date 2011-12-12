@@ -172,6 +172,10 @@ extern struct platform_device msm_cpudai_afe_02_rx;
 extern struct platform_device msm_cpudai_afe_02_tx;
 extern struct platform_device msm_pcm_afe;
 
+extern struct platform_device msm_8960_q6_lpass;
+extern struct platform_device msm_8960_q6_mss_fw;
+extern struct platform_device msm_8960_q6_mss_sw;
+
 extern struct platform_device *msm_footswitch_devices[];
 extern unsigned msm_num_footswitch_devices;
 
@@ -199,10 +203,10 @@ extern struct platform_device msm_device_touchscreen;
 
 extern struct platform_device led_pdev;
 
-extern struct platform_device ion_dev;
 extern struct platform_device msm_rpm_device;
 extern struct platform_device msm_rpm_stat_device;
 extern struct platform_device msm_device_rng;
+extern struct platform_device apq8064_device_rng;
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
 		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE)

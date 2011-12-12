@@ -3158,21 +3158,23 @@ static struct hci_chan *l2cap_chan_admit(u8 amp_id, struct l2cap_pinfo *pi)
 	struct hci_conn *hcon;
 	struct hci_chan *chan;
 
-	hdev = hci_dev_get(A2MP_HCI_ID(amp_id));
+	hdev = hci_dev_get(amp_id);
 	if (!hdev)
 		return NULL;
 
 	BT_DBG("hdev %s", hdev->name);
 
 	hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, pi->conn->dst);
-	if (!hcon)
-		return NULL;
+	if (!hcon) {
+		chan = NULL;
+		goto done;
+	}
 
 	chan = hci_chan_list_lookup_id(hdev, hcon->handle);
 	if (chan) {
 		l2cap_aggregate(chan, pi);
 		hci_chan_hold(chan);
-		return chan;
+		goto done;
 	}
 
 	if (bt_sk(pi)->parent) {
@@ -3186,6 +3188,8 @@ static struct hci_chan *l2cap_chan_admit(u8 amp_id, struct l2cap_pinfo *pi)
 					(struct hci_ext_fs *) &pi->local_fs,
 					(struct hci_ext_fs *) &pi->remote_fs);
 	}
+done:
+	hci_dev_put(hdev);
 	return chan;
 }
 
@@ -3743,6 +3747,12 @@ static int l2cap_parse_conf_rsp(struct sock *sk, void *rsp, int len, void *data,
 
 	BT_DBG("sk %p, rsp %p, len %d, req %p", sk, rsp, len, data);
 
+	/* Initialize rfc in case no rfc option is received */
+	rfc.mode = pi->mode;
+	rfc.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
+	rfc.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
+	rfc.max_pdu_size = L2CAP_DEFAULT_MAX_PDU_SIZE;
+
 	while (len >= L2CAP_CONF_OPT_SIZE) {
 		len -= l2cap_get_conf_opt(&rsp, &type, &olen, &val);
 
@@ -3836,6 +3846,12 @@ static void l2cap_conf_rfc_get(struct sock *sk, void *rsp, int len)
 	struct l2cap_conf_rfc rfc;
 
 	BT_DBG("sk %p, rsp %p, len %d", sk, rsp, len);
+
+	/* Initialize rfc in case no rfc option is received */
+	rfc.mode = pi->mode;
+	rfc.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
+	rfc.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
+	rfc.max_pdu_size = L2CAP_DEFAULT_MAX_PDU_SIZE;
 
 	if ((pi->mode != L2CAP_MODE_ERTM) && (pi->mode != L2CAP_MODE_STREAMING))
 		return;
@@ -4727,7 +4743,7 @@ static inline int l2cap_create_channel_req(struct l2cap_conn *conn,
 		struct hci_dev *hdev;
 
 		/* Validate AMP controller id */
-		hdev = hci_dev_get(A2MP_HCI_ID(req->amp_id));
+		hdev = hci_dev_get(req->amp_id);
 		if (!hdev || !test_bit(HCI_UP, &hdev->flags)) {
 			struct l2cap_create_chan_rsp rsp;
 
@@ -4805,7 +4821,7 @@ static inline int l2cap_move_channel_req(struct l2cap_conn *conn,
 
 	if (req->dest_amp_id) {
 		struct hci_dev *hdev;
-		hdev = hci_dev_get(A2MP_HCI_ID(req->dest_amp_id));
+		hdev = hci_dev_get(req->dest_amp_id);
 		if (!hdev || !test_bit(HCI_UP, &hdev->flags)) {
 			if (hdev)
 				hci_dev_put(hdev);
@@ -4813,6 +4829,7 @@ static inline int l2cap_move_channel_req(struct l2cap_conn *conn,
 			result = L2CAP_MOVE_CHAN_REFUSED_CONTROLLER;
 			goto send_move_response;
 		}
+		hci_dev_put(hdev);
 	}
 
 	if (((pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&

@@ -660,9 +660,11 @@ void smd_channel_reset(uint32_t restart_pid)
 	if (smsm_info.state) {
 		writel_relaxed(0, SMSM_STATE_ADDR(restart_pid));
 
-		/* clear apps SMSM to restart SMSM init handshake */
-		if (restart_pid == SMSM_MODEM)
-			writel_relaxed(0, SMSM_STATE_ADDR(SMSM_APPS));
+		/* restart SMSM init handshake */
+		if (restart_pid == SMSM_MODEM) {
+			smsm_change_state(SMSM_APPS_STATE,
+					SMSM_INIT | SMSM_SMD_LOOPBACK, 0);
+		}
 
 		/* notify SMSM processors */
 		smsm_irq_handler(0, 0);
@@ -2541,8 +2543,10 @@ static int restart_notifier_cb(struct notifier_block *this,
 				  void *data);
 
 static struct restart_notifier_block restart_notifiers[] = {
-	{SMSM_MODEM, "modem", .nb.notifier_call = restart_notifier_cb},
-	{SMSM_Q6, "lpass", .nb.notifier_call = restart_notifier_cb},
+	{SMD_MODEM, "modem", .nb.notifier_call = restart_notifier_cb},
+	{SMD_Q6, "lpass", .nb.notifier_call = restart_notifier_cb},
+	{SMD_WCNSS, "riva", .nb.notifier_call = restart_notifier_cb},
+	{SMD_DSPS, "dsps", .nb.notifier_call = restart_notifier_cb},
 };
 
 static int restart_notifier_cb(struct notifier_block *this,

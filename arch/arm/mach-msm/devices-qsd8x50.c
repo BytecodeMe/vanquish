@@ -32,7 +32,6 @@
 #include <asm/mach/mmc.h>
 #include <mach/msm_hsusb.h>
 #include <mach/usbdiag.h>
-#include <mach/usb_gadget_fserial.h>
 #include <mach/rpc_hsusb.h>
 
 static struct resource resources_uart1[] = {
@@ -911,26 +910,17 @@ static struct resource kgsl_3d0_resources[] = {
 };
 
 static struct kgsl_device_platform_data kgsl_3d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 0,
-				.bus_freq = 128000000,
-			},
-		},
-		.init_level = 0,
-		.num_levels = 1,
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/5,
-	},
-	.clk = {
-		.name = {
-			.clk = "core_clk",
+	.pwrlevel = {
+		{
+			.gpu_freq = 0,
+			.bus_freq = 128000000,
 		},
 	},
-	.imem_clk_name = {
-		.clk = "mem_clk",
-	},
+	.init_level = 0,
+	.num_levels = 1,
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/5,
+	.clk_map = KGSL_CLK_CORE | KGSL_CLK_MEM,
 };
 
 struct platform_device msm_kgsl_3d0 = {

@@ -2039,13 +2039,14 @@ again:
 	 *    Read HDMI_I2C_DATA with the following fields set
 	 *    RW = 0x1 (read)
 	 *    DATA = BCAPS (this is field where data is pulled from)
-	 *    INDEX = 0x3 (where the data has been placed in buffer by hardware)
+	 *    INDEX = 0x5 (where the data has been placed in buffer by hardware)
 	 *    INDEX_WRITE = 0x1 (explicitly define offset) */
 	/* Write this data to DDC buffer */
-	HDMI_OUTP_ND(0x0238, 0x1 | (3 << 16) | (1 << 31));
+	HDMI_OUTP_ND(0x0238, 0x1 | (5 << 16) | (1 << 31));
 
 	/* Discard first byte */
 	HDMI_INP_ND(0x0238);
+
 	for (ndx = 0; ndx < data_len; ++ndx) {
 		reg_val = HDMI_INP_ND(0x0238);
 		data_buf[ndx] = (uint8) ((reg_val & 0x0000FF00) >> 8);
@@ -2494,7 +2495,10 @@ static int hdcp_authentication_part1(void)
 			goto error;
 		}
 
-		/* Short-term work-around for an HDCP lockup issue */
+		/*
+		 * A small delay is needed here to avoid device crash observed
+		 * during reauthentication in MSM8960
+		 */
 		msleep(20);
 
 		/* 0x0168 HDCP_RCVPORT_DATA12
@@ -2856,7 +2860,30 @@ static int hdcp_authentication_part2(void)
 	for (i = 0; i < ksv_bytes - 1; i++) {
 		/* Write KSV byte and do not set DONE bit[0] */
 		HDMI_OUTP_ND(0x0244, kvs_fifo[i] << 16);
+
+		/* Once 64 bytes have been written, we need to poll for
+		 * HDCP_SHA_BLOCK_DONE before writing any further
+		 */
+		if (i && !((i+1)%64)) {
+			timeout_count = 100;
+			while (!(HDMI_INP_ND(0x0240) & 0x1)
+					&& (--timeout_count)) {
+				DEV_DBG("HDCP Auth Part II: Waiting for the "
+					"computation of the current 64 byte to "
+					"complete. HDCP_SHA_STATUS=%08x. "
+					"timeout_count=%d\n",
+					 HDMI_INP_ND(0x0240), timeout_count);
+				msleep(20);
+			}
+			if (!timeout_count) {
+				ret = -ETIMEDOUT;
+				DEV_ERR("%s(%d): timedout", __func__, __LINE__);
+				goto error;
+			}
+		}
+
 	}
+
 	/* Write l to DONE bit[0] */
 	HDMI_OUTP_ND(0x0244, (kvs_fifo[ksv_bytes - 1] << 16) | 0x1);
 
@@ -2864,8 +2891,9 @@ static int hdcp_authentication_part2(void)
 	[4] COMP_DONE */
 	/* Now wait for HDCP_SHA_COMP_DONE */
 	timeout_count = 100;
-	while ((0x10 != (HDMI_INP_ND(0x0240) & 0x10)) && timeout_count--)
+	while ((0x10 != (HDMI_INP_ND(0x0240) & 0xFFFFFF10)) && --timeout_count)
 		msleep(20);
+
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
 		DEV_ERR("%s(%d): timedout", __func__, __LINE__);
@@ -2876,8 +2904,10 @@ static int hdcp_authentication_part2(void)
 	[20] V_MATCHES */
 	timeout_count = 100;
 	while (((HDMI_INP_ND(0x011C) & (1 << 20)) != (1 << 20))
-	    && timeout_count--)
+	    && --timeout_count) {
 		msleep(20);
+	}
+
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
 		DEV_ERR("%s(%d): timedout", __func__, __LINE__);
@@ -3530,7 +3560,11 @@ EXPORT_SYMBOL(hdmi_msm_audio_get_sample_rate);
 void hdmi_msm_audio_sample_rate_reset(int rate)
 {
 	msm_hdmi_sample_rate = rate;
-	hdcp_deauthenticate();
+
+	if (hdmi_msm_has_hdcp())
+		hdcp_deauthenticate();
+	else
+		hdmi_msm_turn_on();
 }
 EXPORT_SYMBOL(hdmi_msm_audio_sample_rate_reset);
 

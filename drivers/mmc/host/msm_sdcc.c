@@ -43,7 +43,6 @@
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
-#include <linux/mmc/mmc.h>
 
 #include <asm/cacheflush.h>
 #include <asm/div64.h>
@@ -69,8 +68,6 @@
 #define SPS_SDCC_CONSUMER_PIPE_INDEX	2
 #define SPS_CONS_PERIPHERAL		0
 #define SPS_PROD_PERIPHERAL		1
-/* 16 KB */
-#define SPS_MAX_DESC_SIZE		(16 * 1024)
 
 #if defined(CONFIG_DEBUG_FS)
 static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
@@ -79,6 +76,7 @@ static struct dentry *debugfs_file;
 static int  msmsdcc_dbg_init(void);
 #endif
 
+static u64 dma_mask = DMA_BIT_MASK(32);
 static unsigned int msmsdcc_pwrsave = 1;
 
 static struct mmc_command dummy52cmd;
@@ -135,6 +133,42 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd,
 		      u32 c);
 static inline void msmsdcc_delay(struct msmsdcc_host *host);
 
+static inline unsigned short msmsdcc_get_nr_sg(struct msmsdcc_host *host)
+{
+	unsigned short ret = NR_SG;
+
+	if (host->is_sps_mode) {
+		if (NR_SG > MAX_NR_SG_SPS)
+			ret = MAX_NR_SG_SPS;
+	} else { /* DMA or PIO mode */
+		if (NR_SG > MAX_NR_SG_DMA_PIO)
+			ret = MAX_NR_SG_DMA_PIO;
+	}
+
+	return ret;
+}
+
+static inline unsigned int msmsdcc_get_max_seg_size(struct msmsdcc_host *host)
+{
+	unsigned int max_seg_size;
+
+	/*
+	 * SPS BAM has limitation of max. number of descriptors.
+	 * max. # of descriptors = SPS_MAX_DESCS
+	 * each descriptor can point to SPS_MAX_DESC_SIZE (16KB)
+	 * So (nr_sg * max_seg_size) should be limited to the
+	 * max. size that all of the descriptors can point to.
+	 * i.e., (nr_sg * max_seg_size) = (SPS_MAX_DESCS * SPS_MAX_DESC_SIZE).
+	 */
+	if (host->is_sps_mode) {
+		max_seg_size = (SPS_MAX_DESCS * SPS_MAX_DESC_SIZE) /
+			msmsdcc_get_nr_sg(host);
+	} else { /* DMA or PIO mode */
+		max_seg_size = MMC_MAX_REQ_SIZE;
+	}
+
+	return max_seg_size;
+}
 
 #ifdef CONFIG_MMC_MSM_SPS_SUPPORT
 static int msmsdcc_sps_reset_ep(struct msmsdcc_host *host,
@@ -718,8 +752,9 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	dmov_box *box;
 	uint32_t rows;
 	unsigned int n;
-	int i;
+	int i, err = 0, box_cmd_cnt = 0;
 	struct scatterlist *sg = data->sg;
+	unsigned int len, offset;
 
 	if ((host->dma.channel == -1) || (host->dma.crci == -1))
 		return -ENOENT;
@@ -729,7 +764,8 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	host->dma.sg = data->sg;
 	host->dma.num_ents = data->sg_len;
 
-	BUG_ON(host->dma.num_ents > NR_SG); /* Prevent memory corruption */
+	/* Prevent memory corruption */
+	BUG_ON(host->dma.num_ents > msmsdcc_get_nr_sg(host));
 
 	nc = host->dma.nc;
 
@@ -738,59 +774,8 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	else
 		host->dma.dir = DMA_TO_DEVICE;
 
-	/* host->curr.user_pages = (data->flags & MMC_DATA_USERPAGE); */
-	host->curr.user_pages = 0;
-	box = &nc->cmd[0];
-	for (i = 0; i < host->dma.num_ents; i++) {
-		box->cmd = CMD_MODE_BOX;
-
-		/* Initialize sg dma address */
-		sg->dma_address = pfn_to_dma(mmc_dev(host->mmc),
-					      page_to_pfn(sg_page(sg)))
-					      + sg->offset;
-
-		if (i == (host->dma.num_ents - 1))
-			box->cmd |= CMD_LC;
-		rows = (sg_dma_len(sg) % MCI_FIFOSIZE) ?
-			(sg_dma_len(sg) / MCI_FIFOSIZE) + 1 :
-			(sg_dma_len(sg) / MCI_FIFOSIZE) ;
-
-		if (data->flags & MMC_DATA_READ) {
-			box->src_row_addr = msmsdcc_fifo_addr(host);
-			box->dst_row_addr = sg_dma_address(sg);
-
-			box->src_dst_len = (MCI_FIFOSIZE << 16) |
-					   (MCI_FIFOSIZE);
-			box->row_offset = MCI_FIFOSIZE;
-
-			box->num_rows = rows * ((1 << 16) + 1);
-			box->cmd |= CMD_SRC_CRCI(host->dma.crci);
-		} else {
-			box->src_row_addr = sg_dma_address(sg);
-			box->dst_row_addr = msmsdcc_fifo_addr(host);
-
-			box->src_dst_len = (MCI_FIFOSIZE << 16) |
-					   (MCI_FIFOSIZE);
-			box->row_offset = (MCI_FIFOSIZE << 16);
-
-			box->num_rows = rows * ((1 << 16) + 1);
-			box->cmd |= CMD_DST_CRCI(host->dma.crci);
-		}
-		box++;
-		sg++;
-	}
-
-	/* location of command block must be 64 bit aligned */
-	BUG_ON(host->dma.cmd_busaddr & 0x07);
-
-	nc->cmdptr = (host->dma.cmd_busaddr >> 3) | CMD_PTR_LP;
-	host->dma.hdr.cmdptr = DMOV_CMD_PTR_LIST |
-			       DMOV_CMD_ADDR(host->dma.cmdptr_busaddr);
-	host->dma.hdr.complete_func = msmsdcc_dma_complete_func;
-
 	n = dma_map_sg(mmc_dev(host->mmc), host->dma.sg,
 			host->dma.num_ents, host->dma.dir);
-	/* dsb inside dma_map_sg will write nc out to mem as well */
 
 	if (n != host->dma.num_ents) {
 		pr_err("%s: Unable to map in all sg elements\n",
@@ -800,7 +785,79 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 		return -ENOMEM;
 	}
 
-	return 0;
+	/* host->curr.user_pages = (data->flags & MMC_DATA_USERPAGE); */
+	host->curr.user_pages = 0;
+	box = &nc->cmd[0];
+	for (i = 0; i < host->dma.num_ents; i++) {
+		len = sg_dma_len(sg);
+		offset = 0;
+
+		do {
+			/* Check if we can do DMA */
+			if (!len || (box_cmd_cnt >= MMC_MAX_DMA_CMDS)) {
+				err = -ENOTSUPP;
+				goto unmap;
+			}
+
+			box->cmd = CMD_MODE_BOX;
+
+			if (len >= MMC_MAX_DMA_BOX_LENGTH) {
+				len = MMC_MAX_DMA_BOX_LENGTH;
+				len -= len % data->blksz;
+			}
+			rows = (len % MCI_FIFOSIZE) ?
+				(len / MCI_FIFOSIZE) + 1 :
+				(len / MCI_FIFOSIZE);
+
+			if (data->flags & MMC_DATA_READ) {
+				box->src_row_addr = msmsdcc_fifo_addr(host);
+				box->dst_row_addr = sg_dma_address(sg) + offset;
+				box->src_dst_len = (MCI_FIFOSIZE << 16) |
+						(MCI_FIFOSIZE);
+				box->row_offset = MCI_FIFOSIZE;
+				box->num_rows = rows * ((1 << 16) + 1);
+				box->cmd |= CMD_SRC_CRCI(host->dma.crci);
+			} else {
+				box->src_row_addr = sg_dma_address(sg) + offset;
+				box->dst_row_addr = msmsdcc_fifo_addr(host);
+				box->src_dst_len = (MCI_FIFOSIZE << 16) |
+						(MCI_FIFOSIZE);
+				box->row_offset = (MCI_FIFOSIZE << 16);
+				box->num_rows = rows * ((1 << 16) + 1);
+				box->cmd |= CMD_DST_CRCI(host->dma.crci);
+			}
+
+			offset += len;
+			len = sg_dma_len(sg) - offset;
+			box++;
+			box_cmd_cnt++;
+		} while (len);
+		sg++;
+	}
+	/* Mark last command */
+	box--;
+	box->cmd |= CMD_LC;
+
+	/* location of command block must be 64 bit aligned */
+	BUG_ON(host->dma.cmd_busaddr & 0x07);
+
+	nc->cmdptr = (host->dma.cmd_busaddr >> 3) | CMD_PTR_LP;
+	host->dma.hdr.cmdptr = DMOV_CMD_PTR_LIST |
+			       DMOV_CMD_ADDR(host->dma.cmdptr_busaddr);
+	host->dma.hdr.complete_func = msmsdcc_dma_complete_func;
+
+	/* Flush all data to memory before starting dma */
+	mb();
+
+unmap:
+	if (err) {
+		dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg,
+				host->dma.num_ents, host->dma.dir);
+		pr_err("%s: cannot do DMA, fall back to PIO mode err=%d\n",
+				mmc_hostname(host->mmc), err);
+	}
+
+	return err;
 }
 
 #ifdef CONFIG_MMC_MSM_SPS_SUPPORT
@@ -826,7 +883,8 @@ static int msmsdcc_sps_start_xfer(struct msmsdcc_host *host,
 	struct scatterlist *sg = data->sg;
 	struct sps_pipe *sps_pipe_handle;
 
-	BUG_ON(data->sg_len > NR_SG); /* Prevent memory corruption */
+	/* Prevent memory corruption */
+	BUG_ON(data->sg_len > msmsdcc_get_nr_sg(host));
 
 	host->sps.sg = data->sg;
 	host->sps.num_ents = data->sg_len;
@@ -921,9 +979,11 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 	if (/*interrupt*/0)
 		*c |= MCI_CPSM_INTERRUPT;
 
-	if ((((cmd->opcode == 17) || (cmd->opcode == 18))  ||
-	     ((cmd->opcode == 24) || (cmd->opcode == 25))) ||
-	      (cmd->opcode == 53))
+	if (cmd->opcode == MMC_READ_SINGLE_BLOCK ||
+		cmd->opcode == MMC_READ_MULTIPLE_BLOCK ||
+		cmd->opcode == MMC_WRITE_BLOCK ||
+		cmd->opcode == MMC_WRITE_MULTIPLE_BLOCK ||
+		cmd->opcode == SD_IO_RW_EXTENDED)
 		*c |= MCI_CSPM_DATCMD;
 
 	/* Check if AUTO CMD19 is required or not? */
@@ -934,10 +994,12 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 		 * For close ended block read operation (with CMD23),
 		 * AUTO_CMD19 bit should be set while sending CMD23.
 		 */
-		if ((cmd->opcode == 23 && (host->curr.mrq->cmd->opcode == 17 ||
-			host->curr.mrq->cmd->opcode == 18)) ||
+		if ((cmd->opcode == MMC_SET_BLOCK_COUNT &&
+			host->curr.mrq->cmd->opcode ==
+				MMC_READ_MULTIPLE_BLOCK) ||
 			(!host->curr.mrq->sbc &&
-			(cmd->opcode == 17 || cmd->opcode == 18))) {
+			(cmd->opcode == MMC_READ_SINGLE_BLOCK ||
+			cmd->opcode == MMC_READ_MULTIPLE_BLOCK))) {
 			msmsdcc_enable_cdr_cm_sdc4_dll(host);
 			*c |= MCI_CSPM_AUTO_CMD19;
 		}
@@ -1468,7 +1530,7 @@ msmsdcc_irq(int irq, void *dev_id)
 			msmsdcc_do_cmdirq(host, status);
 		}
 
-		if (data) {
+		if (host->curr.data) {
 			/* Check for data errors */
 			if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|
 				      MCI_TXUNDERRUN|MCI_RXOVERRUN)) {
@@ -3035,17 +3097,10 @@ static int msmsdcc_sps_init_ep_conn(struct msmsdcc_host *host,
 	 * transfer. It's ignored for BAM-to-System mode transfer.
 	 */
 	sps_config->event_thresh = 0x10;
-	/*
-	 * Max. no of scatter/gather buffers that can
-	 * be passed by block layer = 32 (NR_SG).
-	 * Each BAM descritor needs 64 bits (8 bytes).
-	 * One BAM descriptor is required per buffer transfer.
-	 * So we would require total 256 (32 * 8) bytes of descriptor FIFO.
-	 * But due to HW limitation we need to allocate atleast one extra
-	 * descriptor memory (256 bytes + 8 bytes). But in order to be
-	 * in power of 2, we are allocating 512 bytes of memory.
-	 */
-	sps_config->desc.size = 512;
+
+	/* Allocate maximum descriptor fifo size */
+	sps_config->desc.size = SPS_MAX_DESC_FIFO_SIZE -
+		(SPS_MAX_DESC_FIFO_SIZE % SPS_MAX_DESC_LENGTH);
 	sps_config->desc.base = dma_alloc_coherent(mmc_dev(host->mmc),
 						sps_config->desc.size,
 						&sps_config->desc.phys_base,
@@ -3885,6 +3940,7 @@ msmsdcc_probe(struct platform_device *pdev)
 		if (ret)
 			goto sps_exit;
 	}
+	mmc_dev(mmc)->dma_mask = &dma_mask;
 
 	/*
 	 * Setup MMC host structure
@@ -3928,12 +3984,12 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (plat->is_sdio_al_client)
 		mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
 
-	mmc->max_segs = NR_SG;
-	mmc->max_blk_size = 4096;	/* MCI_DATA_CTL BLOCKSIZE up to 4096 */
-	mmc->max_blk_count = 65535;
+	mmc->max_segs = msmsdcc_get_nr_sg(host);
+	mmc->max_blk_size = MMC_MAX_BLK_SIZE;
+	mmc->max_blk_count = MMC_MAX_BLK_CNT;
 
-	mmc->max_req_size = 33554432;	/* MCI_DATA_LENGTH is 25 bits */
-	mmc->max_seg_size = mmc->max_req_size;
+	mmc->max_req_size = MMC_MAX_REQ_SIZE;
+	mmc->max_seg_size = msmsdcc_get_max_seg_size(host);
 
 	writel_relaxed(0, host->base + MMCIMASK0);
 	writel_relaxed(MCI_CLEAR_STATIC_MASK, host->base + MMCICLEAR);

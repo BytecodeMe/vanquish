@@ -796,14 +796,9 @@ void __init sanity_check_meminfo(void)
 	int i, j, highmem = 0;
 
 #if (defined CONFIG_HIGHMEM) && (defined CONFIG_FIX_MOVABLE_ZONE)
-
-/* For now, we must ensure that a small highmem zone exists
- * after most of it is transformed into the movable zone.
- */
-#define MIN_HIGHMEM_SIZE (5 * SECTION_SIZE)
 	void *v_movable_start;
 
-	v_movable_start = __va(movable_reserved_start) - MIN_HIGHMEM_SIZE;
+	v_movable_start = __va(movable_reserved_start);
 
 	if (vmalloc_min > v_movable_start)
 		vmalloc_min = v_movable_start;
@@ -1128,6 +1123,20 @@ void mem_text_address_restore(void)
 	}
 }
 #endif
+
+void mem_text_write_kernel_word(unsigned long *addr, unsigned long word)
+{
+	unsigned long flags;
+
+	mem_text_writeable_spinlock(&flags);
+	mem_text_address_writeable((unsigned long)addr);
+	*addr = word;
+	flush_icache_range((unsigned long)addr,
+			   ((unsigned long)addr + sizeof(long)));
+	mem_text_address_restore();
+	mem_text_writeable_spinunlock(&flags);
+}
+EXPORT_SYMBOL(mem_text_write_kernel_word);
 
 static void __init map_lowmem(void)
 {
