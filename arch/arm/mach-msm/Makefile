@@ -234,7 +234,7 @@ obj-$(CONFIG_MACH_MSM8960_FLUID) += board-msm8960-all.o devices-8960.o board-msm
 obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-msm8960-common.o \
 	board-msm8960-mmi.o \
-	board-msm8960-regulator.o \
+	board-mmi-msm8960-regulator.o \
 	board-mmi-sensors.o \
 	board-mmi-keypad.o \
 	pm8921.o \
