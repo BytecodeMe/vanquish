@@ -1810,6 +1810,10 @@ static struct led_info msm8960_mmi_button_backlight = {
 	.default_trigger = "none",
 };
 
+static struct led_info msm8960_shift_key_backlight = {
+	.name = "shift-key-light",
+	.default_trigger = "none",
+};
 
 #define EXPECTED_MBM_PROTOCOL_VERSION 1
 static uint32_t mbm_protocol_version;
@@ -1853,9 +1857,6 @@ static void __init msm8960_mmi_init(void)
 	msm8960_gfx_init();
 	msm8960_spm_init();
 	msm8960_init_buses();
-
-	/* Setup correct button backlight LED name */
-	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
 #ifdef CONFIG_TOUCHSCREEN_CYTTSP3
 	if (msm8960_i2c_devices[TOUCHSCREEN_CYTTSP3].enabled)
@@ -2019,6 +2020,9 @@ static __init void teufel_init(void)
 #endif
 	ENABLE_I2C_DEVICE(CAMERA_FLASH_MSM);
 
+	/* Setup correct button backlight LED name */
+	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
+
 	msm8960_mmi_init();
 }
 
@@ -2053,6 +2057,9 @@ static __init void qinara_init(void)
 #ifdef CONFIG_PN544
 	ENABLE_I2C_DEVICE(NFC_PN544);
 #endif
+
+	/* Setup correct button backlight LED name */
+	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
 	msm8960_mmi_init();
 }
@@ -2106,6 +2113,9 @@ static __init void volta_init(void)
 	ENABLE_I2C_DEVICE(NFC_PN544);
 #endif
 
+	/* Setup correct button backlight LED name */
+	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
+
 	msm8960_mmi_init();
 }
 
@@ -2128,6 +2138,9 @@ static __init void becker_init(void)
 #ifdef CONFIG_PN544
 	ENABLE_I2C_DEVICE(NFC_PN544);
 #endif
+
+	/* Setup correct button backlight LED name */
+	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
 	msm8960_mmi_init();
 }
@@ -2162,6 +2175,9 @@ static __init void asanti_init(void)
 	strncpy((char *)&mp_lm3532_pdata.ctrl_b_name, "keyboard-backlight",
 		sizeof(mp_lm3532_pdata.ctrl_b_name)-1);
 	mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE;
+
+	/* Setup correct shift key light LED name */
+	pm8xxx_set_led_info(1, &msm8960_shift_key_backlight);
 
 	msm8960_mmi_init();
 }
