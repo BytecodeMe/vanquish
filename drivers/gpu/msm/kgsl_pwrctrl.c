@@ -339,7 +339,11 @@ void kgsl_pwrctrl_clk(struct kgsl_device *device, int state)
 				"clocks off, device %d\n", device->id);
 			for (i = KGSL_MAX_CLKS - 1; i > 0; i--)
 				if (pwr->grp_clks[i])
-					clk_disable(pwr->grp_clks[i]);
+					if (device->requested_state !=
+						KGSL_STATE_NAP ||
+						clks[i].map != KGSL_CLK_CORE ||
+						device->id != KGSL_DEVICE_3D0)
+							clk_disable(pwr->grp_clks[i]);
 			if ((pwr->pwrlevels[0].gpu_freq > 0) &&
 				(device->requested_state != KGSL_STATE_NAP))
 				clk_set_rate(pwr->grp_clks[0],
@@ -363,7 +367,10 @@ void kgsl_pwrctrl_clk(struct kgsl_device *device, int state)
 			   this is to let GPU interrupt to come */
 			for (i = KGSL_MAX_CLKS - 1; i > 0; i--)
 				if (pwr->grp_clks[i])
-					clk_enable(pwr->grp_clks[i]);
+					if (device->state != KGSL_STATE_NAP ||
+						clks[i].map != KGSL_CLK_CORE ||
+						device->id != KGSL_DEVICE_3D0)
+							clk_enable(pwr->grp_clks[i]);
 			kgsl_pwrctrl_busy_time(device, false);
 		}
 	}
