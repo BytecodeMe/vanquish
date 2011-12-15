@@ -1336,6 +1336,12 @@ static CLK_GSBI_UART(gsbi10_uart, 10, CLK_HALT_CFPB_STATEB_REG,  2);
 static CLK_GSBI_UART(gsbi11_uart, 11, CLK_HALT_CFPB_STATEC_REG, 17);
 static CLK_GSBI_UART(gsbi12_uart, 12, CLK_HALT_CFPB_STATEC_REG, 13);
 
+int __init msm_gsbi12_uart_clk_ptr(struct clk **ptr)
+{
+	*ptr = &gsbi12_uart_clk.c;
+	return 0;
+}
+
 #define CLK_GSBI_QUP(i, n, h_r, h_b) \
 	struct rcg_clk i##_clk = { \
 		.b = { \
@@ -1394,6 +1400,12 @@ static CLK_GSBI_QUP(gsbi9_qup,   9, CLK_HALT_CFPB_STATEB_REG,  4);
 static CLK_GSBI_QUP(gsbi10_qup, 10, CLK_HALT_CFPB_STATEB_REG,  0);
 static CLK_GSBI_QUP(gsbi11_qup, 11, CLK_HALT_CFPB_STATEC_REG, 15);
 static CLK_GSBI_QUP(gsbi12_qup, 12, CLK_HALT_CFPB_STATEC_REG, 11);
+
+int __init msm_gsbi12_qup_clk_ptr(struct clk **ptr)
+{
+	*ptr = &gsbi12_qup_clk.c;
+	return 0;
+}
 
 #define F_QDSS(f, s, d) \
 	{ \
@@ -2434,6 +2446,12 @@ static struct branch_clk gsbi12_p_clk = {
 		CLK_INIT(gsbi12_p_clk.c),
 	},
 };
+
+int __init msm_gsbi12_p_clk_ptr(struct clk **ptr)
+{
+	*ptr = &gsbi12_p_clk.c;
+	return 0;
+}
 
 static struct branch_clk qdss_p_clk = {
 	.b = {
@@ -5339,7 +5357,7 @@ static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
 	CLK_LOOKUP("core_clk",		gsbi9_uart_clk.c,	NULL),
 	CLK_LOOKUP("core_clk",		gsbi10_uart_clk.c,	NULL),
 	CLK_LOOKUP("core_clk",		gsbi11_uart_clk.c,	NULL),
-	CLK_LOOKUP("core_clk",		gsbi12_uart_clk.c, "msm_serial_hs.1"),
+	CLK_LOOKUP("core_clk",		gsbi12_uart_clk.c,      NULL),
 	CLK_LOOKUP("core_clk",		gsbi1_qup_clk.c,	"spi_qsd.0"),
 	CLK_LOOKUP("core_clk",		gsbi2_qup_clk.c,	NULL),
 	CLK_LOOKUP("core_clk",		gsbi3_qup_clk.c,	"qup_i2c.3"),
@@ -5387,7 +5405,7 @@ static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
 	CLK_LOOKUP("iface_clk",		gsbi9_p_clk.c,		NULL),
 	CLK_LOOKUP("iface_clk",		gsbi10_p_clk.c,		"qup_i2c.10"),
 	CLK_LOOKUP("iface_clk",		gsbi11_p_clk.c,		NULL),
-	CLK_LOOKUP("iface_clk",		gsbi12_p_clk.c,		"qup_i2c.12"),
+	CLK_LOOKUP("iface_clk",		gsbi12_p_clk.c,         "qup_i2c.12"),
 	CLK_LOOKUP("iface_clk",		tsif_p_clk.c,		NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs1_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs2_p_clk.c,	NULL),
@@ -5563,6 +5581,13 @@ static struct clk_lookup msm_clocks_8960_v2[] __initdata = {
 	CLK_LOOKUP("usb_hsic_system_clk", usb_hsic_system_clk.c,	NULL),
 	CLK_LOOKUP("usb_hsic_p_clk",	usb_hsic_p_clk.c,	NULL),
 };
+
+int __init msm_clocks_8960_v1_info(struct clk_lookup **ptr, int *num_lookups)
+{
+	*ptr = msm_clocks_8960_v1;
+	*num_lookups = ARRAY_SIZE(msm_clocks_8960_v1);
+	return 0;
+}
 
 /* Add v2 clocks dynamically at runtime */
 static struct clk_lookup msm_clocks_8960[ARRAY_SIZE(msm_clocks_8960_v1) +
