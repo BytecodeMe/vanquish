@@ -61,6 +61,15 @@
 #define BAHAMA_SLAVE_ID_QMEMBIST_ADDR   0x7B
 #define BAHAMA_SLAVE_ID_FM_REG 0x02
 #define FM_GPIO	83
+#define BT_PCM_BCLK_MODE  0x88
+#define BT_PCM_DIN_MODE   0x89
+#define BT_PCM_DOUT_MODE  0x8A
+#define BT_PCM_SYNC_MODE  0x8B
+#define FM_I2S_SD_MODE    0x8E
+#define FM_I2S_WS_MODE    0x8F
+#define FM_I2S_SCK_MODE   0x90
+#define I2C_PIN_CTL       0x15
+#define I2C_NORMAL        0x40
 
 enum {
 	GPIO_EXPANDER_IRQ_BASE	= NR_MSM_IRQS + NR_GPIO_IRQS,
@@ -125,6 +134,57 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 
 	/* FM Platform power and shutdown routines */
 #define FPGA_MSM_CNTRL_REG2 0x90008010
+static int switch_pcm_i2s_reg_mode(int mode)
+{
+	unsigned char reg = 0;
+	int rc = -1;
+	unsigned char set = I2C_PIN_CTL; /*SET PIN CTL mode*/
+	unsigned char unset = I2C_NORMAL; /* UNSET PIN CTL MODE*/
+	struct marimba config = { .mod_id =  SLAVE_ID_BAHAMA};
+
+	if (mode == 0) {
+		/* as we need to switch path to FM we need to move
+		 BT AUX PCM lines to PIN CONTROL mode then move
+		 FM to normal mode.*/
+		for (reg = BT_PCM_BCLK_MODE; reg <= BT_PCM_SYNC_MODE; reg++) {
+			rc = marimba_write(&config, reg, &set, 1);
+			if (rc < 0) {
+				pr_err("pcm pinctl failed = %d", rc);
+				goto err_all;
+			}
+		}
+		for (reg = FM_I2S_SD_MODE; reg <= FM_I2S_SCK_MODE; reg++) {
+			rc = marimba_write(&config, reg, &unset, 1);
+			if (rc < 0) {
+				pr_err("i2s normal failed = %d", rc);
+				goto err_all;
+			}
+		}
+	} else {
+		/* as we need to switch path to AUXPCM we need to move
+		 FM I2S lines to PIN CONTROL mode then move
+		 BT AUX_PCM to normal mode.*/
+		for (reg = FM_I2S_SD_MODE; reg <= FM_I2S_SCK_MODE; reg++) {
+			rc = marimba_write(&config, reg, &set, 1);
+			if (rc < 0) {
+				pr_err("i2s pinctl failed = %d", rc);
+				goto err_all;
+			}
+		}
+		for (reg = BT_PCM_BCLK_MODE; reg <= BT_PCM_SYNC_MODE; reg++) {
+			rc = marimba_write(&config, reg, &unset, 1);
+			if (rc < 0) {
+				pr_err("pcm normal failed = %d", rc);
+				goto err_all;
+			}
+		}
+	}
+
+	return 0;
+
+err_all:
+	return rc;
+}
 
 static void config_pcm_i2s_mode(int mode)
 {
@@ -220,6 +280,12 @@ static int config_i2s(int mode)
 		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 			config_pcm_i2s_mode(0);
 		pr_err("%s mode = FM_I2S_ON", __func__);
+
+		rc = switch_pcm_i2s_reg_mode(0);
+		if (rc) {
+			pr_err("switch mode failed");
+			return rc;
+		}
 		for (pin = 0; pin < ARRAY_SIZE(fm_i2s_config_power_on);
 			pin++) {
 				rc = gpio_tlmm_config(
@@ -231,6 +297,11 @@ static int config_i2s(int mode)
 			}
 	} else if (mode == FM_I2S_OFF) {
 		pr_err("%s mode = FM_I2S_OFF", __func__);
+		rc = switch_pcm_i2s_reg_mode(1);
+		if (rc) {
+			pr_err("switch mode failed");
+			return rc;
+		}
 		for (pin = 0; pin < ARRAY_SIZE(fm_i2s_config_power_off);
 			pin++) {
 				rc = gpio_tlmm_config(
@@ -251,6 +322,11 @@ static int config_pcm(int mode)
 		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 			config_pcm_i2s_mode(1);
 		pr_err("%s mode =BT_PCM_ON", __func__);
+		rc = switch_pcm_i2s_reg_mode(1);
+		if (rc) {
+			pr_err("switch mode failed");
+			return rc;
+		}
 		for (pin = 0; pin < ARRAY_SIZE(bt_config_pcm_on);
 			pin++) {
 				rc = gpio_tlmm_config(bt_config_pcm_on[pin],
@@ -260,6 +336,11 @@ static int config_pcm(int mode)
 			}
 	} else if (mode == BT_PCM_OFF) {
 		pr_err("%s mode =BT_PCM_OFF", __func__);
+		rc = switch_pcm_i2s_reg_mode(0);
+		if (rc) {
+			pr_err("switch mode failed");
+			return rc;
+		}
 		for (pin = 0; pin < ARRAY_SIZE(bt_config_pcm_off);
 			pin++) {
 				rc = gpio_tlmm_config(bt_config_pcm_off[pin],
@@ -1069,10 +1150,10 @@ static struct msm_i2c_platform_data msm_gsbi1_qup_i2c_pdata = {
 };
 
 #ifdef CONFIG_ARCH_MSM7X27A
-#define MSM_PMEM_MDP_SIZE       0x1900000
-#define MSM7x25A_MSM_PMEM_MDP_SIZE	0x1000000
+#define MSM_PMEM_MDP_SIZE       0x2300000
+#define MSM7x25A_MSM_PMEM_MDP_SIZE       0x1500000
 
-#define MSM_PMEM_ADSP_SIZE      0x2000000
+#define MSM_PMEM_ADSP_SIZE      0x1000000
 #define MSM7x25A_MSM_PMEM_ADSP_SIZE      0xB91000
 
 
@@ -3023,7 +3104,6 @@ static int atmel_ts_platform_exit(struct i2c_client *client)
 	gpio_tlmm_config(GPIO_CFG(ATMEL_TS_GPIO_IRQ, 0,
 				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
 				GPIO_CFG_2MA), GPIO_CFG_DISABLE);
-	regulator_bulk_disable(ARRAY_SIZE(regs_atmel), regs_atmel);
 	regulator_bulk_free(ARRAY_SIZE(regs_atmel), regs_atmel);
 	return 0;
 }

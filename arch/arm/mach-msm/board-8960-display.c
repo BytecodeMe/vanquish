@@ -21,7 +21,7 @@
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include "devices.h"
-#include "board-msm8960.h"
+#include "board-8960.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_PRIM_BUF_SIZE (1376 * 768 * 4 * 3) /* 4 bpp x 3 pages */
@@ -37,7 +37,7 @@
 #define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
-#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
+#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
 /* width x height x 3 bpp x 2 frame buffer */
 #define MSM_FB_WRITEBACK_SIZE (1376 * 768 * 3 * 2)
 #define MSM_FB_WRITEBACK_OFFSET  \
@@ -732,78 +732,7 @@ static struct lcdc_platform_data dtv_pdata = {
 };
 #endif
 
-static struct gpiomux_setting mdp_vsync_suspend_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting mdp_vsync_active_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct msm_gpiomux_config msm8960_mdp_vsync_configs[] __initdata = {
-	{
-		.gpio = MDP_VSYNC_GPIO,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &mdp_vsync_active_cfg,
-			[GPIOMUX_SUSPENDED] = &mdp_vsync_suspend_cfg,
-		},
-	}
-};
-
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-static struct gpiomux_setting hdmi_suspend_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting hdmi_active_1_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting hdmi_active_2_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct msm_gpiomux_config msm8960_hdmi_configs[] __initdata = {
-	{
-		.gpio = 99,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
-			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 100,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
-			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 101,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
-			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 102,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &hdmi_active_2_cfg,
-			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
-		},
-	},
-};
-
 static int hdmi_enable_5v(int on)
 {
 	/* TBD: PM8921 regulator instead of 8901 */
@@ -981,14 +910,6 @@ error:
 
 void __init msm8960_init_fb(void)
 {
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-	msm_gpiomux_install(msm8960_hdmi_configs,
-			ARRAY_SIZE(msm8960_hdmi_configs));
-#endif
-
-	msm_gpiomux_install(msm8960_mdp_vsync_configs,
-			ARRAY_SIZE(msm8960_mdp_vsync_configs));
-
 	platform_device_register(&msm_fb_device);
 
 #ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL

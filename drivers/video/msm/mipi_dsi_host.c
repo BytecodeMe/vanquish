@@ -1202,7 +1202,7 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	if (mfd->panel_info.mipi.no_max_pkt_size) {
 		/* Only support rlen = 4*n */
 		rlen += 3;
-		rlen &= 0x03;
+		rlen &= ~0x03;
 	}
 
 	len = rlen;
@@ -1492,7 +1492,6 @@ irqreturn_t mipi_dsi_isr(int irq, void *ptr)
 
 	if (isr & DSI_INTR_CMD_MDP_DONE) {
 		mipi_dsi_mdp_stat_inc(STAT_DSI_MDP);
-		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 		spin_lock(&dsi_mdp_lock);
 		dsi_mdp_busy = FALSE;
 		spin_unlock(&dsi_mdp_lock);

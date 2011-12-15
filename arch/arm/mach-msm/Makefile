@@ -1,4 +1,7 @@
-obj-y += io.o dma.o memory.o timer.o
+obj-y += io.o dma.o memory.o
+ifndef CONFIG_ARM_ARCH_TIMER
+obj-y += timer.o
+endif
 obj-y += clock.o clock-voter.o clock-dummy.o
 obj-y += modem_notifier.o subsystem_map.o
 obj-$(CONFIG_CPU_FREQ_MSM) += cpufreq.o
@@ -100,7 +103,7 @@ endif
 endif
 endif
 endif
-obj-$(CONFIG_MSM_SDIO_TTY) += sdio_tty.o sdio_tty_ciq.o
+obj-$(CONFIG_MSM_SDIO_TTY) += sdio_tty.o
 obj-$(CONFIG_MSM_SMD_TTY) += smd_tty.o
 obj-$(CONFIG_MSM_SMD_QMI) += smd_qmi.o
 obj-$(CONFIG_MSM_SMD_PKT) += smd_pkt.o
@@ -224,13 +227,16 @@ obj-$(CONFIG_ARCH_MSM8960) += footswitch-8x60.o
 obj-$(CONFIG_ARCH_MSM8960) += acpuclock-8960.o
 obj-$(CONFIG_ARCH_MSM8960) += memory_topology.o
 obj-$(CONFIG_ARCH_MSM8960) += saw-regulator.o rpm-regulator.o rpm-regulator-8960.o
-board-msm8960-all-objs += board-msm8960.o board-msm8960-camera.o board-msm8960-display.o board-msm8960-pmic.o board-msm8960-storage.o
-board-msm8930-all-objs += board-msm8930.o board-msm8930-camera.o board-msm8930-display.o board-msm8930-pmic.o board-msm8930-storage.o
-obj-$(CONFIG_MACH_MSM8960_SIM) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_CDP) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_MTP) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8960_FLUID) += board-msm8960-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_ARCH_MSM8960) += devices-8960.o
+obj-$(CONFIG_ARCH_APQ8064) += devices-8960.o devices-8064.o
+board-8960-all-objs += board-8960.o board-8960-camera.o board-8960-display.o board-8960-pmic.o board-8960-storage.o board-8960-gpiomux.o
+board-8930-all-objs += board-8930.o board-8930-camera.o board-8930-display.o board-8930-pmic.o board-8930-storage.o board-8930-gpiomux.o
+board-8064-all-objs += board-8064.o board-8064-storage.o
+obj-$(CONFIG_MACH_MSM8960_SIM) += board-8960-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-8960-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_CDP) += board-8960-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_MTP) += board-8960-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8960_FLUID) += board-8960-all.o board-8960-regulator.o
 obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-msm8960-common.o \
 	board-msm8960-mmi.o \
@@ -244,11 +250,12 @@ obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-mmi-vibrator.o \
 	board-mmi-melfas-touch.o \
 	mmi-bms-batterydata.o
-obj-$(CONFIG_MACH_MSM8930_CDP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8930_MTP) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
-obj-$(CONFIG_MACH_MSM8930_FLUID) += board-msm8930-all.o devices-8960.o board-msm8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_CDP) += board-8930-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_MTP) += board-8930-all.o board-8960-regulator.o
+obj-$(CONFIG_MACH_MSM8930_FLUID) += board-8930-all.o board-8960-regulator.o
 obj-$(CONFIG_ARCH_MSM8960) += bms-batterydata.o
-obj-$(CONFIG_ARCH_APQ8064) += board-apq8064.o devices-8064.o board-apq8064-regulator.o
+obj-$(CONFIG_MACH_APQ8064_SIM) += board-8064-all.o board-8064-regulator.o
+obj-$(CONFIG_MACH_APQ8064_RUMI3) += board-8064-all.o board-8064-regulator.o
 obj-$(CONFIG_ARCH_MSM9615) += board-9615.o devices-9615.o board-9615-regulator.o
 obj-$(CONFIG_ARCH_MSM9615) += clock-local.o clock-9615.o acpuclock-9615.o clock-rpm.o
 obj-$(CONFIG_ARCH_MSM9615) += rpm-regulator.o rpm-regulator-9615.o

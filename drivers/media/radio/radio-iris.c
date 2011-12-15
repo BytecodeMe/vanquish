@@ -648,6 +648,15 @@ static int hci_get_fm_recv_conf_req(struct radio_hci_dev *hdev,
 	return radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
+static int hci_get_fm_trans_conf_req(struct radio_hci_dev *hdev,
+	unsigned long param)
+{
+	u16 opcode = 0;
+
+	opcode = hci_opcode_pack(HCI_OGF_FM_TRANS_CTRL_CMD_REQ,
+		HCI_OCF_FM_GET_TRANS_CONF_REQ);
+	return radio_hci_send_cmd(hdev, opcode, 0, NULL);
+}
 static int hci_set_fm_recv_conf_req(struct radio_hci_dev *hdev,
 	unsigned long param)
 {
@@ -1365,19 +1374,6 @@ static int hci_fm_set_cal_req_proc(struct radio_hci_dev *hdev,
 		cal_req);
 }
 
-static int hci_fm_set_cal_req_dc(struct radio_hci_dev *hdev,
-		unsigned long param)
-{
-	u16 opcode = 0;
-	struct hci_fm_set_cal_req_dc *cal_req =
-		(struct hci_fm_set_cal_req_dc *)param;
-
-	opcode = hci_opcode_pack(HCI_OGF_FM_COMMON_CTRL_CMD_REQ,
-		HCI_OCF_FM_SET_CALIBRATION);
-	return radio_hci_send_cmd(hdev, opcode, sizeof(*cal_req),
-		cal_req);
-}
-
 static int hci_fm_do_cal_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
@@ -1474,6 +1470,10 @@ static int hci_cmd(unsigned int cmd, struct radio_hci_dev *hdev)
 			msecs_to_jiffies(RADIO_HCI_TIMEOUT));
 		break;
 
+	case HCI_FM_GET_TX_CONFIG:
+		ret = radio_hci_request(hdev, hci_get_fm_trans_conf_req, arg,
+			msecs_to_jiffies(RADIO_HCI_TIMEOUT));
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -1502,6 +1502,7 @@ static void hci_cc_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 
 	if (status)
 		return;
+
 	radio_hci_req_complete(hdev, status);
 }
 
@@ -1528,6 +1529,19 @@ static void hci_cc_conf_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 		return;
 
 	radio->recv_conf = rsp->recv_conf_rsp;
+	radio_hci_req_complete(hdev, rsp->status);
+}
+
+static void hci_cc_fm_trans_get_conf_rsp(struct radio_hci_dev *hdev,
+		struct sk_buff *skb)
+{
+	struct hci_fm_get_trans_conf_rsp  *rsp = (void *)skb->data;
+	struct iris_device *radio = video_get_drvdata(video_get_dev());
+
+	if (rsp->status)
+		return;
+	memcpy((void *)&radio->trans_conf,  (void*)&rsp->trans_conf_rsp,
+			sizeof(rsp->trans_conf_rsp));
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
@@ -1758,12 +1772,12 @@ static void hci_cc_do_calibration_rsp(struct radio_hci_dev *hdev,
 	if (rsp.mode == PROCS_CALIB_MODE) {
 		memcpy(&rsp.data[0], &skb->data[CALIB_DATA_OFSET],
 				PROCS_CALIB_SIZE);
-	} else if (rsp.mode == DC_CALIB_MODE) {
-		memcpy(&rsp.data[PROCS_CALIB_SIZE],
-			&skb->data[CALIB_DATA_OFSET], DC_CALIB_SIZE);
-		iris_q_evt_data(radio, rsp.data, (PROCS_CALIB_SIZE +
-				DC_CALIB_SIZE), IRIS_BUF_CAL_DATA);
+	iris_q_evt_data(radio, rsp.data, PROCS_CALIB_SIZE,
+					IRIS_BUF_CAL_DATA);
+	} else {
+		return;
 	}
+
 	radio_hci_req_complete(hdev, rsp.status);
 }
 static inline void hci_cmd_complete_event(struct radio_hci_dev *hdev,
@@ -1863,6 +1877,9 @@ static inline void hci_cmd_complete_event(struct radio_hci_dev *hdev,
 		hci_cc_do_calibration_rsp(hdev, skb);
 		break;
 
+	case hci_trans_ctrl_cmd_op_pack(HCI_OCF_FM_GET_TRANS_CONF_REQ):
+		hci_cc_fm_trans_get_conf_rsp(hdev, skb);
+		break;
 	default:
 		FMDERR("%s opcode 0x%x", hdev->name, opcode);
 		break;
@@ -1881,17 +1898,10 @@ static inline void hci_ev_tune_status(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	int i;
-	int len;
-
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
-	struct hci_fm_station_rsp *rsp;
 
-	len = sizeof(struct hci_fm_station_rsp);
-	rsp = (struct hci_fm_station_rsp *)skb_pull(skb, len);
-	if (rsp == NULL)
-		return;
-	memcpy(&radio->fm_st_rsp.station_rsp, rsp, len);
-
+	memcpy(&radio->fm_st_rsp.station_rsp, &skb->data[0],
+				sizeof(struct hci_ev_tune_status));
 	iris_q_event(radio, IRIS_EVT_TUNE_SUCC);
 
 	for (i = 0; i < IRIS_BUF_MAX; i++) {
@@ -2370,13 +2380,6 @@ static int iris_do_calibration(struct iris_device *radio)
 		FMDERR("Do Process calibration failed %x", retval);
 		return retval;
 	}
-	cal_mode = DC_CALIB_MODE;
-	retval = radio_hci_request(radio->fm_hdev, hci_fm_do_cal_req,
-		(unsigned long)cal_mode, RADIO_HCI_TIMEOUT);
-	if (retval < 0) {
-		FMDERR("Do DC calibration failed %x", retval);
-		return retval;
-	}
 	retval = hci_cmd(HCI_FM_DISABLE_RECV_CMD,
 			radio->fm_hdev);
 	if (retval < 0)
@@ -2538,7 +2541,6 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 	struct hci_fm_tx_rt tx_rt;
 	struct hci_fm_def_data_wr_req default_data;
 	struct hci_fm_set_cal_req_proc proc_cal_req;
-	struct hci_fm_set_cal_req_dc dc_cal_req;
 
 	struct iris_device *radio = video_get_drvdata(video_devdata(file));
 	char *data = NULL;
@@ -2594,7 +2596,7 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 	case V4L2_CID_PRIVATE_IRIS_SET_CALIBRATION:
 		data = (ctrl->controls[0]).string;
 		bytes_to_copy = (ctrl->controls[0]).size;
-		if (bytes_to_copy < (PROCS_CALIB_SIZE + DC_CALIB_SIZE)) {
+		if (bytes_to_copy < PROCS_CALIB_SIZE) {
 			FMDERR("data is less than required size");
 			return -EFAULT;
 		}
@@ -2609,18 +2611,7 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 				 RADIO_HCI_TIMEOUT);
 		if (retval < 0) {
 			FMDERR("Set Process calibration failed %d", retval);
-			return retval;
 		}
-		memset(dc_cal_req.data, 0, DC_CALIB_SIZE);
-		if (copy_from_user(&dc_cal_req.data[0], &data[PROCS_CALIB_SIZE],
-				sizeof(dc_cal_req.data)))
-				return -EFAULT;
-		dc_cal_req.mode = DC_CALIB_MODE;
-		retval = radio_hci_request(radio->fm_hdev,
-				hci_fm_set_cal_req_dc,
-				(unsigned long)&dc_cal_req, RADIO_HCI_TIMEOUT);
-		if (retval < 0)
-			FMDERR("Set DC calibration failed %d", retval);
 		break;
 	default:
 		FMDBG("Shouldn't reach here\n");
@@ -2646,6 +2637,8 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 		retval = radio_hci_request(radio->fm_hdev,
 				hci_fm_tone_generator, arg,
 				msecs_to_jiffies(RADIO_HCI_TIMEOUT));
+		if (retval < 0)
+			FMDERR("Error while setting the tone %d", retval);
 		break;
 	case V4L2_CID_AUDIO_VOLUME:
 		break;
@@ -2673,12 +2666,12 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 		case FM_RECV:
 			retval = hci_cmd(HCI_FM_ENABLE_RECV_CMD,
 							 radio->fm_hdev);
-
-			radio->mode = FM_RECV;
-
-			if (retval < 0)
+			if (retval < 0) {
 				FMDERR("Error while enabling RECV FM"
 							" %d\n", retval);
+				return retval;
+			}
+			radio->mode = FM_RECV;
 			radio->mute_mode.soft_mute = CTRL_ON;
 			retval = hci_set_fm_mute_mode(
 						&radio->mute_mode,
@@ -2715,10 +2708,14 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 			retval = hci_cmd(HCI_FM_ENABLE_TRANS_CMD,
 							 radio->fm_hdev);
 			radio->mode = FM_TRANS;
-
-			if (retval < 0)
+			if (retval < 0) {
 				FMDERR("Error while enabling TRANS FM"
 							" %d\n", retval);
+				return retval;
+			}
+			retval = hci_cmd(HCI_FM_GET_TX_CONFIG, radio->fm_hdev);
+			if (retval < 0)
+				FMDERR("get frequency failed %d\n", retval);
 			break;
 		case FM_OFF:
 			switch (radio->mode) {
@@ -2963,7 +2960,14 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 		temp_val = ctrl->value;
 		retval = hci_set_notch_filter(&temp_val, radio->fm_hdev);
 		break;
-
+	case V4L2_CID_PRIVATE_IRIS_SRCH_ALGORITHM:
+		/*
+		This private control is a place holder to keep the
+		driver compatible with changes done in the frameworks
+		which are specific to TAVARUA.
+		*/
+		retval = 0;
+		break;
 	default:
 		retval = -EINVAL;
 	}
@@ -2978,19 +2982,37 @@ static int iris_vidioc_g_tuner(struct file *file, void *priv,
 	if (tuner->index > 0)
 		return -EINVAL;
 
-	retval = hci_cmd(HCI_FM_GET_STATION_PARAM_CMD, radio->fm_hdev);
-	if (retval < 0)
-		return retval;
+	if (radio->mode == FM_RECV) {
+		retval = hci_cmd(HCI_FM_GET_STATION_PARAM_CMD, radio->fm_hdev);
+		if (retval < 0) {
+			FMDERR("Failed to Get station params");
+			return retval;
+		}
+		tuner->type = V4L2_TUNER_RADIO;
+		tuner->rangelow  =
+			radio->recv_conf.band_low_limit * TUNE_PARAM;
+		tuner->rangehigh =
+			radio->recv_conf.band_high_limit * TUNE_PARAM;
+		tuner->rxsubchans = V4L2_TUNER_SUB_MONO | V4L2_TUNER_SUB_STEREO;
+		tuner->capability = V4L2_TUNER_CAP_LOW;
+		tuner->signal = radio->fm_st_rsp.station_rsp.rssi;
+		tuner->audmode = radio->fm_st_rsp.station_rsp.stereo_prg;
+		tuner->afc = 0;
+	} else if (radio->mode == FM_TRANS) {
+		retval = hci_cmd(HCI_FM_GET_TX_CONFIG, radio->fm_hdev);
+		if (retval < 0) {
+			FMDERR("get Tx config failed %d\n", retval);
+			return retval;
+		} else {
+			tuner->type = V4L2_TUNER_RADIO;
+			tuner->rangelow =
+				radio->trans_conf.band_low_limit * TUNE_PARAM;
+			tuner->rangehigh =
+				radio->trans_conf.band_high_limit * TUNE_PARAM;
+		}
 
-	tuner->type = V4L2_TUNER_RADIO;
-	tuner->rangelow  = radio->recv_conf.band_low_limit * TUNE_PARAM;
-	tuner->rangehigh = radio->recv_conf.band_high_limit * TUNE_PARAM;
-	tuner->rxsubchans = V4L2_TUNER_SUB_MONO | V4L2_TUNER_SUB_STEREO;
-	tuner->capability = V4L2_TUNER_CAP_LOW;
-	tuner->signal = radio->fm_st_rsp.station_rsp.rssi;
-	tuner->audmode = radio->fm_st_rsp.station_rsp.stereo_prg;
-	tuner->afc = 0;
-
+	} else
+		return -EINVAL;
 	return 0;
 }
 
@@ -3020,16 +3042,13 @@ static int iris_vidioc_s_tuner(struct file *file, void *priv,
 		if (retval < 0)
 			FMDERR(": set tuner failed with %d\n", retval);
 		return retval;
-	} else {
-		if (radio->mode == FM_TRANS) {
+	} else if (radio->mode == FM_TRANS) {
 			radio->trans_conf.band_low_limit =
 				tuner->rangelow / TUNE_PARAM;
 			radio->trans_conf.band_high_limit =
 				tuner->rangehigh / TUNE_PARAM;
-		} else {
-			  return -EINVAL;
-		}
-	}
+	} else
+		return -EINVAL;
 
 	return retval;
 }

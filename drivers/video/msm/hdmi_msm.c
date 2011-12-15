@@ -68,6 +68,12 @@ static int bksv_error;
 
 static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 
+/* HDMI/HDCP Registers */
+#define HDCP_DDC_STATUS		0x0128
+#define HDCP_DDC_CTRL_0		0x0120
+#define HDCP_DDC_CTRL_1		0x0124
+#define HDMI_DDC_CTRL		0x020C
+
 struct workqueue_struct *hdmi_work_queue;
 struct hdmi_msm_state_type *hdmi_msm_state;
 
@@ -1125,7 +1131,6 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		/* Clear AUTH_FAIL_INFO as well */
 		HDMI_OUTP(0x0118, (hdcp_int_val | (1 << 7)));
 #endif
-
 		return IRQ_HANDLED;
 	}
 	/*    [8] DDC_XFER_REQ_INT	[R]	HDCP DDC Transfer Request
@@ -2226,9 +2231,10 @@ static void hdcp_deauthenticate(void)
 	HDMI_OUTP(0x0118, 0x0);
 #endif
 }
+#endif
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
-void check_and_clear_HDCP_DDC_Failure(void)
+static void check_and_clear_HDCP_DDC_Failure(void)
 {
 	int hdcp_ddc_ctrl1_reg;
 	int hdcp_ddc_status;
@@ -2262,8 +2268,8 @@ void check_and_clear_HDCP_DDC_Failure(void)
 		 * matches HDCP_DDC_RETRY_CNT.
 		 * Failure occured,  let's clear it.
 		 */
-		DEV_DBG("%s: DDC failure detected. HDCP_DDC_STATUS=0x%08x\n",
-			__func__, hdcp_ddc_status);
+		DEV_INFO("%s: DDC failure detected. HDCP_DDC_STATUS=0x%08x\n",
+			 __func__, hdcp_ddc_status);
 		/*
 		 * First, Disable DDC
 		 * 0x0120 HDCP_DDC_CTRL_0
@@ -2290,10 +2296,10 @@ void check_and_clear_HDCP_DDC_Failure(void)
 		hdcp_ddc_status = HDMI_INP(HDCP_DDC_STATUS);
 		hdcp_ddc_status = (hdcp_ddc_status >> 16) & 0x1;
 		if (hdcp_ddc_status == 0x0) {
-			DEV_DBG("%s: HDCP DDC Failure has been cleared\n",
-				 __func__);
+			DEV_INFO("%s: HDCP DDC Failure has been cleared\n",
+				  __func__);
 		} else {
-			DEV_DBG("%s: Error: HDCP DDC Failure DID NOT get"
+			DEV_WARN("%s: Error: HDCP DDC Failure DID NOT get"
 				 "cleared\n", __func__);
 		}
 
@@ -2324,7 +2330,7 @@ void check_and_clear_HDCP_DDC_Failure(void)
 	DEV_DBG("%s: On Exit: HDCP_DDC_STATUS = 0x%x, FAILURE = %d,"
 		"NACK0 = %d\n", __func__ , hdcp_ddc_status, failure, nack0);
 }
-#endif
+
 
 static int hdcp_authentication_part1(void)
 {
@@ -2450,7 +2456,8 @@ static int hdcp_authentication_part1(void)
 		HDMI_OUTP(0x0110, (1 << 8) | (1 << 0));
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
-		/* Check to see if a HDCP DDC Failure is indicated in
+		/*
+		 * Check to see if a HDCP DDC Failure is indicated in
 		 * HDCP_DDC_STATUS. If yes, clear it.
 		 */
 		check_and_clear_HDCP_DDC_Failure();
@@ -4534,6 +4541,9 @@ static struct platform_device this_device = {
 static int __init hdmi_msm_init(void)
 {
 	int rc;
+
+	if (cpu_is_msm8627())
+		return 0;
 
 	if (msm_fb_detect_client("hdmi_msm"))
 		return 0;

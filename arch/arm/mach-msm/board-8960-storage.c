@@ -22,7 +22,7 @@
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include "devices.h"
-#include "board-msm8960.h"
+#include "board-8960.h"
 
 /* MSM8960 has 5 SDCC controllers */
 enum sdcc_controllers {

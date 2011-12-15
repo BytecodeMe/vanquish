@@ -120,6 +120,15 @@ module_param_cb(last_rbatt, &bms_param_ops, &last_rbatt, 0644);
 module_param_cb(last_ocv_uv, &bms_param_ops, &last_ocv_uv, 0644);
 module_param_cb(last_soc, &bms_param_ops, &last_soc, 0644);
 
+/*
+ * bms_fake_battery is write only, this value is set in setups where a
+ * battery emulator is used instead of a real battery. This makes the
+ * bms driver report a higher value of charge regardless of the calculated
+ * state of charge.
+ */
+static int bms_fake_battery;
+module_param(bms_fake_battery, int, 0644);
+
 static int interpolate_fcc(struct pm8921_bms_chip *chip, int batt_temp);
 static void readjust_fcc_table(void)
 {
@@ -1013,7 +1022,8 @@ static void calculate_charging_params(struct pm8921_bms_chip *chip,
 }
 
 static int calculate_real_fcc(struct pm8921_bms_chip *chip,
-						int batt_temp, int chargecycles)
+						int batt_temp, int chargecycles,
+						int *ret_fcc)
 {
 	int fcc, unusable_charge;
 	int remaining_charge;
@@ -1027,8 +1037,9 @@ static int calculate_real_fcc(struct pm8921_bms_chip *chip,
 						&cc_mah);
 
 	real_fcc = remaining_charge - cc_mah;
-	pr_debug("real_fcc = %d, RC = %d CC = %lld\n",
-			real_fcc, remaining_charge, cc_mah);
+	*ret_fcc = fcc;
+	pr_debug("real_fcc = %d, RC = %d CC = %lld fcc = %d\n",
+			real_fcc, remaining_charge, cc_mah, fcc);
 	return real_fcc;
 }
 /*
@@ -1037,8 +1048,6 @@ static int calculate_real_fcc(struct pm8921_bms_chip *chip,
  *				- unusable charge (due to battery resistance)
  * SOC% = (remaining usable charge/ fcc - usable_charge);
  */
-#define BMS_BATT_NOMINAL	3700000
-#define MIN_OPERABLE_SOC	10
 #define BATTERY_POWER_SUPPLY_SOC	53
 static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 						int batt_temp, int chargecycles)
@@ -1062,22 +1071,10 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		soc = 100;
 	pr_debug("SOC = %u%%\n", soc);
 
-	if (soc < MIN_OPERABLE_SOC) {
-		int ocv = 0, rc;
-
-		rc = adc_based_ocv(chip, &ocv);
-		if (rc == 0 && ocv >= BMS_BATT_NOMINAL) {
-			/*
-			 * The ocv doesnt seem to have dropped for
-			 * soc to go negative.
-			 * The setup must be using a power supply
-			 * instead of real batteries.
-			 * Fake high enough soc to prevent userspace
-			 * shutdown for low battery
-			 */
-			soc = BATTERY_POWER_SUPPLY_SOC;
-			pr_debug("Adjusting SOC to %d\n", soc);
-		}
+	if (bms_fake_battery) {
+		soc = BATTERY_POWER_SUPPLY_SOC;
+		pr_debug("setting SOC = %u%% bms_fake_battery = %d\n", soc,
+							bms_fake_battery);
 	}
 
 	if (soc < 0) {
@@ -1091,6 +1088,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 				last_ocv_uv, chargecycles, batt_temp,
 				fcc, soc);
 		update_userspace = 0;
+		soc = 0;
 	}
 
 	if (last_soc == -EINVAL || soc <= last_soc) {
@@ -1302,11 +1300,13 @@ void pm8921_bms_charging_began(void)
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_began);
 
+#define DELTA_FCC_PERCENT	3
 void pm8921_bms_charging_end(int is_battery_full)
 {
 	if (is_battery_full && the_chip != NULL) {
 		unsigned long flags;
 		int batt_temp, rc, cc_reading;
+		int fcc, new_fcc, delta_fcc;
 		struct pm8xxx_adc_chan_result result;
 
 		rc = pm8xxx_adc_read(the_chip->batt_temp_channel, &result);
@@ -1318,10 +1318,24 @@ void pm8921_bms_charging_end(int is_battery_full)
 		pr_debug("batt_temp phy = %lld meas = 0x%llx", result.physical,
 							result.measurement);
 		batt_temp = (int)result.physical;
-		last_real_fcc = calculate_real_fcc(the_chip,
-						batt_temp, last_chargecycles);
-		last_real_fcc_batt_temp = batt_temp;
-		readjust_fcc_table();
+		new_fcc = calculate_real_fcc(the_chip,
+						batt_temp, last_chargecycles,
+						&fcc);
+		delta_fcc = new_fcc - fcc;
+		if (delta_fcc < 0)
+			delta_fcc = -delta_fcc;
+
+		if (delta_fcc * 100  <= (DELTA_FCC_PERCENT * fcc)) {
+			pr_debug("delta_fcc=%d < %d percent of fcc=%d\n",
+					delta_fcc, DELTA_FCC_PERCENT, fcc);
+			last_real_fcc = new_fcc;
+			last_real_fcc_batt_temp = batt_temp;
+			readjust_fcc_table();
+		} else {
+			pr_debug("delta_fcc=%d > %d percent of fcc=%d"
+					"will not update real fcc\n",
+					delta_fcc, DELTA_FCC_PERCENT, fcc);
+		}
 
 		spin_lock_irqsave(&the_chip->bms_output_lock, flags);
 		pm_bms_lock_output_data(the_chip);

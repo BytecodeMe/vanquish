@@ -240,6 +240,9 @@ struct hci_dev {
 	rwlock_t		adv_entries_lock;
 	struct timer_list	adv_timer;
 
+	struct timer_list	disc_timer;
+	struct timer_list	disc_le_timer;
+
 	struct hci_dev_stats	stat;
 
 	struct sk_buff_head	driver_init;
@@ -573,7 +576,7 @@ static inline void hci_chan_hold(struct hci_chan *chan)
 {
 	atomic_inc(&chan->refcnt);
 }
-void hci_chan_put(struct hci_chan *chan);
+int hci_chan_put(struct hci_chan *chan);
 
 struct hci_chan *hci_chan_accept(struct hci_conn *hcon,
 				struct hci_ext_fs *tx_fs,

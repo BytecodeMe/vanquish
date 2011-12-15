@@ -83,7 +83,7 @@
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "spm.h"
-#include "board-msm8960.h"
+#include "board-8960.h"
 #include "pm.h"
 #include "cpuidle.h"
 #include "rpm_resources.h"
@@ -94,11 +94,6 @@
 #include "pm-boot.h"
 #include "msm_watchdog.h"
 
-#define PLATFORM_IS_CHARM25() \
-	(machine_is_msm8960_cdp() && \
-		(socinfo_get_platform_subtype() == 1) \
-	)
-
 static struct platform_device msm_fm_platform_init = {
 	.name = "iris_fm",
 	.id   = -1,
@@ -106,447 +101,7 @@ static struct platform_device msm_fm_platform_init = {
 
 #define KS8851_RST_GPIO		89
 #define KS8851_IRQ_GPIO		90
-
-/* The SPI configurations apply to GSBI 1*/
-static struct gpiomux_setting spi_active = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_12MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting spi_suspended_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting spi_active_config2 = {
-	.func = GPIOMUX_FUNC_2,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting spi_suspended_config2 = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting gsbi3_suspended_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_KEEPER,
-};
-
-static struct gpiomux_setting gsbi3_active_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi5 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi10 = {
-	.func = GPIOMUX_FUNC_2,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi12 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting cdc_mclk = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting audio_auxpcm[] = {
-	/* Suspended state */
-	{
-		.func = GPIOMUX_FUNC_GPIO,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_NONE,
-	},
-	/* Active state */
-	{
-		.func = GPIOMUX_FUNC_1,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_NONE,
-	},
-};
-
-#if defined(CONFIG_KS8851) || defined(CONFIG_KS8851_MODULE)
-static struct gpiomux_setting gpio_eth_config = {
-	.pull = GPIOMUX_PULL_NONE,
-	.drv = GPIOMUX_DRV_8MA,
-	.func = GPIOMUX_FUNC_GPIO,
-};
-#endif
-
-static struct gpiomux_setting slimbus = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_KEEPER,
-};
-
-static struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
-#if defined(CONFIG_KS8851) || defined(CONFIG_KS8851_MODULE)
-	{
-		.gpio = KS8851_IRQ_GPIO,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
-		}
-	},
-	{
-		.gpio = KS8851_RST_GPIO,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
-		}
-	},
-#endif
-};
-
-static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
-	{
-		.gpio      = 6,		/* GSBI1 QUP SPI_DATA_MOSI */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
-			[GPIOMUX_ACTIVE] = &spi_active,
-		},
-	},
-	{
-		.gpio      = 7,		/* GSBI1 QUP SPI_DATA_MISO */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
-			[GPIOMUX_ACTIVE] = &spi_active,
-		},
-	},
-	{
-		.gpio      = 8,		/* GSBI1 QUP SPI_CS_N */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
-			[GPIOMUX_ACTIVE] = &spi_active,
-		},
-	},
-	{
-		.gpio      = 9,		/* GSBI1 QUP SPI_CLK */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
-			[GPIOMUX_ACTIVE] = &spi_active,
-		},
-	},
-	{
-		.gpio      = 14,		/* GSBI1 SPI_CS_1 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &spi_suspended_config2,
-			[GPIOMUX_ACTIVE] = &spi_active_config2,
-		},
-	},
-	{
-		.gpio      = 16,	/* GSBI3 I2C QUP SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3_suspended_cfg,
-			[GPIOMUX_ACTIVE] = &gsbi3_active_cfg,
-		},
-	},
-	{
-		.gpio      = 17,	/* GSBI3 I2C QUP SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3_suspended_cfg,
-			[GPIOMUX_ACTIVE] = &gsbi3_active_cfg,
-		},
-	},
-	{
-		.gpio      = 22,	/* GSBI5 UART2 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		.gpio      = 23,	/* GSBI5 UART2 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		.gpio      = 24,	/* GSBI5 UART2 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		.gpio      = 25,	/* GSBI5 UART2 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		.gpio      = 44,	/* GSBI12 I2C QUP SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi12,
-		},
-	},
-	{
-		.gpio      = 45,	/* GSBI12 I2C QUP SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi12,
-		},
-	},
-	{
-		.gpio      = 73,	/* GSBI10 I2C QUP SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi10,
-		},
-	},
-	{
-		.gpio      = 74,	/* GSBI10 I2C QUP SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi10,
-		},
-	},
-};
-
-static struct msm_gpiomux_config msm8960_slimbus_config[] __initdata = {
-	{
-		.gpio	= 60,		/* slimbus data */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &slimbus,
-		},
-	},
-	{
-		.gpio	= 61,		/* slimbus clk */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &slimbus,
-		},
-	},
-};
-
-static struct msm_gpiomux_config msm8960_audio_codec_configs[] __initdata = {
-	{
-		.gpio = 59,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &cdc_mclk,
-		},
-	},
-};
-
-static struct msm_gpiomux_config msm8960_audio_auxpcm_configs[] __initdata = {
-	{
-		.gpio = 63,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &audio_auxpcm[0],
-			[GPIOMUX_ACTIVE] = &audio_auxpcm[1],
-		},
-	},
-	{
-		.gpio = 64,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &audio_auxpcm[0],
-			[GPIOMUX_ACTIVE] = &audio_auxpcm[1],
-		},
-	},
-	{
-		.gpio = 65,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &audio_auxpcm[0],
-			[GPIOMUX_ACTIVE] = &audio_auxpcm[1],
-		},
-	},
-	{
-		.gpio = 66,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &audio_auxpcm[0],
-			[GPIOMUX_ACTIVE] = &audio_auxpcm[1],
-		},
-	},
-};
-
-static struct gpiomux_setting wcnss_5wire_suspend_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv  = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting wcnss_5wire_active_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv  = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct msm_gpiomux_config wcnss_5wire_interface[] = {
-	{
-		.gpio = 84,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
-			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 85,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
-			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 86,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
-			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 87,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
-			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
-		},
-	},
-	{
-		.gpio = 88,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
-			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
-		},
-	},
-};
-
-static struct gpiomux_setting cyts_resout_sus_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting cyts_resout_act_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting cyts_sleep_sus_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting cyts_sleep_act_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting cyts_int_act_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting cyts_int_sus_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct msm_gpiomux_config msm8960_cyts_configs[] __initdata = {
-	{	/* TS INTERRUPT */
-		.gpio = 11,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cyts_int_act_cfg,
-			[GPIOMUX_SUSPENDED] = &cyts_int_sus_cfg,
-		},
-	},
-	{	/* TS SLEEP */
-		.gpio = 50,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cyts_sleep_act_cfg,
-			[GPIOMUX_SUSPENDED] = &cyts_sleep_sus_cfg,
-		},
-	},
-	{	/* TS RESOUT */
-		.gpio = 52,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cyts_resout_act_cfg,
-			[GPIOMUX_SUSPENDED] = &cyts_resout_sus_cfg,
-		},
-	},
-};
-
-#ifdef CONFIG_USB_EHCI_MSM_HSIC
-static struct gpiomux_setting hsic_act_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_12MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting hsic_sus_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-	.dir = GPIOMUX_OUT_LOW,
-};
-
-static struct gpiomux_setting hsic_hub_act_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct msm_gpiomux_config msm8960_hsic_configs[] = {
-	{
-		.gpio = 150,               /*HSIC_STROBE */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &hsic_act_cfg,
-			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
-		},
-	},
-	{
-		.gpio = 151,               /* HSIC_DATA */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &hsic_act_cfg,
-			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
-		},
-	},
-	{
-		.gpio = 91,               /* HSIC_HUB_RESET */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &hsic_hub_act_cfg,
-			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
-		},
-	},
-};
-#endif
-
 #define HAP_SHIFT_LVL_OE_GPIO	47
-
-static struct gpiomux_setting hap_lvl_shft_suspended_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting hap_lvl_shft_active_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct msm_gpiomux_config hap_lvl_shft_config[] __initdata = {
-	{
-		.gpio = HAP_SHIFT_LVL_OE_GPIO,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &hap_lvl_shft_suspended_config,
-			[GPIOMUX_ACTIVE] = &hap_lvl_shft_active_config,
-		},
-	},
-};
 
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 
@@ -1102,75 +657,6 @@ static struct platform_device qcedev_device = {
 #define AP2MDM_PMIC_RESET_N		80
 #define AP2MDM_KPDPWR_N			81
 
-static struct gpiomux_setting ap2mdm_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting mdm2ap_status_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting mdm2ap_errfatal_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_16MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting ap2mdm_kpdpwr_n_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct msm_gpiomux_config mdm_configs[] __initdata = {
-	/* AP2MDM_STATUS */
-	{
-		.gpio = AP2MDM_STATUS,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ap2mdm_cfg,
-		}
-	},
-	/* MDM2AP_STATUS */
-	{
-		.gpio = MDM2AP_STATUS,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdm2ap_status_cfg,
-		}
-	},
-	/* MDM2AP_ERRFATAL */
-	{
-		.gpio = MDM2AP_ERRFATAL,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdm2ap_errfatal_cfg,
-		}
-	},
-	/* AP2MDM_ERRFATAL */
-	{
-		.gpio = AP2MDM_ERRFATAL,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ap2mdm_cfg,
-		}
-	},
-	/* AP2MDM_KPDPWR_N */
-	{
-		.gpio = AP2MDM_KPDPWR_N,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ap2mdm_kpdpwr_n_cfg,
-		}
-	},
-	/* AP2MDM_PMIC_RESET_N */
-	{
-		.gpio = AP2MDM_PMIC_RESET_N,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ap2mdm_kpdpwr_n_cfg,
-		}
-	}
-};
-
 static struct resource mdm_resources[] = {
 	{
 		.start	= MDM2AP_ERRFATAL,
@@ -1227,49 +713,6 @@ static struct platform_device mdm_device = {
 static struct platform_device *mdm_devices[] __initdata = {
 	&mdm_device,
 };
-
-static int __init gpiomux_init(void)
-{
-	int rc;
-
-	rc = msm_gpiomux_init(NR_GPIO_IRQS);
-	if (rc) {
-		pr_err(KERN_ERR "msm_gpiomux_init failed %d\n", rc);
-		return rc;
-	}
-
-	msm_gpiomux_install(msm8960_gpiomux_configs,
-			ARRAY_SIZE(msm8960_gpiomux_configs));
-
-	msm_gpiomux_install(msm8960_gsbi_configs,
-			ARRAY_SIZE(msm8960_gsbi_configs));
-
-	msm_gpiomux_install(msm8960_cyts_configs,
-			ARRAY_SIZE(msm8960_cyts_configs));
-
-	msm_gpiomux_install(msm8960_slimbus_config,
-			ARRAY_SIZE(msm8960_slimbus_config));
-
-	msm_gpiomux_install(msm8960_audio_codec_configs,
-			ARRAY_SIZE(msm8960_audio_codec_configs));
-
-	msm_gpiomux_install(msm8960_audio_auxpcm_configs,
-			ARRAY_SIZE(msm8960_audio_auxpcm_configs));
-
-	msm_gpiomux_install(wcnss_5wire_interface,
-			ARRAY_SIZE(wcnss_5wire_interface));
-
-	if (machine_is_msm8960_mtp() || machine_is_msm8960_fluid() ||
-		machine_is_msm8960_liquid() || machine_is_msm8960_cdp())
-		msm_gpiomux_install(hap_lvl_shft_config,
-			ARRAY_SIZE(hap_lvl_shft_config));
-
-	if (PLATFORM_IS_CHARM25())
-		msm_gpiomux_install(mdm_configs,
-			ARRAY_SIZE(mdm_configs));
-
-	return 0;
-}
 
 #define MSM_SHARED_RAM_PHYS 0x80000000
 
@@ -1371,13 +814,29 @@ static void msm_hsusb_vbus_power(bool on)
 	}
 	regulator_disable(mvs_otg_switch);
 err_ldo_gpio_set_dir:
-	gpio_set_value(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 0);
+	gpio_set_value_cansleep(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 0);
 free_usb_5v_en:
 	gpio_free(PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
 put_mvs_otg:
 	regulator_put(mvs_otg_switch);
 	vbus_is_on = false;
 }
+
+static int wr_phy_init_seq[] = {
+	0x44, 0x80, /* set VBUS valid threshold
+			and disconnect valid threshold */
+	0x38, 0x81, /* update DC voltage level */
+	0x14, 0x82, /* set preemphasis and rise/fall time */
+	0x13, 0x83, /* set source impedance adjusment */
+	-1};
+
+static int liquid_v1_phy_init_seq[] = {
+	0x44, 0x80,/* set VBUS valid threshold
+			and disconnect valid threshold */
+	0x3C, 0x81,/* update DC voltage level */
+	0x18, 0x82,/* set preemphasis and rise/fall time */
+	0x23, 0x83,/* set source impedance sdjusment */
+	-1};
 
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
@@ -1505,7 +964,7 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 		.reg_base_addr = MSM_SAW0_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1F,
-		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0x9C,
+		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0xB0,
 #if defined(CONFIG_MSM_AVS_HW)
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
@@ -1522,7 +981,7 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 		.reg_base_addr = MSM_SAW1_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1F,
-		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0x9C,
+		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0xB0,
 #if defined(CONFIG_MSM_AVS_HW)
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
@@ -1958,6 +1417,14 @@ static struct i2c_board_info mxt_device_info[] __initdata = {
 	},
 };
 
+static struct i2c_board_info sii_device_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("Sil-9244", 0x39),
+		.flags = I2C_CLIENT_WAKE,
+		.irq = MSM_GPIO_TO_INT(15),
+	},
+};
+
 static void gsbi_qup_i2c_gpio_config(int adap_id, int config_type)
 {
 }
@@ -2123,7 +1590,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_device_saw_core1,
 	&msm8960_device_ext_5v_vreg,
 	&msm8960_device_ext_l2_vreg,
-	&msm8960_device_ssbi_pm8921,
+	&msm8960_device_ssbi_pmic,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
@@ -2210,6 +1677,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_voice,
 	&msm_voip,
 	&msm_lpa_pcm,
+	&msm_compr_dsp,
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
 		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE)
@@ -2268,6 +1736,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_cpudai_afe_02_rx,
 	&msm_cpudai_afe_02_tx,
 	&msm_pcm_afe,
+	&msm_compr_dsp,
 	&msm_pcm_hostless,
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
@@ -2486,22 +1955,13 @@ static void __init msm8960_init_hsic(void)
 #ifdef CONFIG_USB_EHCI_MSM_HSIC
 	uint32_t version = socinfo_get_version();
 
-	pr_info("%s: version:%d mtp:%d\n", __func__,
-			SOCINFO_VERSION_MAJOR(version),
-			machine_is_msm8960_mtp());
-
-	if ((SOCINFO_VERSION_MAJOR(version) == 1) ||
-			machine_is_msm8960_mtp() ||
-			machine_is_msm8960_fluid())
+	if (SOCINFO_VERSION_MAJOR(version) == 1)
 		return;
 
-	msm_gpiomux_install(msm8960_hsic_configs,
-			ARRAY_SIZE(msm8960_hsic_configs));
-
-	platform_device_register(&msm_device_hsic_host);
+	if (PLATFORM_IS_CHARM25() || machine_is_msm8960_liquid())
+		platform_device_register(&msm_device_hsic_host);
 #endif
 }
-
 
 #ifdef CONFIG_ISL9519_CHARGER
 static struct isl_platform_data isl_data __initdata = {
@@ -2551,6 +2011,12 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		MSM_8960_GSBI3_QUP_I2C_BUS_ID,
 		mxt_device_info,
 		ARRAY_SIZE(mxt_device_info),
+	},
+	{
+		I2C_LIQUID,
+		MSM_8960_GSBI10_QUP_I2C_BUS_ID,
+		sii_device_info,
+		ARRAY_SIZE(sii_device_info),
 	},
 	{
 		I2C_LIQUID,
@@ -2608,7 +2074,7 @@ static void __init msm8960_sim_init(void)
 	msm8960_init_pmic();
 
 	msm8960_device_otg.dev.platform_data = &msm_otg_pdata;
-	gpiomux_init();
+	msm8960_init_gpiomux();
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm_spm_l2_init(msm_spm_l2_data);
@@ -2641,7 +2107,7 @@ static void __init msm8960_rumi3_init(void)
 	regulator_suppress_info_printing();
 	platform_device_register(&msm8960_device_rpm_regulator);
 	msm_clock_init(&msm8960_dummy_clock_init_data);
-	gpiomux_init();
+	msm8960_init_gpiomux();
 	msm8960_init_pmic();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
@@ -2681,6 +2147,15 @@ static void __init msm8960_cdp_init(void)
 	if (machine_is_msm8960_liquid())
 		msm_otg_pdata.mhl_enable = true;
 	msm8960_device_otg.dev.platform_data = &msm_otg_pdata;
+	if (machine_is_msm8960_mtp() || machine_is_msm8960_fluid() ||
+		machine_is_msm8960_cdp()) {
+		msm_otg_pdata.phy_init_seq = wr_phy_init_seq;
+	} else if (machine_is_msm8960_liquid()) {
+			msm_otg_pdata.phy_init_seq =
+				liquid_v1_phy_init_seq;
+	}
+	msm_otg_pdata.swfi_latency =
+		msm_rpmrs_levels[0].latency_us;
 #ifdef CONFIG_USB_EHCI_MSM_HSIC
 	if (machine_is_msm8960_liquid()) {
 		if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) >= 2)
@@ -2688,7 +2163,7 @@ static void __init msm8960_cdp_init(void)
 	}
 #endif
 	msm_device_hsic_host.dev.platform_data = &msm_hsic_pdata;
-	gpiomux_init();
+	msm8960_init_gpiomux();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));

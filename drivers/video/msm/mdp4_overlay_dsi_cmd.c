@@ -302,8 +302,6 @@ void mdp4_dsi_cmd_3d_sbys(struct msm_fb_data_type *mfd,
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 }
 
-
-#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
 int mdp4_dsi_overlay_blt_start(struct msm_fb_data_type *mfd)
 {
 	unsigned long flag;
@@ -370,21 +368,6 @@ void mdp4_dsi_overlay_blt(struct msm_fb_data_type *mfd,
 		mdp4_dsi_overlay_blt_stop(mfd);
 
 }
-#else
-int mdp4_dsi_overlay_blt_offset(struct msm_fb_data_type *mfd,
-					struct msmfb_overlay_blt *req)
-{
-	return 0;
-}
-int mdp4_dsi_overlay_blt_start(struct msm_fb_data_type *mfd)
-{
-	return -EBUSY;
-}
-int mdp4_dsi_overlay_blt_stop(struct msm_fb_data_type *mfd)
-{
-	return -EBUSY;
-}
-#endif
 
 void mdp4_blt_xy_update(struct mdp4_overlay_pipe *pipe)
 {
@@ -447,6 +430,7 @@ void mdp4_dma_p_done_dsi(struct mdp_dma_data *dma)
 			mdp_intr_mask &= ~INTR_DMA_P_DONE;
 			outp32(MDP_INTR_ENABLE, mdp_intr_mask);
 		}
+		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 		mdp_disable_irq_nosync(MDP_DMA2_TERM);  /* disable intr */
 		return;
 	}
@@ -466,6 +450,8 @@ void mdp4_dma_p_done_dsi(struct mdp_dma_data *dma)
 	mdp4_stat.kickoff_dmap++;
 	/* trigger dsi cmd engine */
 	mipi_dsi_cmd_mdp_start();
+
+	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 }
 
 
@@ -477,6 +463,7 @@ void mdp4_overlay0_done_dsi_cmd(struct mdp_dma_data *dma)
 	int diff;
 
 	if (dsi_pipe->blt_addr == 0) {
+		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 		spin_lock(&mdp_spin_lock);
 		dma->busy = FALSE;
 		spin_unlock(&mdp_spin_lock);

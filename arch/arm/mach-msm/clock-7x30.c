@@ -2316,7 +2316,7 @@ static DEFINE_CLK_PCOM(usb_phy_clk, USB_PHY_CLK, CLKFLAG_MIN);
 static DEFINE_CLK_PCOM(p_grp_2d_clk, GRP_2D_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_grp_2d_p_clk, GRP_2D_P_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_hdmi_clk, HDMI_CLK, CLKFLAG_SKIP_AUTO_OFF);
-static DEFINE_CLK_PCOM(p_jpeg_clk, JPEG_CLK, 0);
+static DEFINE_CLK_PCOM(p_jpeg_clk, JPEG_CLK, CLKFLAG_MIN);
 static DEFINE_CLK_PCOM(p_jpeg_p_clk, JPEG_P_CLK, 0);
 static DEFINE_CLK_PCOM(p_lpa_codec_clk, LPA_CODEC_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_lpa_core_clk, LPA_CORE_CLK, CLKFLAG_SKIP_AUTO_OFF);
@@ -2386,7 +2386,7 @@ static DEFINE_CLK_PCOM(p_camif_pad_p_clk, CAMIF_PAD_P_CLK, 0);
 static DEFINE_CLK_PCOM(p_csi0_clk, CSI0_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_csi0_vfe_clk, CSI0_VFE_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_csi0_p_clk, CSI0_P_CLK, CLKFLAG_SKIP_AUTO_OFF);
-static DEFINE_CLK_PCOM(p_mdp_clk, MDP_CLK, 0);
+static DEFINE_CLK_PCOM(p_mdp_clk, MDP_CLK, CLKFLAG_MIN);
 static DEFINE_CLK_PCOM(p_mfc_clk, MFC_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_mfc_div2_clk, MFC_DIV2_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_mfc_p_clk, MFC_P_CLK, CLKFLAG_SKIP_AUTO_OFF);
@@ -3000,7 +3000,6 @@ static struct clk_ops clk_ops_rcg_7x30 = {
 	.disable = rcg_clk_disable,
 	.auto_off = rcg_clk_disable,
 	.set_rate = rcg_clk_set_rate,
-	.set_min_rate = rcg_clk_set_min_rate,
 	.get_rate = rcg_clk_get_rate,
 	.list_rate = rcg_clk_list_rate,
 	.is_enabled = rcg_clk_is_enabled,

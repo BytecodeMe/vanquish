@@ -1299,7 +1299,7 @@ struct platform_device msm8960_device_vpe = {
 };
 #endif
 
-static struct resource resources_ssbi_pm8921[] = {
+static struct resource resources_ssbi_pmic[] = {
 	{
 		.start  = MSM_PMIC1_SSBI_CMD_PHYS,
 		.end    = MSM_PMIC1_SSBI_CMD_PHYS + MSM_PMIC_SSBI_SIZE - 1,
@@ -1307,11 +1307,11 @@ static struct resource resources_ssbi_pm8921[] = {
 	},
 };
 
-struct platform_device msm8960_device_ssbi_pm8921 = {
+struct platform_device msm8960_device_ssbi_pmic = {
 	.name           = "msm_ssbi",
 	.id             = 0,
-	.resource       = resources_ssbi_pm8921,
-	.num_resources  = ARRAY_SIZE(resources_ssbi_pm8921),
+	.resource       = resources_ssbi_pmic,
+	.num_resources  = ARRAY_SIZE(resources_ssbi_pmic),
 };
 
 static struct resource resources_qup_spi_gsbi1[] = {
@@ -1468,6 +1468,11 @@ struct platform_device msm_voip = {
 struct platform_device msm_lpa_pcm = {
 	.name   = "msm-pcm-lpa",
 	.id     = -1,
+};
+
+struct platform_device msm_compr_dsp = {
+	.name	= "msm-compr-dsp",
+	.id	= -1,
 };
 
 struct platform_device msm_pcm_hostless = {

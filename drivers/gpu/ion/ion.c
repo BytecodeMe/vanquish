@@ -978,7 +978,6 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 	struct rb_node **p;
 	struct rb_node *parent = NULL;
 	struct ion_client *entry;
-	char debug_name[64];
 	pid_t pid;
 
 	get_task_struct(current->group_leader);
@@ -1048,8 +1047,8 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 		rb_insert_color(&client->node, &dev->kernel_clients);
 	}
 
-	snprintf(debug_name, 64, "%u", client->pid);
-	client->debug_root = debugfs_create_file(debug_name, 0664,
+
+	client->debug_root = debugfs_create_file(name, 0664,
 						 dev->debug_root, client,
 						 &debug_client_fops);
 	mutex_unlock(&dev->lock);
@@ -1147,9 +1146,6 @@ static int ion_share_release(struct inode *inode, struct file* file)
 	struct ion_buffer *buffer = file->private_data;
 
 	pr_debug("%s: %d\n", __func__, __LINE__);
-	mutex_lock(&buffer->lock);
-	buffer->umap_cnt--;
-	mutex_unlock(&buffer->lock);
 	/* drop the reference to the buffer -- this prevents the
 	   buffer from going away because the client holding it exited
 	   while it was being passed */
@@ -1172,6 +1168,10 @@ static void ion_vma_open(struct vm_area_struct *vma)
 		vma->vm_private_data = NULL;
 		return;
 	}
+	ion_handle_get(handle);
+	mutex_lock(&buffer->lock);
+	buffer->umap_cnt++;
+	mutex_unlock(&buffer->lock);
 	pr_debug("%s: %d client_cnt %d handle_cnt %d alloc_cnt %d\n",
 		 __func__, __LINE__,
 		 atomic_read(&client->ref.refcount),
@@ -1190,6 +1190,14 @@ static void ion_vma_close(struct vm_area_struct *vma)
 	if (!handle)
 		return;
 	client = handle->client;
+	mutex_lock(&buffer->lock);
+	buffer->umap_cnt--;
+	mutex_unlock(&buffer->lock);
+
+	if (buffer->heap->ops->unmap_user)
+		buffer->heap->ops->unmap_user(buffer->heap, buffer);
+
+
 	pr_debug("%s: %d client_cnt %d handle_cnt %d alloc_cnt %d\n",
 		 __func__, __LINE__,
 		 atomic_read(&client->ref.refcount),
@@ -1265,7 +1273,6 @@ static int ion_share_mmap(struct file *file, struct vm_area_struct *vma)
 	/* now map it to userspace */
 	ret = buffer->heap->ops->map_user(buffer->heap, buffer, vma,
 						flags);
-	buffer->umap_cnt++;
 	mutex_unlock(&buffer->lock);
 	if (ret) {
 		pr_err("%s: failure mapping buffer to userspace\n",
@@ -1490,9 +1497,11 @@ static int ion_open(struct inode *inode, struct file *file)
 	struct miscdevice *miscdev = file->private_data;
 	struct ion_device *dev = container_of(miscdev, struct ion_device, dev);
 	struct ion_client *client;
+	char debug_name[64];
 
 	pr_debug("%s: %d\n", __func__, __LINE__);
-	client = ion_client_create(dev, -1, "user");
+	snprintf(debug_name, 64, "%u", task_pid_nr(current->group_leader));
+	client = ion_client_create(dev, -1, debug_name);
 	if (IS_ERR_OR_NULL(client))
 		return PTR_ERR(client);
 	file->private_data = client;

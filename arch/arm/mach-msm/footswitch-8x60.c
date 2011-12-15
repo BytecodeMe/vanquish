@@ -151,21 +151,21 @@ static int footswitch_enable(struct regulator_dev *rdev)
 	/* Make sure required clocks are on at the correct rates. */
 	rc = setup_clocks(fs);
 	if (rc)
-		goto out;
+		return rc;
 
 	/* Un-halt all bus ports in the power domain. */
 	if (fs->bus_port1) {
 		rc = msm_bus_axi_portunhalt(fs->bus_port1);
 		if (rc) {
 			pr_err("%s: Port 1 unhalt failed.\n", __func__);
-			goto out;
+			goto err;
 		}
 	}
 	if (fs->bus_port2) {
 		rc = msm_bus_axi_portunhalt(fs->bus_port2);
 		if (rc) {
 			pr_err("%s: Port 2 unhalt failed.\n", __func__);
-			goto out;
+			goto err_port2_halt;
 		}
 	}
 
@@ -209,7 +209,12 @@ static int footswitch_enable(struct regulator_dev *rdev)
 	restore_clocks(fs);
 
 	fs->is_enabled = true;
-out:
+	return 0;
+
+err_port2_halt:
+	msm_bus_axi_porthalt(fs->bus_port1);
+err:
+	restore_clocks(fs);
 	return rc;
 }
 
@@ -226,14 +231,14 @@ static int footswitch_disable(struct regulator_dev *rdev)
 	/* Make sure required clocks are on at the correct rates. */
 	rc = setup_clocks(fs);
 	if (rc)
-		goto out;
+		return rc;
 
 	/* Halt all bus ports in the power domain. */
 	if (fs->bus_port1) {
 		rc = msm_bus_axi_porthalt(fs->bus_port1);
 		if (rc) {
 			pr_err("%s: Port 1 halt failed.\n", __func__);
-			goto out;
+			goto err;
 		}
 	}
 	if (fs->bus_port2) {
@@ -256,6 +261,14 @@ static int footswitch_disable(struct regulator_dev *rdev)
 	udelay(RESET_DELAY_US);
 
 	/*
+	 * Return clocks to their state before this function. For robustness
+	 * if memory-retention across collapses is required, clocks should
+	 * be disabled before asserting the clamps. Assuming clocks were off
+	 * before entering footswitch_disable(), this will be true.
+	 */
+	restore_clocks(fs);
+
+	/*
 	 * Clamp the I/O ports of the core to ensure the values
 	 * remain fixed while the core is collapsed.
 	 */
@@ -266,16 +279,13 @@ static int footswitch_disable(struct regulator_dev *rdev)
 	regval &= ~ENABLE_BIT;
 	writel_relaxed(regval, fs->gfs_ctl_reg);
 
-	/* Return clocks to their state before this function. */
-	restore_clocks(fs);
-
 	fs->is_enabled = false;
-
-	return rc;
+	return 0;
 
 err_port2_halt:
 	msm_bus_axi_portunhalt(fs->bus_port1);
-out:
+err:
+	restore_clocks(fs);
 	return rc;
 }
 
@@ -296,14 +306,14 @@ static int gfx2d_footswitch_enable(struct regulator_dev *rdev)
 	/* Make sure required clocks are on at the correct rates. */
 	rc = setup_clocks(fs);
 	if (rc)
-		goto out;
+		return rc;
 
 	/* Un-halt all bus ports in the power domain. */
 	if (fs->bus_port1) {
 		rc = msm_bus_axi_portunhalt(fs->bus_port1);
 		if (rc) {
 			pr_err("%s: Port 1 unhalt failed.\n", __func__);
-			goto out;
+			goto err;
 		}
 	}
 
@@ -346,7 +356,10 @@ static int gfx2d_footswitch_enable(struct regulator_dev *rdev)
 	restore_clocks(fs);
 
 	fs->is_enabled = true;
-out:
+	return 0;
+
+err:
+	restore_clocks(fs);
 	return rc;
 }
 
@@ -363,14 +376,14 @@ static int gfx2d_footswitch_disable(struct regulator_dev *rdev)
 	/* Make sure required clocks are on at the correct rates. */
 	rc = setup_clocks(fs);
 	if (rc)
-		goto out;
+		return rc;
 
 	/* Halt all bus ports in the power domain. */
 	if (fs->bus_port1) {
 		rc = msm_bus_axi_porthalt(fs->bus_port1);
 		if (rc) {
 			pr_err("%s: Port 1 halt failed.\n", __func__);
-			goto out;
+			goto err;
 		}
 	}
 
@@ -406,8 +419,10 @@ static int gfx2d_footswitch_disable(struct regulator_dev *rdev)
 	restore_clocks(fs);
 
 	fs->is_enabled = false;
+	return 0;
 
-out:
+err:
+	restore_clocks(fs);
 	return rc;
 }
 

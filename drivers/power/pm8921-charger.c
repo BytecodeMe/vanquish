@@ -1413,6 +1413,28 @@ int pm8921_is_battery_present(void)
 }
 EXPORT_SYMBOL(pm8921_is_battery_present);
 
+/*
+ * Disabling the charge current limit causes current
+ * current limits to have no monitoring. An adequate charger
+ * capable of supplying high current while sustaining VIN_MIN
+ * is required if the limiting is disabled.
+ */
+int pm8921_disable_input_current_limit(bool disable)
+{
+	if (!the_chip) {
+		pr_err("called before init\n");
+		return -EINVAL;
+	}
+	if (disable) {
+		pr_warn("Disabling input current limit!\n");
+
+		return pm8xxx_writeb(the_chip->dev->parent,
+			 CHG_BUCK_CTRL_TEST3, 0xF2);
+	}
+	return 0;
+}
+EXPORT_SYMBOL(pm8921_disable_input_current_limit);
+
 int pm8921_set_max_battery_charge_current(int ma)
 {
 	if (!the_chip) {
@@ -3023,6 +3045,8 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	enable_irq_wake(chip->pmic_chg_irq[USBIN_VALID_IRQ]);
 	enable_irq_wake(chip->pmic_chg_irq[USBIN_OV_IRQ]);
 	enable_irq_wake(chip->pmic_chg_irq[USBIN_UV_IRQ]);
+	enable_irq_wake(chip->pmic_chg_irq[BAT_TEMP_OK_IRQ]);
+	enable_irq_wake(chip->pmic_chg_irq[VBATDET_LOW_IRQ]);
 	/*
 	 * if both the cool_temp and warm_temp are zero the device doesnt
 	 * care for jeita compliance

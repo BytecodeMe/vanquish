@@ -19,7 +19,7 @@
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include "devices.h"
-#include "board-msm8960.h"
+#include "board-8930.h"
 
 #if (defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)) && \
 	defined(CONFIG_I2C)
@@ -27,14 +27,14 @@
 static struct i2c_board_info cam_expander_i2c_info[] = {
 	{
 		I2C_BOARD_INFO("sx1508q", 0x22),
-		.platform_data = &msm8960_sx150x_data[SX150X_CAM]
+		.platform_data = &msm8930_sx150x_data[SX150X_CAM]
 	},
 };
 
 static struct msm_cam_expander_info cam_expander_info[] = {
 	{
 		cam_expander_i2c_info,
-		MSM_8960_GSBI4_QUP_I2C_BUS_ID,
+		MSM_8930_GSBI4_QUP_I2C_BUS_ID,
 	},
 };
 #endif
@@ -367,7 +367,7 @@ static struct i2c_board_info imx074_actuator_i2c_info = {
 
 static struct msm_actuator_info imx074_actuator_info = {
 	.board_info     = &imx074_actuator_i2c_info,
-	.bus_id         = MSM_8960_GSBI4_QUP_I2C_BUS_ID,
+	.bus_id         = MSM_8930_GSBI4_QUP_I2C_BUS_ID,
 	.vcm_pwd        = 0,
 	.vcm_enable     = 1,
 };
@@ -441,11 +441,7 @@ static struct platform_device msm8960_camera_sensor_ov2720 = {
 };
 #endif
 
-static struct msm8960_privacy_light_cfg privacy_light_info = {
-	.mpp = PM8921_MPP_PM_TO_SYS(12),
-};
-
-void __init msm8960_init_cam(void)
+void __init msm8930_init_cam(void)
 {
 	int i;
 	struct platform_device *cam_dev[] = {
@@ -455,16 +451,6 @@ void __init msm8960_init_cam(void)
 
 	msm_gpiomux_install(msm8960_cam_common_configs,
 			ARRAY_SIZE(msm8960_cam_common_configs));
-
-	if (machine_is_msm8960_liquid()) {
-		struct msm_camera_sensor_info *s_info;
-		s_info = msm8960_camera_sensor_imx074.dev.platform_data;
-		s_info->sensor_platform_info->mount_angle = 180;
-		s_info = msm8960_camera_sensor_ov2720.dev.platform_data;
-		s_info->sensor_platform_info->privacy_light = 1;
-		s_info->sensor_platform_info->privacy_light_info =
-			&privacy_light_info;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(cam_dev); i++) {
 		struct msm_camera_sensor_info *s_info;

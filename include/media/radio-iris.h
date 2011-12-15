@@ -198,6 +198,7 @@ void radio_hci_event_packet(struct radio_hci_dev *hdev, struct sk_buff *skb);
 #define HCI_FM_STATION_DBG_PARAM_CMD 12
 #define HCI_FM_ENABLE_TRANS_CMD 13
 #define HCI_FM_DISABLE_TRANS_CMD 14
+#define HCI_FM_GET_TX_CONFIG 15
 
 
 /* Defines for FM TX*/
@@ -239,14 +240,6 @@ struct hci_fm_tx_rt {
 	__u8	pty;
 	__u8	ps_len;
 	__u8    rt_data[TX_RT_DATA_LENGTH];
-} __packed;
-
-struct hci_fm_get_trans_conf_rsp {
-	__u8    status;
-	__u8	emphasis;
-	__u8	rds_std;
-	__u32	band_low_limit;
-	__u32	band_high_limit;
 } __packed;
 
 struct hci_fm_mute_mode_req {
@@ -428,6 +421,10 @@ struct hci_fm_conf_rsp {
 	struct hci_fm_recv_conf_req recv_conf_rsp;
 } __packed;
 
+struct hci_fm_get_trans_conf_rsp {
+	__u8    status;
+	struct hci_fm_trans_conf_req_struct trans_conf_rsp;
+} __packed;
 struct hci_fm_sig_threshold_rsp {
 	__u8    status;
 	__u8    sig_threshold;
@@ -547,15 +544,16 @@ enum v4l2_cid_private_iris_t {
 	V4L2_CID_PRIVATE_IRIS_SSBI_POKE,
 	V4L2_CID_PRIVATE_IRIS_TX_TONE,
 	V4L2_CID_PRIVATE_IRIS_RDS_GRP_COUNTERS,
-	V4L2_CID_PRIVATE_IRIS_SET_NOTCH_FILTER,/*0x8000028*/
-	/*0x8000029 is used for tavarua specific ioctl*/
-	V4L2_CID_PRIVATE_IRIS_DO_CALIBRATION = 0x800002a,
-	V4L2_CID_PRIVATE_IRIS_READ_DEFAULT = 0x00980928,/*using private CIDs
-							under userclass*/
+	V4L2_CID_PRIVATE_IRIS_SET_NOTCH_FILTER, /* 0x8000028 */
+	V4L2_CID_PRIVATE_IRIS_SET_AUDIO_PATH, /* TAVARUA specific command */
+	V4L2_CID_PRIVATE_IRIS_DO_CALIBRATION,
+	V4L2_CID_PRIVATE_IRIS_SRCH_ALGORITHM, /* TAVARUA specific command */
+
+	/*using private CIDs under userclass*/
+	V4L2_CID_PRIVATE_IRIS_READ_DEFAULT = 0x00980928,
 	V4L2_CID_PRIVATE_IRIS_WRITE_DEFAULT,
 	V4L2_CID_PRIVATE_IRIS_SET_CALIBRATION,
 };
-
 
 
 enum iris_evt_t {

@@ -21,7 +21,7 @@
 #include <mach/msm_bus_board.h>
 #include <mach/restart.h>
 #include "devices.h"
-#include "board-msm8930.h"
+#include "board-8960.h"
 
 struct pm8xxx_gpio_init {
 	unsigned			gpio;
@@ -111,7 +111,7 @@ static struct pm8xxx_mpp_init pm8921_mpps[] __initdata = {
 								DOUT_CTRL_LOW),
 };
 
-void __init msm8930_pm8921_gpio_mpp_init(void)
+void __init msm8960_pm8921_gpio_mpp_init(void)
 {
 	int i, rc;
 
@@ -182,7 +182,6 @@ static struct pm8xxx_adc_platform_data pm8xxx_adc_pdata = {
 	.adc_mpp_base		= PM8921_MPP_PM_TO_SYS(1),
 };
 
-
 static struct pm8xxx_irq_platform_data pm8xxx_irq_pdata __devinitdata = {
 	.irq_base		= PM8921_IRQ_BASE,
 	.devirq			= MSM_GPIO_TO_INT(104),
@@ -204,7 +203,7 @@ static struct pm8xxx_rtc_platform_data pm8xxx_rtc_pdata __devinitdata = {
 
 static struct pm8xxx_pwrkey_platform_data pm8xxx_pwrkey_pdata = {
 	.pull_up		= 1,
-	.kpd_trigger_delay_us	= 970,
+	.kpd_trigger_delay_us	= 15625,
 	.wakeup			= 1,
 };
 
@@ -217,6 +216,26 @@ static const unsigned int keymap_liquid[] = {
 	KEY(1, 3, KEY_ROTATE_LOCK),
 	KEY(1, 4, KEY_HOME),
 };
+
+static struct matrix_keymap_data keymap_data_liquid = {
+	.keymap_size    = ARRAY_SIZE(keymap_liquid),
+	.keymap         = keymap_liquid,
+};
+
+static struct pm8xxx_keypad_platform_data keypad_data_liquid = {
+	.input_name             = "keypad_8960_liquid",
+	.input_phys_device      = "keypad_8960/input0",
+	.num_rows               = 2,
+	.num_cols               = 5,
+	.rows_gpio_start	= PM8921_GPIO_PM_TO_SYS(9),
+	.cols_gpio_start	= PM8921_GPIO_PM_TO_SYS(1),
+	.debounce_ms            = 15,
+	.scan_delay_ms          = 32,
+	.row_hold_ns            = 91500,
+	.wakeup                 = 1,
+	.keymap_data            = &keymap_data_liquid,
+};
+
 
 static const unsigned int keymap[] = {
 	KEY(0, 0, KEY_VOLUMEUP),
@@ -358,6 +377,25 @@ static const unsigned int keymap_sim[] = {
 	KEY(0, 3, KEY_CAMERA_FOCUS),
 };
 
+static struct matrix_keymap_data keymap_data_sim = {
+	.keymap_size    = ARRAY_SIZE(keymap_sim),
+	.keymap         = keymap_sim,
+};
+
+static struct pm8xxx_keypad_platform_data keypad_data_sim = {
+	.input_name             = "keypad_8960",
+	.input_phys_device      = "keypad_8960/input0",
+	.num_rows               = 12,
+	.num_cols               = 8,
+	.rows_gpio_start	= PM8921_GPIO_PM_TO_SYS(9),
+	.cols_gpio_start	= PM8921_GPIO_PM_TO_SYS(1),
+	.debounce_ms            = 15,
+	.scan_delay_ms          = 32,
+	.row_hold_ns            = 91500,
+	.wakeup                 = 1,
+	.keymap_data            = &keymap_data_sim,
+};
+
 static int pm8921_therm_mitigation[] = {
 	1100,
 	700,
@@ -488,12 +526,17 @@ static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
 	},
 };
 
-void __init msm8930_init_pmic(void)
+void __init msm8960_init_pmic(void)
 {
 	pmic_reset_irq = PM8921_IRQ_BASE + PM8921_RESOUT_IRQ;
-	msm8960_device_ssbi_pm8921.dev.platform_data =
+	msm8960_device_ssbi_pmic.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
 
 	/* Simulator supports a QWERTY keypad */
+	if (machine_is_msm8960_sim())
+		pm8921_platform_data.keypad_pdata = &keypad_data_sim;
+
+	if (machine_is_msm8960_liquid())
+		pm8921_platform_data.keypad_pdata = &keypad_data_liquid;
 }

@@ -37,8 +37,10 @@
 #include <linux/usb/msm_hsusb_hw.h>
 #include <linux/regulator/consumer.h>
 #include <linux/mfd/pm8xxx/pm8921-charger.h>
+#include <linux/pm_qos_params.h>
 
 #include <mach/clk.h>
+#include <mach/msm_xo.h>
 
 #define MSM_USB_BASE	(motg->regs)
 #define DRIVER_NAME	"msm_otg"
@@ -61,6 +63,25 @@
 
 static struct msm_otg *the_msm_otg;
 static bool debug_aca_enabled;
+
+/* Prevent idle power collapse(pc) while operating in peripheral mode */
+static void otg_pm_qos_update_latency(struct msm_otg *dev, int vote)
+{
+	struct msm_otg_platform_data *pdata = dev->pdata;
+	u32 swfi_latency = 0;
+
+	if (!pdata || !pdata->swfi_latency)
+		return;
+
+	swfi_latency = pdata->swfi_latency + 1;
+
+	if (vote)
+		pm_qos_update_request(&dev->pm_qos_req_dma,
+				swfi_latency);
+	else
+		pm_qos_update_request(&dev->pm_qos_req_dma,
+				PM_QOS_DEFAULT_VALUE);
+}
 
 static struct regulator *hsusb_3p3;
 static struct regulator *hsusb_1p8;
@@ -507,13 +528,15 @@ static int msm_otg_reset(struct otg_transceiver *otg)
 		return ret;
 	}
 
-
 	ret = msm_otg_link_reset(motg);
 	if (ret) {
 		dev_err(otg->dev, "link reset failed\n");
 		return ret;
 	}
 	msleep(100);
+
+	ulpi_init(motg);
+
 	/* Ensure that RESET operation is completed before turning off clock */
 	mb();
 
@@ -572,6 +595,7 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	int cnt = 0;
 	bool session_active;
 	u32 phy_ctrl_val = 0;
+	unsigned ret;
 
 	if (atomic_read(&motg->in_lpm))
 		return 0;
@@ -665,6 +689,12 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	if (!IS_ERR(motg->pclk_src))
 		clk_disable(motg->pclk_src);
 
+	/* usb phy no more require TCXO clock, hence vote for TCXO disable */
+	ret = msm_xo_mode_vote(motg->xo_handle, MSM_XO_MODE_OFF);
+	if (ret)
+		dev_err(otg->dev, "%s failed to devote for "
+			"TCXO D0 buffer%d\n", __func__, ret);
+
 	if (motg->caps & ALLOW_PHY_POWER_COLLAPSE && !session_active) {
 		msm_hsusb_ldo_enable(motg, 0);
 		motg->lpm_flags |= PHY_PWR_COLLAPSED;
@@ -699,11 +729,19 @@ static int msm_otg_resume(struct msm_otg *motg)
 	int cnt = 0;
 	unsigned temp;
 	u32 phy_ctrl_val = 0;
+	unsigned ret;
 
 	if (!atomic_read(&motg->in_lpm))
 		return 0;
 
 	wake_lock(&motg->wlock);
+
+	/* Vote for TCXO when waking up the phy */
+	ret = msm_xo_mode_vote(motg->xo_handle, MSM_XO_MODE_ON);
+	if (ret)
+		dev_err(otg->dev, "%s failed to vote for "
+			"TCXO D0 buffer%d\n", __func__, ret);
+
 	if (!IS_ERR(motg->pclk_src))
 		clk_enable(motg->pclk_src);
 
@@ -978,10 +1016,16 @@ static void msm_otg_start_peripheral(struct otg_transceiver *otg, int on)
 		 */
 		if (pdata->setup_gpio)
 			pdata->setup_gpio(OTG_STATE_B_PERIPHERAL);
+		/*
+		 * vote for minimum dma_latency to prevent idle
+		 * power collapse(pc) while running in peripheral mode.
+		 */
+		otg_pm_qos_update_latency(motg, 1);
 		usb_gadget_vbus_connect(otg->gadget);
 	} else {
 		dev_dbg(otg->dev, "gadget off\n");
 		usb_gadget_vbus_disconnect(otg->gadget);
+		otg_pm_qos_update_latency(motg, 0);
 		if (pdata->setup_gpio)
 			pdata->setup_gpio(OTG_STATE_UNDEFINED);
 	}
@@ -2320,6 +2364,10 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	}
 	clk_set_rate(motg->clk, 60000000);
 
+	/* pm qos request to prevent apps idle power collapse */
+	if (motg->pdata->swfi_latency)
+		pm_qos_add_request(&motg->pm_qos_req_dma,
+			PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
 	/*
 	 * If USB Core is running its protocol engine based on CORE CLK,
 	 * CORE CLK  must be running at >55Mhz for correct HSUSB
@@ -2379,12 +2427,27 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		goto free_regs;
 	}
 
+	motg->xo_handle = msm_xo_get(MSM_XO_TCXO_D0, "usb");
+	if (IS_ERR(motg->xo_handle)) {
+		dev_err(&pdev->dev, "%s not able to get the handle "
+			"to vote for TCXO D0 buffer\n", __func__);
+		ret = PTR_ERR(motg->xo_handle);
+		goto free_regs;
+	}
+
+	ret = msm_xo_mode_vote(motg->xo_handle, MSM_XO_MODE_ON);
+	if (ret) {
+		dev_err(&pdev->dev, "%s failed to vote for TCXO "
+			"D0 buffer%d\n", __func__, ret);
+		goto free_xo_handle;
+	}
+
 	clk_enable(motg->pclk);
 
 	ret = msm_hsusb_init_vddcx(motg, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "hsusb vddcx init failed\n");
-		goto free_regs;
+		goto devote_xo_handle;
 	}
 
 	ret = msm_hsusb_config_vddcx(1);
@@ -2522,6 +2585,10 @@ free_ldo_init:
 	msm_hsusb_ldo_init(motg, 0);
 free_init_vddcx:
 	msm_hsusb_init_vddcx(motg, 0);
+devote_xo_handle:
+	msm_xo_mode_vote(motg->xo_handle, MSM_XO_MODE_OFF);
+free_xo_handle:
+	msm_xo_put(motg->xo_handle);
 free_regs:
 	iounmap(motg->regs);
 put_core_clk:
@@ -2543,6 +2610,8 @@ put_phy_reset_clk:
 	if (!IS_ERR(motg->phy_reset_clk))
 		clk_put(motg->phy_reset_clk);
 free_motg:
+	if (motg->pdata->swfi_latency)
+		pm_qos_remove_request(&motg->pm_qos_req_dma);
 	kfree(motg);
 	return ret;
 }
@@ -2601,6 +2670,7 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 		clk_disable(motg->pclk_src);
 		clk_put(motg->pclk_src);
 	}
+	msm_xo_put(motg->xo_handle);
 	msm_hsusb_ldo_enable(motg, 0);
 	msm_hsusb_ldo_init(motg, 0);
 	msm_hsusb_init_vddcx(motg, 0);
@@ -2617,8 +2687,10 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 	if (!IS_ERR(motg->system_clk))
 		clk_put(motg->system_clk);
 
-	kfree(motg);
+	if (motg->pdata->swfi_latency)
+		pm_qos_remove_request(&motg->pm_qos_req_dma);
 
+	kfree(motg);
 	return 0;
 }
 

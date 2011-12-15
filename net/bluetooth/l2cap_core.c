@@ -549,8 +549,7 @@ void l2cap_chan_del(struct sock *sk, int err)
 		l2cap_pi(sk)->ampcon->l2cap_data = NULL;
 		l2cap_pi(sk)->ampcon = NULL;
 		if (l2cap_pi(sk)->ampchan) {
-			hci_chan_put(l2cap_pi(sk)->ampchan);
-			if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+			if (!hci_chan_put(l2cap_pi(sk)->ampchan))
 				l2cap_deaggregate(l2cap_pi(sk)->ampchan,
 							l2cap_pi(sk));
 		}
@@ -1444,6 +1443,9 @@ int l2cap_ertm_send(struct sock *sk)
 		   read-only (for locking purposes) on cloned sk_buffs.
 		 */
 		tx_skb = skb_clone(skb, GFP_ATOMIC);
+
+		if (!tx_skb)
+			break;
 
 		sock_hold(sk);
 		tx_skb->sk = sk;
@@ -3084,8 +3086,9 @@ static void l2cap_aggregate_fs(struct hci_ext_fs *cur,
 			if (new->sdu_arr_time)
 				new_rate = div_u64(new_rate, new->sdu_arr_time);
 			cur_rate = cur_rate + new_rate;
-			agg->sdu_arr_time = div64_u64(agg->max_sdu * 1000000ULL,
-				cur_rate);
+			if (cur_rate)
+				agg->sdu_arr_time = div64_u64(
+					agg->max_sdu * 1000000ULL, cur_rate);
 		}
 	}
 }
@@ -3126,8 +3129,9 @@ static void l2cap_deaggregate_fs(struct hci_ext_fs *cur,
 		if (old->sdu_arr_time)
 			old_rate = div_u64(old_rate, old->sdu_arr_time);
 		cur_rate = cur_rate - old_rate;
-		agg->sdu_arr_time = div64_u64(agg->max_sdu * 1000000ULL,
-								cur_rate);
+		if (cur_rate)
+			agg->sdu_arr_time = div64_u64(
+				agg->max_sdu * 1000000ULL, cur_rate);
 	}
 }
 
@@ -3749,9 +3753,9 @@ static int l2cap_parse_conf_rsp(struct sock *sk, void *rsp, int len, void *data,
 
 	/* Initialize rfc in case no rfc option is received */
 	rfc.mode = pi->mode;
-	rfc.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
-	rfc.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
-	rfc.max_pdu_size = L2CAP_DEFAULT_MAX_PDU_SIZE;
+	rfc.retrans_timeout = cpu_to_le16(L2CAP_DEFAULT_RETRANS_TO);
+	rfc.monitor_timeout = cpu_to_le16(L2CAP_DEFAULT_MONITOR_TO);
+	rfc.max_pdu_size = cpu_to_le16(L2CAP_DEFAULT_MAX_PDU_SIZE);
 
 	while (len >= L2CAP_CONF_OPT_SIZE) {
 		len -= l2cap_get_conf_opt(&rsp, &type, &olen, &val);
@@ -3849,9 +3853,9 @@ static void l2cap_conf_rfc_get(struct sock *sk, void *rsp, int len)
 
 	/* Initialize rfc in case no rfc option is received */
 	rfc.mode = pi->mode;
-	rfc.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
-	rfc.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
-	rfc.max_pdu_size = L2CAP_DEFAULT_MAX_PDU_SIZE;
+	rfc.retrans_timeout = cpu_to_le16(L2CAP_DEFAULT_RETRANS_TO);
+	rfc.monitor_timeout = cpu_to_le16(L2CAP_DEFAULT_MONITOR_TO);
+	rfc.max_pdu_size = cpu_to_le16(L2CAP_DEFAULT_MAX_PDU_SIZE);
 
 	if ((pi->mode != L2CAP_MODE_ERTM) && (pi->mode != L2CAP_MODE_STREAMING))
 		return;
@@ -5056,8 +5060,7 @@ static inline int l2cap_move_channel_confirm(struct l2cap_conn *conn,
 			if ((!l2cap_pi(sk)->amp_id) &&
 						(l2cap_pi(sk)->ampchan)) {
 				/* Have moved off of AMP, free the channel */
-				hci_chan_put(l2cap_pi(sk)->ampchan);
-				if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+				if (!hci_chan_put(l2cap_pi(sk)->ampchan))
 					l2cap_deaggregate(l2cap_pi(sk)->ampchan,
 								l2cap_pi(sk));
 				l2cap_pi(sk)->ampchan = NULL;
@@ -5115,8 +5118,7 @@ static inline int l2cap_move_channel_confirm_rsp(struct l2cap_conn *conn,
 			/* Have moved off of AMP, free the channel */
 			l2cap_pi(sk)->ampcon = NULL;
 			if (l2cap_pi(sk)->ampchan) {
-				hci_chan_put(l2cap_pi(sk)->ampchan);
-				if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+				if (!hci_chan_put(l2cap_pi(sk)->ampchan))
 					l2cap_deaggregate(l2cap_pi(sk)->ampchan,
 								l2cap_pi(sk));
 			}
@@ -5494,6 +5496,7 @@ int l2cap_destroy_cfm(struct hci_chan *chan, u8 reason)
 		/* TODO MM/PK - What to do if connection is LOCAL_BUSY?  */
 		if (l2cap_pi(sk)->ampchan == chan) {
 			l2cap_pi(sk)->ampchan = NULL;
+			l2cap_pi(sk)->ampcon = NULL;
 			l2cap_amp_move_init(sk);
 		}
 		bh_unlock_sock(sk);
@@ -5828,6 +5831,11 @@ static void l2cap_ertm_resend(struct sock *sk)
 			tx_skb = skb_copy(skb, GFP_ATOMIC);
 		} else {
 			tx_skb = skb_clone(skb, GFP_ATOMIC);
+		}
+
+		if (!tx_skb) {
+			l2cap_seq_list_clear(&pi->retrans_list);
+			break;
 		}
 
 		/* Update skb contents */

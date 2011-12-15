@@ -51,7 +51,7 @@ extern struct platform_device msm_device_uart_dm6;
 
 extern struct platform_device msm8960_device_uart_gsbi2;
 extern struct platform_device msm8960_device_uart_gsbi5;
-extern struct platform_device msm8960_device_ssbi_pm8921;
+extern struct platform_device msm8960_device_ssbi_pmic;
 extern struct platform_device msm8960_device_qup_i2c_gsbi3;
 extern struct platform_device msm8960_device_qup_i2c_gsbi4;
 extern struct platform_device msm8960_device_qup_i2c_gsbi10;
@@ -171,6 +171,7 @@ extern struct platform_device msm_cpudai_afe_01_tx;
 extern struct platform_device msm_cpudai_afe_02_rx;
 extern struct platform_device msm_cpudai_afe_02_tx;
 extern struct platform_device msm_pcm_afe;
+extern struct platform_device msm_compr_dsp;
 
 extern struct platform_device msm_8960_q6_lpass;
 extern struct platform_device msm_8960_q6_mss_fw;
