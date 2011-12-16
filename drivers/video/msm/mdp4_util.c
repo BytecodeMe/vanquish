@@ -2615,14 +2615,14 @@ void mdp4_free_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 			ion_unmap_iommu(mfd->iclient, buf->ihdl,
 				DISPLAY_DOMAIN, GEN_POOL);
 			ion_free(mfd->iclient, buf->ihdl);
-			pr_info("%s:%d free writeback imem\n", __func__,
-				__LINE__);
 			buf->ihdl = NULL;
+			pr_debug("%s:%d free writeback imem\n", __func__,
+				__LINE__);
 		}
 	} else {
 		if (buf->phys_addr) {
 			free_contiguous_memory_by_paddr(buf->phys_addr);
-			pr_info("%s:%d free writeback pmem\n", __func__,
+			pr_debug("%s:%d free writeback pmem\n", __func__,
 				__LINE__);
 		}
 	}
