@@ -44,7 +44,7 @@ static struct msm_camera_i2c_reg_conf mt9m114_start_settings[] = {
 static struct msm_camera_i2c_reg_conf mt9m114_stop_settings[] = {
 	{0xDC00, 0x50},
 };
-static struct msm_camera_i2c_reg_dt_conf mt9m114_recommend_settings[] = {
+static struct msm_camera_i2c_reg_conf mt9m114_recommend_settings[] = {
 
 	//MT9M114_1280x960_MIPI_768_fixed_30fps_EXTCLK_24
 	{0x098E, 0,1},
@@ -1011,7 +1011,7 @@ static struct v4l2_subdev_info mt9m114_subdev_info[] = {
 
 static struct msm_camera_i2c_conf_array mt9m114_init_conf[] = {
 	{&mt9m114_recommend_settings[0],
-		ARRAY_SIZE(mt9m114_recommend_settings), 0, MSM_CAMERA_I2C_HYBRID_DATA}
+		ARRAY_SIZE(mt9m114_recommend_settings), 0, 0}
 };
 
 static struct msm_sensor_output_info_t mt9m114_dimensions[] = {
