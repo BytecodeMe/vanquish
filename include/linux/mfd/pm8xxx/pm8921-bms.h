@@ -116,6 +116,7 @@ struct pm8921_bms_platform_data {
 	int64_t (*get_batt_info) (int64_t battery_id,
 				  struct pm8921_bms_battery_data *data);
 #endif
+	unsigned int			max_voltage_uv;
 };
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)
@@ -136,7 +137,7 @@ int pm8921_bms_get_vsense_avg(int *result);
 
 /**
  * pm8921_bms_get_battery_current - return the battery current based on vsense
- *				resitor in milliamperes
+ *				resitor in microamperes
  * @result:	The pointer where the voltage will be updated. A -ve
  *		result means that the current is flowing in
  *		the battery - during battery charging

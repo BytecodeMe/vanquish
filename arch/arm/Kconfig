@@ -230,6 +230,10 @@ config BOOTINFO
 	  from both kernel context (via function call) and user
 	  context (via /proc/bootinfo).
 
+config GENERIC_BUG
+	def_bool y
+	depends on BUG
+
 source "init/Kconfig"
 
 source "kernel/Kconfig.freezer"

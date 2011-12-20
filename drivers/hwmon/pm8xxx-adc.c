@@ -122,6 +122,7 @@
 #define PM8XXX_ADC_PA_THERM_VREG_UV_MAX			1800000
 #define PM8XXX_ADC_PA_THERM_VREG_UA_LOAD		100000
 #define PM8XXX_ADC_HWMON_NAME_LENGTH			32
+#define PM8XXX_ADC_BTM_INTERVAL_MAX			0x14
 
 struct pm8xxx_adc {
 	struct device				*dev;
@@ -344,12 +345,16 @@ static int32_t pm8xxx_adc_configure(
 	if (rc < 0)
 		return rc;
 
+	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_USRP_RSV, &data_arb_rsv);
+	if (rc < 0)
+		return rc;
+
 	data_arb_rsv &= (PM8XXX_ADC_ARB_USRP_RSV_RST |
 		PM8XXX_ADC_ARB_USRP_RSV_DTEST0 |
 		PM8XXX_ADC_ARB_USRP_RSV_DTEST1 |
-		PM8XXX_ADC_ARB_USRP_RSV_OP |
-		PM8XXX_ADC_ARB_USRP_RSV_TRM);
-	data_arb_rsv |= chan_prop->amux_ip_rsv << PM8XXX_ADC_RSV_IP_SEL;
+		PM8XXX_ADC_ARB_USRP_RSV_OP);
+	data_arb_rsv |= (chan_prop->amux_ip_rsv << PM8XXX_ADC_RSV_IP_SEL |
+				PM8XXX_ADC_ARB_USRP_RSV_TRM);
 
 	rc = pm8xxx_adc_write_reg(PM8XXX_ADC_ARB_USRP_RSV, data_arb_rsv);
 	if (rc < 0)
@@ -501,7 +506,7 @@ static uint32_t pm8xxx_adc_calib_device(void)
 {
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	struct pm8xxx_adc_amux_properties conv;
-	int rc, offset_adc, slope_adc, calib_read_1, calib_read_2;
+	int rc, calib_read_1, calib_read_2;
 	u8 data_arb_usrp_cntrl1 = 0;
 
 	conv.amux_channel = CHANNEL_125V;
@@ -564,18 +569,14 @@ static uint32_t pm8xxx_adc_calib_device(void)
 	}
 	pm8xxx_adc_calib_first_adc = false;
 
-	slope_adc = (((calib_read_1 - calib_read_2) << PM8XXX_ADC_MUL)/
-					PM8XXX_CHANNEL_ADC_625_MV);
-	offset_adc = calib_read_2 -
-			((slope_adc * PM8XXX_CHANNEL_ADC_625_MV) >>
-							PM8XXX_ADC_MUL);
-
-	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].offset
-								= offset_adc;
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].dy =
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].dx
-						= PM8XXX_CHANNEL_ADC_625_MV;
+						= PM8XXX_CHANNEL_ADC_625_UV;
+	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].adc_vref =
+					calib_read_1;
+	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].adc_gnd =
+					calib_read_2;
 	rc = pm8xxx_adc_arb_cntrl(0, CHANNEL_NONE);
 	if (rc < 0) {
 		pr_err("%s: Configuring ADC Arbiter disable"
@@ -643,14 +644,6 @@ static uint32_t pm8xxx_adc_calib_device(void)
 	}
 	pm8xxx_adc_calib_first_adc = false;
 
-	slope_adc = (((calib_read_1 - calib_read_2) << PM8XXX_ADC_MUL)/
-				adc_pmic->adc_prop->adc_vdd_reference);
-	offset_adc = calib_read_2 -
-			((slope_adc * adc_pmic->adc_prop->adc_vdd_reference)
-							>> PM8XXX_ADC_MUL);
-
-	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].offset
-								= offset_adc;
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dy =
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dx =
@@ -843,6 +836,12 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		return rc;
 	}
 
+	if (btm_param->interval > PM8XXX_ADC_BTM_INTERVAL_MAX) {
+		pr_info("Bug in PMIC BTM interval time and cannot set"
+		" a value greater than 0x14 %x\n", btm_param->interval);
+		btm_param->interval = PM8XXX_ADC_BTM_INTERVAL_MAX;
+	}
+
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
 
 	data_btm_cool_thr0 = ((btm_param->low_thr_voltage << 24) >> 24);
@@ -974,22 +973,14 @@ uint32_t pm8xxx_adc_btm_end(void)
 {
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	int i, rc;
-	u8 data_arb_btm_cntrl;
+	u8 data_arb_btm_cntrl = 0;
 	unsigned long flags;
 
 	disable_irq_nosync(adc_pmic->btm_warm_irq);
 	disable_irq_nosync(adc_pmic->btm_cool_irq);
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
-	/* Set BTM registers to Disable mode */
-	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_BTM_CNTRL1,
-						&data_arb_btm_cntrl);
-	if (rc < 0) {
-		spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
-		return rc;
-	}
 
-	data_arb_btm_cntrl |= ~PM8XXX_ADC_ARB_BTM_CNTRL1_EN_BTM;
 	/* Write twice to the CNTRL register for the arbiter settings
 	   to take into effect */
 	for (i = 0; i < 2; i++) {

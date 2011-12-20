@@ -414,11 +414,6 @@ static struct pll_vote_clk pll14_clk = {
 	},
 };
 
-static int soc_clk_reset(struct clk *clk, enum clk_reset_action action)
-{
-	return branch_reset(&to_rcg_clk(clk)->b, action);
-}
-
 static struct clk_ops clk_ops_rcg_9615 = {
 	.enable = rcg_clk_enable,
 	.disable = rcg_clk_disable,
@@ -428,7 +423,7 @@ static struct clk_ops clk_ops_rcg_9615 = {
 	.list_rate = rcg_clk_list_rate,
 	.is_enabled = rcg_clk_is_enabled,
 	.round_rate = rcg_clk_round_rate,
-	.reset = soc_clk_reset,
+	.reset = rcg_clk_reset,
 	.is_local = local_clk_is_local,
 	.get_parent = rcg_clk_get_parent,
 };
@@ -1631,16 +1626,18 @@ static struct clk_lookup msm_clocks_9615[] = {
 
 	CLK_LOOKUP("measure",	measure_clk.c,	"debug"),
 
-	CLK_LOOKUP("cfpb_clk",		cfpb_clk.c,	NULL),
-	CLK_LOOKUP("cfpb_a_clk",	cfpb_a_clk.c,	NULL),
+	CLK_LOOKUP("bus_clk",		sfab_clk.c,		"msm_sys_fab"),
+	CLK_LOOKUP("bus_a_clk",		sfab_a_clk.c,		"msm_sys_fab"),
+	CLK_LOOKUP("mem_clk",		ebi1_msmbus_clk.c,	"msm_bus"),
+	CLK_LOOKUP("mem_a_clk",		ebi1_a_clk.c,		"msm_bus"),
+
+	CLK_LOOKUP("bus_clk",		sfpb_clk.c,	NULL),
+	CLK_LOOKUP("bus_a_clk",		sfpb_a_clk.c,	NULL),
+	CLK_LOOKUP("bus_clk",		cfpb_clk.c,	NULL),
+	CLK_LOOKUP("bus_a_clk",		cfpb_a_clk.c,	NULL),
+	CLK_LOOKUP("ebi1_clk",		ebi1_clk.c,	NULL),
 	CLK_LOOKUP("dfab_clk",		dfab_clk.c,	NULL),
 	CLK_LOOKUP("dfab_a_clk",	dfab_a_clk.c,	NULL),
-	CLK_LOOKUP("ebi1_clk",		ebi1_clk.c,	NULL),
-	CLK_LOOKUP("ebi1_a_clk",	ebi1_a_clk.c,	NULL),
-	CLK_LOOKUP("sfab_clk",		sfab_clk.c,	NULL),
-	CLK_LOOKUP("sfab_a_clk",	sfab_a_clk.c,	NULL),
-	CLK_LOOKUP("sfpb_clk",		sfpb_clk.c,	NULL),
-	CLK_LOOKUP("sfpb_a_clk",	sfpb_a_clk.c,	NULL),
 
 	CLK_LOOKUP("core_clk",		gp0_clk.c,	NULL),
 	CLK_LOOKUP("core_clk",		gp1_clk.c,	NULL),
@@ -1703,7 +1700,6 @@ static struct clk_lookup msm_clocks_9615[] = {
 	CLK_LOOKUP("bus_clk",		dfab_sdc2_clk.c,	"msm_sdcc.2"),
 	CLK_LOOKUP("dfab_clk",		dfab_sps_clk.c,		"msm_sps"),
 	CLK_LOOKUP("bus_clk",		dfab_bam_dmux_clk.c,	"BAM_RMNT"),
-	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
 	CLK_LOOKUP("mem_clk",		ebi1_adm_clk.c, "msm_dmov"),
 
 	CLK_LOOKUP("iface_clk",		ce1_p_clk.c,		"qce.0"),

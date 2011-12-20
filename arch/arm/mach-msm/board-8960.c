@@ -79,6 +79,8 @@
 #include <mach/ion.h>
 #include <mach/mdm2.h>
 
+#include <linux/fmem.h>
+
 #include "timer.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -114,11 +116,20 @@ struct sx150x_platform_data msm8960_sx150x_data[] = {
 		.io_open_drain_ena = 0x0,
 		.irq_summary       = -1,
 	},
+	[SX150X_LIQUID] = {
+		.gpio_base         = GPIO_LIQUID_EXPANDER_BASE,
+		.oscio_is_gpo      = false,
+		.io_pullup_ena     = 0x0c08,
+		.io_pulldn_ena     = 0x4060,
+		.io_open_drain_ena = 0x000c,
+		.io_polarity       = 0,
+		.irq_summary       = -1,
+	},
 };
 
 #endif
 
-#define MSM_PMEM_ADSP_SIZE         0x3800000
+#define MSM_PMEM_ADSP_SIZE         0x4200000
 #define MSM_PMEM_AUDIO_SIZE        0x28B000
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 #define MSM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
@@ -217,6 +228,9 @@ static struct platform_device android_pmem_audio_device = {
 };
 #endif
 
+struct fmem_platform_data fmem_pdata = {
+};
+
 #define DSP_RAM_BASE_8960 0x8da00000
 #define DSP_RAM_SIZE_8960 0x1800000
 static int dspcrashd_pdata_8960 = 0xDEADDEAD;
@@ -276,6 +290,10 @@ static void __init reserve_pmem_memory(void)
 #endif
 }
 
+static void __init reserve_fmem_memory(void)
+{
+}
+
 static int msm8960_paddr_to_memtype(unsigned int paddr)
 {
 	return MEMTYPE_EBI1;
@@ -326,6 +344,12 @@ static struct platform_device ion_dev = {
 };
 #endif
 
+struct platform_device fmem_device = {
+	.name = "fmem",
+	.id = 1,
+	.dev = { .platform_data = &fmem_pdata },
+};
+
 static void reserve_ion_memory(void)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
@@ -338,6 +362,7 @@ static void __init msm8960_calculate_reserve_sizes(void)
 	size_pmem_devices();
 	reserve_pmem_memory();
 	reserve_ion_memory();
+	reserve_fmem_memory();
 }
 
 static struct reserve_info msm8960_reserve_info __initdata = {
@@ -398,6 +423,7 @@ static void __init msm8960_early_memory(void)
 static void __init msm8960_reserve(void)
 {
 	msm_reserve();
+	fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size);
 }
 
 static int msm8960_change_memory_power(u64 start, u64 size,
@@ -1167,7 +1193,6 @@ static struct isa1200_platform_data isa1200_1_pdata = {
 static struct i2c_board_info msm_isa1200_board_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("isa1200_1", 0x90>>1),
-		.platform_data = &isa1200_1_pdata,
 	},
 };
 
@@ -1589,7 +1614,6 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_device_saw_core0,
 	&msm_device_saw_core1,
 	&msm8960_device_ext_5v_vreg,
-	&msm8960_device_ext_l2_vreg,
 	&msm8960_device_ssbi_pmic,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
@@ -1616,6 +1640,7 @@ static struct platform_device *common_devices[] __initdata = {
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
 #endif
+	&fmem_device,
 #ifdef CONFIG_ANDROID_PMEM
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&android_pmem_device,
@@ -1897,6 +1922,10 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] __initdata = {
 	},
 };
 
+static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
+	.mode = MSM_PM_BOOT_CONFIG_TZ,
+};
+
 #ifdef CONFIG_I2C
 #define I2C_SURF 1
 #define I2C_FFA  (1 << 1)
@@ -1922,6 +1951,11 @@ static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 #ifdef CONFIG_OV2720
 	{
 	I2C_BOARD_INFO("ov2720", 0x6C),
+	},
+#endif
+#ifdef CONFIG_MT9M114
+	{
+	I2C_BOARD_INFO("mt9m114", 0x48),
 	},
 #endif
 #ifdef CONFIG_MSM_CAMERA_FLASH_SC628A
@@ -1983,6 +2017,13 @@ static struct i2c_board_info isl_charger_i2c_info[] __initdata = {
 };
 #endif /* CONFIG_ISL9519_CHARGER */
 
+static struct i2c_board_info liquid_io_expander_i2c_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("sx1508q", 0x20),
+		.platform_data = &msm8960_sx150x_data[SX150X_LIQUID]
+	},
+};
+
 static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 #ifdef CONFIG_MSM_CAMERA
 	{
@@ -2013,7 +2054,7 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		ARRAY_SIZE(mxt_device_info),
 	},
 	{
-		I2C_LIQUID,
+		I2C_FFA | I2C_LIQUID,
 		MSM_8960_GSBI10_QUP_I2C_BUS_ID,
 		sii_device_info,
 		ARRAY_SIZE(sii_device_info),
@@ -2023,6 +2064,12 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		MSM_8960_GSBI10_QUP_I2C_BUS_ID,
 		msm_isa1200_board_info,
 		ARRAY_SIZE(msm_isa1200_board_info),
+	},
+	{
+		I2C_LIQUID,
+		MSM_8960_GSBI10_QUP_I2C_BUS_ID,
+		liquid_io_expander_i2c_info,
+		ARRAY_SIZE(liquid_io_expander_i2c_info),
 	},
 };
 #endif /* CONFIG_I2C */
@@ -2096,7 +2143,7 @@ static void __init msm8960_sim_init(void)
 	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
-	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_TZ, NULL));
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 }
 
 static void __init msm8960_rumi3_init(void)
@@ -2127,7 +2174,7 @@ static void __init msm8960_rumi3_init(void)
 	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
-	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_TZ, NULL));
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 }
 
 static void __init msm8960_cdp_init(void)
@@ -2169,6 +2216,9 @@ static void __init msm8960_cdp_init(void)
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 
 	msm8960_init_pmic();
+	if ((SOCINFO_VERSION_MAJOR(socinfo_get_version()) >= 2 &&
+		(machine_is_msm8960_mtp())) || machine_is_msm8960_liquid())
+		msm_isa1200_board_info[0].platform_data = &isa1200_1_pdata;
 	msm8960_i2c_init();
 	msm8960_gfx_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
@@ -2178,6 +2228,8 @@ static void __init msm8960_cdp_init(void)
 		msm_num_footswitch_devices);
 	if (machine_is_msm8960_liquid())
 		platform_device_register(&msm8960_device_ext_3p3v_vreg);
+	if (machine_is_msm8960_cdp())
+		platform_device_register(&msm8960_device_ext_l2_vreg);
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	msm8960_pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
@@ -2197,8 +2249,7 @@ static void __init msm8960_cdp_init(void)
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
 	change_memory_power = &msm8960_change_memory_power;
-	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_TZ, NULL));
-
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 	if (PLATFORM_IS_CHARM25())
 		platform_add_devices(mdm_devices, ARRAY_SIZE(mdm_devices));
 }

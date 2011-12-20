@@ -14,6 +14,7 @@
 #include <linux/platform_device.h>
 #include <linux/i2c.h>
 #include <linux/msm_ssbi.h>
+#include <linux/memblock.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/mmc.h>
@@ -35,6 +36,7 @@
 #include "pm.h"
 #include "acpuclock.h"
 #include <linux/power/ltc4088-charger.h>
+#include "pm-boot.h"
 
 static struct pm8xxx_adc_amux pm8018_adc_channels_data[] = {
 	{"vcoin", CHANNEL_VCOIN, CHAN_PATH_SCALING2, AMUX_RSV1,
@@ -627,6 +629,11 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	},
 };
 
+static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
+	.mode = MSM_PM_BOOT_CONFIG_REMAP_BOOT_ADDR,
+	.v_addr = MSM_APCS_GLB_BASE +  0x24,
+};
+
 static int __init gpiomux_init(void)
 {
 	int rc;
@@ -727,6 +734,39 @@ static int shelby_phy_init_seq[] = {
 	0x13, 0x83,/* set source impedance adjustment */
 	-1};
 
+#define USB_BAM_PHY_BASE	0x12502000
+#define USB_BAM_PHY_SIZE	0x10000
+#define A2_BAM_PHY_BASE		0x124C2000
+static struct usb_bam_pipe_connect msm_usb_bam_connections[4][2] = {
+	[0][USB_TO_PEER_PERIPHERAL] = {
+		.src_phy_addr = USB_BAM_PHY_BASE,
+		.src_pipe_index = 11,
+		.dst_phy_addr = A2_BAM_PHY_BASE,
+		.dst_pipe_index = 0,
+		.data_fifo_base_offset = 0x1100,
+		.data_fifo_size = 0x600,
+		.desc_fifo_base_offset = 0x1700,
+		.desc_fifo_size = 0x300,
+	},
+	[0][PEER_PERIPHERAL_TO_USB] = {
+		.src_phy_addr = A2_BAM_PHY_BASE,
+		.src_pipe_index = 1,
+		.dst_phy_addr = USB_BAM_PHY_BASE,
+		.dst_pipe_index = 10,
+		.data_fifo_base_offset = 0xa00,
+		.data_fifo_size = 0x600,
+		.desc_fifo_base_offset = 0x1000,
+		.desc_fifo_size = 0x100,
+	},
+};
+
+static struct msm_usb_bam_platform_data msm_usb_bam_pdata = {
+	.connections = &msm_usb_bam_connections[0][0],
+	.usb_bam_phy_base = USB_BAM_PHY_BASE,
+	.usb_bam_phy_size = USB_BAM_PHY_SIZE,
+	.usb_bam_num_pipes = 32,
+};
+
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control	= OTG_PHY_CONTROL,
@@ -781,6 +821,7 @@ static struct platform_device *common_devices[] = {
 	&msm_device_otg,
 	&msm_device_gadget_peripheral,
 	&msm_device_hsusb_host,
+	&msm_device_usb_bam,
 	&android_usb_device,
 	&msm9615_device_uart_gsbi4,
 	&msm9615_device_ext_2p95v_vreg,
@@ -816,6 +857,11 @@ static void __init msm9615_i2c_init(void)
 					&msm9615_i2c_qup_gsbi5_pdata;
 }
 
+static void __init msm9615_reserve(void)
+{
+	msm_pm_boot_pdata.p_addr = memblock_alloc(SZ_8, SZ_64K);
+}
+
 static void __init msm9615_common_init(void)
 {
 	msm9615_device_init();
@@ -833,6 +879,7 @@ static void __init msm9615_common_init(void)
 
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_otg_pdata.phy_init_seq = shelby_phy_init_seq;
+	msm_device_usb_bam.dev.platform_data = &msm_usb_bam_pdata;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 
 	acpuclk_init(&acpuclk_9615_soc_data);
@@ -845,6 +892,7 @@ static void __init msm9615_common_init(void)
 	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 						msm_pm_data);
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 }
 
 static void __init msm9615_cdp_init(void)
@@ -862,6 +910,7 @@ MACHINE_START(MSM9615_CDP, "QCT MSM9615 CDP")
 	.init_irq = msm9615_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm9615_cdp_init,
+	.reserve = msm9615_reserve,
 MACHINE_END
 
 MACHINE_START(MSM9615_MTP, "QCT MSM9615 MTP")
@@ -869,4 +918,5 @@ MACHINE_START(MSM9615_MTP, "QCT MSM9615 MTP")
 	.init_irq = msm9615_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm9615_mtp_init,
+	.reserve = msm9615_reserve,
 MACHINE_END

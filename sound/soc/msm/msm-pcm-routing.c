@@ -118,7 +118,7 @@ static struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
 
 
 /* Track ASM playback & capture sessions of DAI */
-static int fe_dai_map[MSM_FRONTEND_DAI_MAX][2] = {
+static int fe_dai_map[MSM_FRONTEND_DAI_MM_SIZE][2] = {
 	/* MULTIMEDIA1 */
 	{INVALID_SESSION, INVALID_SESSION},
 	/* MULTIMEDIA2 */
@@ -157,6 +157,12 @@ void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id, int stream_type)
 {
 	int i, session_type, path_type, port_type;
 	struct route_payload payload;
+
+	if (fedai_id > MSM_FRONTEND_DAI_MM_MAX_ID) {
+		/* bad ID assigned in machine driver */
+		pr_err("%s: bad MM ID\n", __func__);
+		return;
+	}
 
 	if (stream_type == SNDRV_PCM_STREAM_PLAYBACK) {
 		session_type = SESSION_TYPE_RX;
@@ -200,6 +206,12 @@ void msm_pcm_routing_dereg_phy_stream(int fedai_id, int stream_type)
 {
 	int i, port_type, session_type;
 
+	if (fedai_id > MSM_FRONTEND_DAI_MM_MAX_ID) {
+		/* bad ID assigned in machine driver */
+		pr_err("%s: bad MM ID\n", __func__);
+		return;
+	}
+
 	if (stream_type == SNDRV_PCM_STREAM_PLAYBACK) {
 		port_type = MSM_AFE_PORT_TYPE_RX;
 		session_type = SESSION_TYPE_RX;
@@ -228,6 +240,12 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 	int session_type, path_type;
 
 	pr_debug("%s: reg %x val %x set %x\n", __func__, reg, val, set);
+
+	if (val > MSM_FRONTEND_DAI_MM_MAX_ID) {
+		/* recheck FE ID in the mixer control defined in this file */
+		pr_err("%s: bad MM ID\n", __func__);
+		return;
+	}
 
 	if (afe_get_port_type(msm_bedais[reg].port_id) ==
 		MSM_AFE_PORT_TYPE_RX) {
@@ -518,9 +536,11 @@ static int msm_routing_get_eq_enable_mixer(struct snd_kcontrol *kcontrol,
 	int eq_idx = ((struct soc_multi_mixer_control *)
 					kcontrol->private_value)->reg;
 
+	ucontrol->value.integer.value[0] = eq_data[eq_idx].enable;
+
 	pr_debug("%s: EQ #%d enable %d\n", __func__,
 		eq_idx, eq_data[eq_idx].enable);
-	return eq_data[eq_idx].enable;
+	return 0;
 }
 
 static int msm_routing_put_eq_enable_mixer(struct snd_kcontrol *kcontrol,
@@ -545,6 +565,8 @@ static int msm_routing_get_eq_band_count_audio_mixer(
 	int eq_idx = ((struct soc_multi_mixer_control *)
 					kcontrol->private_value)->reg;
 
+	ucontrol->value.integer.value[0] = eq_data[eq_idx].num_bands;
+
 	pr_debug("%s: EQ #%d bands %d\n", __func__,
 		eq_idx, eq_data[eq_idx].num_bands);
 	return eq_data[eq_idx].num_bands;
@@ -557,7 +579,6 @@ static int msm_routing_put_eq_band_count_audio_mixer(
 	int eq_idx = ((struct soc_multi_mixer_control *)
 					kcontrol->private_value)->reg;
 	int value = ucontrol->value.integer.value[0];
-
 
 	pr_debug("%s: EQ #%d bands %d\n", __func__,
 		eq_idx, value);
@@ -572,6 +593,17 @@ static int msm_routing_get_eq_band_audio_mixer(struct snd_kcontrol *kcontrol,
 					kcontrol->private_value)->reg;
 	int band_idx = ((struct soc_multi_mixer_control *)
 					kcontrol->private_value)->shift;
+
+	ucontrol->value.integer.value[0] =
+			eq_data[eq_idx].eq_bands[band_idx].band_idx;
+	ucontrol->value.integer.value[1] =
+			eq_data[eq_idx].eq_bands[band_idx].filter_type;
+	ucontrol->value.integer.value[2] =
+			eq_data[eq_idx].eq_bands[band_idx].center_freq_hz;
+	ucontrol->value.integer.value[3] =
+			eq_data[eq_idx].eq_bands[band_idx].filter_gain;
+	ucontrol->value.integer.value[4] =
+			eq_data[eq_idx].eq_bands[band_idx].q_factor;
 
 	pr_debug("%s: band_idx = %d\n", __func__,
 			eq_data[eq_idx].eq_bands[band_idx].band_idx);
@@ -1239,6 +1271,11 @@ static int msm_pcm_routing_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	unsigned int be_id = rtd->dai_link->be_id;
 
+	if (be_id >= MSM_BACKEND_DAI_MAX) {
+		pr_err("%s: unexpected be_id %d\n", __func__, be_id);
+		return -EINVAL;
+	}
+
 	mutex_lock(&routing_lock);
 	msm_bedais[be_id].hw_params = params;
 	mutex_unlock(&routing_lock);
@@ -1264,7 +1301,7 @@ static int msm_pcm_routing_close(struct snd_pcm_substream *substream)
 
 	mutex_lock(&routing_lock);
 
-	for_each_set_bit(i, &bedai->fe_sessions, MSM_FRONTEND_DAI_MAX) {
+	for_each_set_bit(i, &bedai->fe_sessions, MSM_FRONTEND_DAI_MM_MAX_ID) {
 		if (fe_dai_map[i][session_type] != INVALID_SESSION)
 			adm_close(bedai->port_id);
 	}
@@ -1318,7 +1355,7 @@ static int msm_pcm_routing_prepare(struct snd_pcm_substream *substream)
 	 */
 	bedai->active = 1;
 
-	for_each_set_bit(i, &bedai->fe_sessions, MSM_FRONTEND_DAI_MAX) {
+	for_each_set_bit(i, &bedai->fe_sessions, MSM_FRONTEND_DAI_MM_MAX_ID) {
 		if (fe_dai_map[i][session_type] != INVALID_SESSION) {
 			adm_open(bedai->port_id, path_type,
 				params_rate(bedai->hw_params),
