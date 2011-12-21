@@ -40,7 +40,6 @@ static char enter_sleep[2] = {DCS_CMD_ENTER_SLEEP_MODE, 0x00};
 static char exit_sleep[2] = {DCS_CMD_EXIT_SLEEP_MODE, 0x00};
 
 static char display_off[2] = {DCS_CMD_SET_DISPLAY_OFF, 0x00};
-static char display_on[2] = {DCS_CMD_SET_DISPLAY_ON, 0x00};
 
 static char MTP_key_enable_1[3] = {0xf0, 0x5a, 0x5a};
 static char MTP_key_enable_2[3] = {0xf1, 0x5a, 0x5a};
@@ -295,11 +294,6 @@ static struct dsi_cmd_desc mot_video_on_cmds2[] = {
 
 };
 
-static struct dsi_cmd_desc mot_video_on_cmds3[] = {
-	{DTYPE_DCS_WRITE, 1, 0, 0, DEFAULT_DELAY,
-		sizeof(display_on), display_on},
-};
-
 static struct dsi_cmd_desc mot_display_off_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 10,
 		sizeof(display_off), display_off},
@@ -310,8 +304,6 @@ static struct dsi_cmd_desc mot_display_off_cmds[] = {
 static int panel_enable(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
-
-	pr_info("%s\n", __func__);
 
 	if (mot_panel == NULL) {
 		pr_err("%s: Invalid mot_panel\n", __func__);
@@ -329,21 +321,12 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 					ARRAY_SIZE(mot_video_on_cmds2));
 	msleep(120);
 
-	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds3,
-					ARRAY_SIZE(mot_video_on_cmds3));
-
-	usleep(5000);
-
-	pr_info("%s completed\n", __func__);
-
 	return 0;
 }
 
 static int panel_disable(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
-
-	pr_info("%s\n", __func__);
 
 	if (mot_panel == NULL) {
 		pr_err("%s: Invalid mot_panel\n", __func__);
