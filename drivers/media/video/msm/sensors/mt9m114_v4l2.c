@@ -27,6 +27,82 @@
 DEFINE_MUTEX(mt9m114_mut);
 static struct msm_sensor_ctrl_t mt9m114_s_ctrl;
 
+#define CAM2_RESET 76
+#define CAM2_ANALOG_EN 82
+#define CAM2_DIGITAL_EN_N 89
+
+#define MT9M114_DEFAULT_MASTER_CLK_RATE 24000000
+
+static int32_t mt9m114_power_on(const struct msm_camera_sensor_info *data)
+{
+	int32_t rc = 0;
+
+	CDBG("mt9m114_power_on\n");
+	mutex_lock(&mt9m114_mut);
+
+	/* obtain gpios */
+	rc = gpio_request(CAM2_DIGITAL_EN_N, "mt9m114");
+	if (rc) {
+		pr_err("mt9m114: gpio request CAM2_DIGITAL_EN_N failed (%d)\n",
+				rc);
+		goto power_on_done;
+	}
+	rc = gpio_request(CAM2_ANALOG_EN, "mt9m114");
+	if (rc) {
+		pr_err("mt9m114: gpio request CAM2_ANALOG_EN failed (%d)\n",
+				rc);
+		goto power_on_done;
+	}
+	rc = gpio_request(CAM2_RESET, "mt9m114");
+	if (rc) {
+		pr_err("mt9m114: gpio request CAM2_RESET failed (%d)\n", rc);
+		goto power_on_done;
+	}
+
+	/* turn on digital supply */
+	gpio_direction_output(CAM2_DIGITAL_EN_N, 0);
+
+	/* turn on analog supply */
+	gpio_direction_output(CAM2_ANALOG_EN, 1);
+
+	/* turn on mclk */
+	msm_camio_clk_rate_set(MT9M114_DEFAULT_MASTER_CLK_RATE);
+	usleep_range(1000, 2000);
+
+	/* toggle reset */
+	gpio_direction_output(CAM2_RESET, 0);
+	usleep_range(5000, 6000);
+	gpio_set_value_cansleep(CAM2_RESET, 1);
+	msleep(50);
+
+power_on_done:
+	mutex_unlock(&mt9m114_mut);
+	return rc;
+}
+
+static int32_t mt9m114_power_off(const struct msm_camera_sensor_info *data)
+{
+	CDBG("mt9m114_power_off\n");
+	mutex_lock(&mt9m114_mut);
+
+	/* assert reset */
+	gpio_direction_output(CAM2_RESET, 0);
+
+	/* turn off analog supply */
+	gpio_direction_output(CAM2_ANALOG_EN, 0);
+
+	/* turn off digital supply */
+	gpio_direction_output(CAM2_DIGITAL_EN_N, 1);
+
+	/* free gpios */
+	gpio_free(CAM2_RESET);
+	gpio_free(CAM2_ANALOG_EN);
+	gpio_free(CAM2_DIGITAL_EN_N);
+
+	mutex_unlock(&mt9m114_mut);
+	return 0;
+}
+
 static struct msm_camera_i2c_reg_conf mt9m114_720p_settings[] = {
 	{0xdc00, 0x50, MSM_CAMERA_I2C_BYTE_DATA, MSM_CAMERA_I2C_CMD_WRITE},
 	{MT9M114_COMMAND_REGISTER, MT9M114_COMMAND_REGISTER_SET_STATE,
@@ -1233,7 +1309,7 @@ static int mt9m114_sensor_open_init(const struct msm_camera_sensor_info *data)
 
 static int mt9m114_sensor_release(void)
 {
-	return msm_sensor_release(&mt9m114_s_ctrl);
+	return mt9m114_power_off(mt9m114_s_ctrl.sensordata);
 }
 
 static const struct i2c_device_id mt9m114_i2c_id[] = {
@@ -1301,8 +1377,8 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_config = mt9m114_sensor_config,
 	.sensor_open_init = mt9m114_sensor_open_init,
 	.sensor_release = mt9m114_sensor_release,
-	.sensor_power_up = msm_sensor_power_up,
-	.sensor_power_down = msm_sensor_power_down,
+	.sensor_power_up = mt9m114_power_on,
+	.sensor_power_down = mt9m114_power_off,
 	.sensor_probe = msm_sensor_probe,
 };
 
@@ -1335,6 +1411,6 @@ static struct msm_sensor_ctrl_t mt9m114_s_ctrl = {
 	.func_tbl = &mt9m114_func_tbl,
 };
 
-module_init(msm_sensor_init_module);
+module_init(mt9m114_init_module);
 MODULE_DESCRIPTION("Aptina 1.26MP YUV sensor driver");
 MODULE_LICENSE("GPL v2");
