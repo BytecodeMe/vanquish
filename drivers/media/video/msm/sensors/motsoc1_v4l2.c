@@ -68,10 +68,10 @@ static struct msm_sensor_output_info_t motsoc1_dimensions[] = {
 	},
 	{ /* MSM_SENSOR_RES_QTR */
 		/* use for preview/video */
-		.x_output = 1280,
-		.y_output = 720,
-		.line_length_pclk = 1280,
-		.frame_length_lines = 720,
+		.x_output = 1920,
+		.y_output = 1080,
+		.line_length_pclk = 1920,
+		.frame_length_lines = 1080,
 		.vt_pixel_clk = 200000000,
 		.op_pixel_clk = 200000000,
 	},
@@ -359,8 +359,13 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 				rc = motsoc1_camstart();
 				if (rc < 0)
 					return rc;
-				/* set res to 1280x720 */
-				rc = motsoc1_setCP1(0x1, 0x01, 0x21);
+				/* set res to 1920x1080 */
+				rc = motsoc1_setCP1(0x1, 0x01, 0x25);
+				if (rc < 0)
+					return rc;
+				/* FIXME: set movie caf,
+				 * eventually only enable when recording */
+				rc = motsoc1_setCP1(0x0A, 0x4D, 0x01);
 				if (rc < 0)
 					return rc;
 				/* go to monitor mode */
@@ -372,7 +377,19 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 						0x0, 0x0C, 0xFF, 0x02, 20, 10);
 				if (rc < 0)
 					return rc;
-				msleep(30);
+				msleep(40);
+
+				/*FIXME start hardcodings for focusing*/
+				/* set af mode to caf*/
+				rc = motsoc1_setCP1(0x0A, 0x00, 0x06);
+				if (rc < 0)
+					return rc;
+				/* set af mode to start*/
+				rc = motsoc1_setCP1(0x0A, 0x02, 0x01);
+				if (rc < 0)
+					return rc;
+				/*FIXME end hardcodings for focusing*/
+
 				pr_info("motsoc1: sensor started\n");
 				config_sensor = 1;
 			}
