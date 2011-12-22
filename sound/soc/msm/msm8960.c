@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
+#include <linux/mfd/wcd9310/registers.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -369,17 +370,58 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 
 };
 
-static const struct snd_soc_dapm_route common_audio_map[] = {
+static const struct snd_soc_dapm_route common_audio_map_version1[] = {
 
 	{"RX_BIAS", NULL, "MCLK"},
 	{"LDO_H", NULL, "MCLK"},
 
 	/* Speaker path */
-	{"Ext Spk Bottom Pos", NULL, "LINEOUT1"},
-	{"Ext Spk Bottom Neg", NULL, "LINEOUT3"},
+	{"Ext Spk Top Pos", NULL, "LINEOUT1"},
+	{"Ext Spk Top Neg", NULL, "LINEOUT2"},
 
-	{"Ext Spk Top Pos", NULL, "LINEOUT2"},
-	{"Ext Spk Top Neg", NULL, "LINEOUT4"},
+	{"Ext Spk Bottom Pos", NULL, "LINEOUT3"},
+	{"Ext Spk Bottom Neg", NULL, "LINEOUT4"},
+
+	/* Microphone path */
+	{"AMIC3", NULL, "MIC BIAS1 External"},
+	{"MIC BIAS1 External", NULL, "Primary Mic"},
+
+	{"AMIC4", NULL, "MIC BIAS3 External"},
+	{"MIC BIAS3 External", NULL, "Secondary Mic"},
+
+	{"AMIC1", NULL, "MIC BIAS4 External"},
+	{"MIC BIAS4 External", NULL, "Tertiary Mic"},
+
+	{"AMIC2", NULL, "MIC BIAS2 External"},
+	{"MIC BIAS2 External", NULL, "Headset Mic"},
+
+	/**
+	 * AMIC3 and AMIC4 inputs are connected to ANC microphones
+	 * These mics are biased differently on CDP and FLUID
+	 * routing entries below are based on bias arrangement
+	 * on FLUID.
+	 */
+	{"AMIC3", NULL, "MIC BIAS3 Internal1"},
+	{"MIC BIAS3 Internal1", NULL, "ANCRight Headset Mic"},
+
+	{"AMIC4", NULL, "MIC BIAS1 Internal2"},
+	{"MIC BIAS1 Internal2", NULL, "ANCLeft Headset Mic"},
+
+	{"HEADPHONE", NULL, "LDO_H"},
+
+};
+
+static const struct snd_soc_dapm_route common_audio_map_version2[] = {
+
+	{"RX_BIAS", NULL, "MCLK"},
+	{"LDO_H", NULL, "MCLK"},
+
+	/* Speaker path */
+	{"Ext Spk Top Pos", NULL, "LINEOUT1"},
+	{"Ext Spk Top Neg", NULL, "LINEOUT3"},
+
+	{"Ext Spk Bottom Pos", NULL, "LINEOUT2"},
+	{"Ext Spk Bottom Neg", NULL, "LINEOUT4"},
 
 	/* Microphone path */
 	{"AMIC3", NULL, "MIC BIAS1 External"},
@@ -523,6 +565,7 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	int err;
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	u8 tabla_version;
 
 	pr_debug("%s()\n", __func__);
 
@@ -541,8 +584,18 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_new_controls(dapm, msm8960_dapm_widgets,
 				ARRAY_SIZE(msm8960_dapm_widgets));
 
-	snd_soc_dapm_add_routes(dapm, common_audio_map,
-		ARRAY_SIZE(common_audio_map));
+	tabla_version = snd_soc_read(codec, TABLA_A_CHIP_VERSION);
+	tabla_version &=  0x1F;
+	pr_info("%s : Tabla version %u\n", __func__, (u32)tabla_version);
+
+	if ((tabla_version == TABLA_VERSION_1_0) ||
+		(tabla_version == TABLA_VERSION_1_1)) {
+			snd_soc_dapm_add_routes(dapm, common_audio_map_version1,
+				ARRAY_SIZE(common_audio_map_version1));
+	} else {
+			snd_soc_dapm_add_routes(dapm, common_audio_map_version2,
+				ARRAY_SIZE(common_audio_map_version2));
+	}
 
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Pos");
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Neg");
