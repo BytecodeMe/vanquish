@@ -132,6 +132,9 @@ struct msm_fb_data_type {
 			      struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
 			      struct mdp_histogram *hist);
+	int (*reg_read)(struct msm_fb_data_type *mfd, __u16 address, __u16 size,
+					__u8 *buf, __u8 use_hs_mode);
+	int (*reg_write)(struct msm_fb_data_type *mfd, __u16 size, __u8 *buf, __u8 use_hs_mode);
 	void *cursor_buf;
 	void *cursor_buf_phys;
 

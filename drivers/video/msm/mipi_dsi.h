@@ -290,9 +290,16 @@ void mipi_dsi_controller_cfg(int enable);
 void mipi_dsi_sw_reset(void);
 void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd);
 
+int mipi_reg_write(struct msm_fb_data_type *mfd, __u16 size,
+	__u8 *buf, __u8 use_hs_mode);
+
+int mipi_reg_read(struct msm_fb_data_type *mfd, __u16 address,
+	__u16 size, __u8 *buf, __u8 use_hs_mode);
+
 irqreturn_t mipi_dsi_isr(int irq, void *ptr);
 
 void mipi_set_tx_power_mode(int mode);
+int mipi_get_tx_power_mode(void);
 void mipi_dsi_phy_ctrl(int on);
 void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info,
 	int target_type);

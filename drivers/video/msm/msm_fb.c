@@ -2877,6 +2877,9 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 #else
 	struct mdp_csc csc_matrix;
 #endif
+	struct msmfb_reg_access      reg_access;
+	u8 *reg_access_buf;
+
 	struct mdp_page_protection fb_page_protection;
 	int ret = 0;
 
@@ -3154,7 +3157,54 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 #endif
 		break;
 
+	case MSMFB_REG_WRITE:
+
+		if (copy_from_user(&reg_access,
+							(void __user *)arg,
+							sizeof(reg_access)))
+			return -EFAULT;
+
+		reg_access_buf = kmalloc(reg_access.buffer_size + 1, GFP_KERNEL);
+		if (!reg_access_buf)
+			return -ENOMEM;
+
+		reg_access_buf[0] = reg_access.address;
+		if (copy_from_user(&reg_access_buf[1],
+					   reg_access.buffer,
+					   reg_access.buffer_size)) {
+			kfree(reg_access_buf);
+			return -EFAULT;
+		}
+
+		ret = mfd->reg_write(mfd, reg_access.buffer_size + 1, reg_access_buf, reg_access.use_hs_mode);
+
+		kfree(reg_access_buf);
+
+		break;
+
+	case MSMFB_REG_READ:
+
+		if (copy_from_user(&reg_access,
+							(void __user *)arg,
+							sizeof(reg_access)))
+			return -EFAULT;
+
+		reg_access_buf = kmalloc(reg_access.buffer_size, GFP_KERNEL);
+
+		ret = mfd->reg_read(mfd, reg_access.address, reg_access.buffer_size, reg_access_buf, reg_access.use_hs_mode);
+
+		if ((ret == 0) &&
+			(copy_to_user(reg_access.buffer, reg_access_buf, reg_access.buffer_size))) {
+			kfree(reg_access_buf);
+			return -EFAULT;
+		}
+
+		kfree(reg_access_buf);
+
+		break;
+
 	default:
+
 		MSM_FB_INFO("MDP: unknown ioctl (cmd=%x) received!\n", cmd);
 		ret = -EINVAL;
 		break;

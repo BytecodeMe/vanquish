@@ -924,6 +924,12 @@ void mipi_set_tx_power_mode(int mode)
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, data);
 }
 
+int mipi_get_tx_power_mode(void)
+{
+	uint32 data = MIPI_INP(MIPI_DSI_BASE + 0x38);
+	return !!(data & BIT(26));
+}
+
 void mipi_dsi_sw_reset(void)
 {
 	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0x01);
@@ -1195,9 +1201,36 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 			struct dsi_buf *tp, struct dsi_buf *rp,
 			struct dsi_cmd_desc *cmds, int rlen)
 {
-	int cnt, len, diff, pkt_size;
+	int cnt, len, diff, pkt_size, video_mode;
 	unsigned long flag;
 	char cmd;
+	u32 dsi_ctrl, ctrl;
+
+	/*
+	 * turn on cmd mode
+	 * for video mode, do not send cmds more than
+	 * one pixel line, since it only transmit it
+	 * during BLLP.
+	 */
+	dsi_ctrl = MIPI_INP(MIPI_DSI_BASE + 0x0000);
+	video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
+	if (video_mode) {
+		ctrl = dsi_ctrl | 0x04; /* CMD_MODE_EN */
+		MIPI_OUTP(MIPI_DSI_BASE + 0x0000, ctrl);
+	} else { /* cmd mode */
+		/*
+		 * during boot up, cmd mode is configured
+		 * even it is video mode panel.
+		 */
+		/* make sure mdp dma is not txing pixel data */
+		if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+#ifndef CONFIG_FB_MSM_MDP303
+			mdp4_dsi_cmd_dma_busy_wait(mfd);
+#else
+			mdp3_dsi_cmd_dma_busy_wait(mfd);
+#endif
+		}
+	}
 
 	if (mfd->panel_info.mipi.no_max_pkt_size) {
 		/* Only support rlen = 4*n */
@@ -1225,15 +1258,6 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 		 */
 		len += 2;
 		cnt = len + 6; /* 4 bytes header + 2 bytes crc */
-	}
-
-	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-		/* make sure mdp dma is not txing pixel data */
-#ifndef CONFIG_FB_MSM_MDP303
-			mdp4_dsi_cmd_dma_busy_wait(mfd);
-#else
-			mdp3_dsi_cmd_dma_busy_wait(mfd);
-#endif
 	}
 
 	spin_lock_irqsave(&dsi_mdp_lock, flag);
@@ -1276,6 +1300,9 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	mipi_dsi_disable_irq();
 	complete(&dsi_mdp_comp);
 	spin_unlock_irqrestore(&dsi_mdp_lock, flag);
+
+	if (video_mode)
+		MIPI_OUTP(MIPI_DSI_BASE + 0x0000, dsi_ctrl); /* restore */
 
 	if (mfd->panel_info.mipi.no_max_pkt_size) {
 		/*
@@ -1502,4 +1529,114 @@ irqreturn_t mipi_dsi_isr(int irq, void *ptr)
 
 
 	return IRQ_HANDLED;
+}
+
+int mipi_reg_write(struct msm_fb_data_type *mfd, __u16 size, __u8 *buf,
+	__u8 use_hs_mode)
+{
+	static struct dsi_buf mot_tx_buf;
+	int old_tx_mode, new_tx_mode;
+
+	struct dsi_cmd_desc reg_write_cmd = {
+		.dtype = DTYPE_DCS_LWRITE,
+		.last = 1,
+		.vc = 0,
+		.ack = 0,
+		.wait = 0,
+		.dlen = size,
+		.payload = buf
+	};
+
+	pr_debug("%s addr %02x size %d hs %d\n", __func__, (__u32)buf[0],
+		(__s32)size, (__s32)use_hs_mode);
+
+	if (!mot_tx_buf.start) {
+		mipi_dsi_buf_alloc(&mot_tx_buf, DSI_BUF_SIZE);
+	}
+
+	mutex_lock(&mfd->dma->ov_mutex);
+
+	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mdp4_dsi_blt_dmap_busy_wait(mfd);
+
+	old_tx_mode = mipi_get_tx_power_mode();
+	new_tx_mode = !use_hs_mode;
+
+	if (old_tx_mode != new_tx_mode) {
+		pr_debug("%s setting new tx mode %d\n", __func__,
+			(__s32)new_tx_mode);
+		mipi_set_tx_power_mode(new_tx_mode);
+	}
+
+	mipi_dsi_cmds_tx(mfd, &mot_tx_buf, &reg_write_cmd, 1);
+
+	if (old_tx_mode != new_tx_mode) {
+		pr_debug("%s restoring old tx mode %d\n", __func__,
+			(__s32)old_tx_mode);
+		mipi_set_tx_power_mode(old_tx_mode);
+	}
+
+	mutex_unlock(&mfd->dma->ov_mutex);
+
+	pr_debug("%s done!\n", __func__);
+
+	return 0;
+}
+
+int mipi_reg_read(struct msm_fb_data_type *mfd, __u16 address,
+	__u16 size, __u8 *buf, __u8 use_hs_mode)
+{
+	static struct dsi_buf rp, tp;
+	static int once = 1;
+	int old_tx_mode, new_tx_mode;
+
+	__u8 cmd_buf[2] = {(__u8)address, 0};
+
+	struct dsi_cmd_desc reg_read_cmd = {
+		.dtype = DTYPE_DCS_READ,
+		.last = 1,
+		.vc = 0,
+		.ack = 1,
+		.wait = 1,
+		.dlen = 2,
+		.payload = cmd_buf
+	};
+
+	pr_debug("%s addr %02x size %d hs %d\n", __func__, (__u32)address,
+		(__s32)size, (__s32)use_hs_mode);
+
+	if (once) {
+		once = 0;
+		mipi_dsi_buf_alloc(&rp, DSI_BUF_SIZE);
+		mipi_dsi_buf_alloc(&tp, DSI_BUF_SIZE);
+	}
+
+	mutex_lock(&mfd->dma->ov_mutex);
+
+	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mdp4_dsi_blt_dmap_busy_wait(mfd);
+
+	old_tx_mode = mipi_get_tx_power_mode();
+	new_tx_mode = !use_hs_mode;
+	if (old_tx_mode != new_tx_mode) {
+		pr_debug("%s setting new tx mode %d\n", __func__,
+			(__s32)new_tx_mode);
+		mipi_set_tx_power_mode(new_tx_mode);
+	}
+
+	mipi_dsi_cmds_rx(mfd, &tp, &rp, &reg_read_cmd, size);
+
+	if (old_tx_mode != new_tx_mode) {
+		pr_debug("%s restoring old tx mode %d\n", __func__,
+			(__s32)old_tx_mode);
+		mipi_set_tx_power_mode(old_tx_mode);
+	}
+
+	memcpy(buf, rp.data, size);
+
+	mutex_unlock(&mfd->dma->ov_mutex);
+
+	pr_debug("%s done!\n", __func__);
+
+	return 0;
 }
