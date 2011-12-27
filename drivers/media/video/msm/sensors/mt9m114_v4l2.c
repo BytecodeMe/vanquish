@@ -103,7 +103,7 @@ static int32_t mt9m114_power_off(const struct msm_camera_sensor_info *data)
 	return 0;
 }
 
-static struct msm_camera_i2c_reg_conf mt9m114_720p_settings[] = {
+static struct msm_camera_i2c_reg_conf mt9m114_1280x960_settings[] = {
 	{0xdc00, 0x50, MSM_CAMERA_I2C_BYTE_DATA, MSM_CAMERA_I2C_CMD_WRITE},
 	{MT9M114_COMMAND_REGISTER, MT9M114_COMMAND_REGISTER_SET_STATE,
 		MSM_CAMERA_I2C_UNSET_WORD_MASK, MSM_CAMERA_I2C_CMD_POLL},
@@ -115,39 +115,39 @@ static struct msm_camera_i2c_reg_conf mt9m114_720p_settings[] = {
 	{0xDC01, 0x52, MSM_CAMERA_I2C_BYTE_DATA, MSM_CAMERA_I2C_CMD_POLL},
 
 	{0x098E, 0, MSM_CAMERA_I2C_BYTE_DATA},
-	{0xC800, 0x007C,},/*y_addr_start = 124*/
+	{0xC800, 0x0004,},/*y_addr_start = 4*/
 	{0xC802, 0x0004,},/*x_addr_start = 4*/
-	{0xC804, 0x0353,},/*y_addr_end = 851*/
+	{0xC804, 0x03CB,},/*y_addr_end = 971*/
 	{0xC806, 0x050B,},/*x_addr_end = 1291*/
 	{0xC808, 0x02DC,},/*pixclk = 48000000*/
 	{0xC80A, 0x6C00,},/*pixclk = 48000000*/
 	{0xC80C, 0x0001,},/*row_speed = 1*/
 	{0xC80E, 0x00DB,},/*fine_integ_time_min = 219*/
-	{0xC810, 0x05BD,},/*fine_integ_time_max = 1469*/
-	{0xC812, 0x03E8,},/*frame_length_lines = 1000*/
-	{0xC814, 0x0640,},/*line_length_pck = 1600*/
+	{0xC810, 0x05B3,},/*fine_integ_time_max = 1459*/
+	{0xC812, 0x03EE,},/*frame_length_lines = 1006*/
+	{0xC814, 0x0636,},/*line_length_pck = 1590*/
 	{0xC816, 0x0060,},/*fine_correction = 96*/
-	{0xC818, 0x02D3,},/*cpipe_last_row = 723*/
+	{0xC818, 0x03C3,},/*cpipe_last_row = 963*/
 	{0xC826, 0x0020,},/*reg_0_data = 32*/
 	{0xC834, 0x0000,},/*sensor_control_read_mode = 0*/
 	{0xC854, 0x0000,},/*crop_window_xoffset = 0*/
 	{0xC856, 0x0000,},/*crop_window_yoffset = 0*/
 	{0xC858, 0x0500,},/*crop_window_width = 1280*/
-	{0xC85A, 0x02D0,},/*crop_window_height = 720*/
+	{0xC85A, 0x03C0,},/*crop_window_height = 960*/
 	{0xC85C, 0x03, MSM_CAMERA_I2C_BYTE_DATA},  /*crop_cropmode = 3*/
 	{0xC868, 0x0500,},/*output_width = 1280*/
-	{0xC86A, 0x02D0,},/*output_height = 720*/
+	{0xC86A, 0x03C0,},/*output_height = 960*/
 	{0xC878, 0x00, MSM_CAMERA_I2C_BYTE_DATA},  /*aet_aemode = 0*/
-	{0xC88C, 0x1E00,},/*aet_max_frame_rate = 7680*/
-	{0xC88E, 0x1E00,},/*aet_min_frame_rate = 7680*/
+	{0xC88C, 0x1E02,},/*aet_max_frame_rate = 7682*/
+	{0xC88E, 0x1E02,},/*aet_min_frame_rate = 7682*/
 	{0xC914, 0x0000,},/*stat_awb_window_xstart = 0*/
 	{0xC916, 0x0000,},/*stat_awb_window_ystart = 0*/
 	{0xC918, 0x04FF,},/*stat_awb_window_xend = 1279*/
-	{0xC91A, 0x02CF,},/*stat_awb_window_yend = 719*/
+	{0xC91A, 0x03BF,},/*stat_awb_window_yend = 959*/
 	{0xC91C, 0x0000,},/*stat_ae_window_xstart = 0*/
 	{0xC91E, 0x0000,},/*stat_ae_window_ystart = 0*/
 	{0xC920, 0x00FF,},/*stat_ae_window_xend = 255*/
-	{0xC922, 0x008F,},/*stat_ae_window_yend = 143*/
+	{0xC922, 0x00BF,},/*stat_ae_window_yend = 191*/
 };
 
 static struct msm_camera_i2c_reg_conf mt9m114_recommend_settings[] = {
@@ -1136,8 +1136,8 @@ static struct msm_camera_i2c_conf_array mt9m114_init_conf[] = {
 };
 
 static struct msm_camera_i2c_conf_array mt9m114_confs[] = {
-	{mt9m114_720p_settings,
-	ARRAY_SIZE(mt9m114_720p_settings), 0, MSM_CAMERA_I2C_WORD_DATA},
+	{mt9m114_1280x960_settings,
+	ARRAY_SIZE(mt9m114_1280x960_settings), 0, MSM_CAMERA_I2C_WORD_DATA},
 };
 
 static struct msm_camera_i2c_reg_conf mt9m114_saturation[][1] = {
@@ -1251,9 +1251,9 @@ struct msm_sensor_v4l2_ctrl_info_t mt9m114_v4l2_ctrl_info[] = {
 static struct msm_sensor_output_info_t mt9m114_dimensions[] = {
 	{
 		.x_output = 0x500,
-		.y_output = 0x2D0,
+		.y_output = 0x3C0,
 		.line_length_pclk = 0x500,
-		.frame_length_lines = 0x2D0,
+		.frame_length_lines = 0x3C0,
 		.vt_pixel_clk = 48000000,
 		.op_pixel_clk = 128000000,
 		.binning_factor = 1,
