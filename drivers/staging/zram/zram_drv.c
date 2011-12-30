@@ -29,11 +29,55 @@
 #include <linux/genhd.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <linux/lzo.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 
 #include "zram_drv.h"
+
+#if defined(CONFIG_ZRAM_LZO)
+#include <linux/lzo.h>
+#define WMSIZE		LZO1X_MEM_COMPRESS
+#define COMPRESS(s, sl, d, dl, wm)	\
+	lzo1x_1_compress(s, sl, d, dl, wm)
+#define DECOMPRESS(s, sl, d, dl)	\
+	lzo1x_decompress_safe(s, sl, d, dl)
+#elif defined(CONFIG_ZRAM_SNAPPY)
+#include "../snappy/csnappy.h" /* if built in drivers/staging */
+#define WMSIZE_ORDER	((PAGE_SHIFT > 14) ? (15) : (PAGE_SHIFT+1))
+#define WMSIZE		(1 << WMSIZE_ORDER)
+static int
+snappy_compress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len,
+	void *workmem)
+{
+	const unsigned char *end = csnappy_compress_fragment(
+		src, (uint32_t)src_len, dst, workmem, WMSIZE_ORDER);
+	*dst_len = end - dst;
+	return 0;
+}
+static int
+snappy_decompress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len)
+{
+	uint32_t dst_len_ = (uint32_t)*dst_len;
+	int ret = csnappy_decompress_noheader(src, src_len, dst, &dst_len_);
+	*dst_len = (size_t)dst_len_;
+	return ret;
+}
+#define COMPRESS(s, sl, d, dl, wm)	\
+	snappy_compress_(s, sl, d, dl, wm)
+#define DECOMPRESS(s, sl, d, dl)	\
+	snappy_decompress_(s, sl, d, dl)
+#else
+#error either CONFIG_ZRAM_LZO or CONFIG_ZRAM_SNAPPY must be defined
+#endif
+
 
 /* Globals */
 static int zram_major;
@@ -240,15 +284,22 @@ static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
 	cmem = kmap_atomic(zram->table[index].page, KM_USER1) +
 		zram->table[index].offset;
 
+<<<<<<< HEAD
 	ret = lzo1x_decompress_safe(cmem + sizeof(*zheader),
 				    xv_get_object_size(cmem) - sizeof(*zheader),
 				    user_mem, &clen);
+=======
+	ret = DECOMPRESS(
+			cmem + sizeof(*zheader),
+			xv_get_object_size(cmem) - sizeof(*zheader),
+			uncmem, &clen);
+>>>>>>> 9206bd6... staging: Add Snappy compression support to zram (alt)
 
 	kunmap_atomic(user_mem, KM_USER0);
 	kunmap_atomic(cmem, KM_USER1);
 
 	/* Should NEVER happen. Return bio error if it does. */
-	if (unlikely(ret != LZO_E_OK)) {
+	if (unlikely(ret)) {
 		pr_err("Decompression failed! err=%d, page=%u\n", ret, index);
 		zram_stat64_inc(zram, &zram->stats.failed_reads);
 		return ret;
@@ -262,7 +313,50 @@ static int zram_bvec_read(struct zram *zram, struct bio_vec *bvec,
 static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index)
 {
 	int ret;
+<<<<<<< HEAD
 	u32 offset;
+=======
+	size_t clen = PAGE_SIZE;
+	struct zobj_header *zheader;
+	unsigned char *cmem;
+
+	if (zram_test_flag(zram, index, ZRAM_ZERO) ||
+	    !zram->table[index].page) {
+		memset(mem, 0, PAGE_SIZE);
+		return 0;
+	}
+
+	cmem = kmap_atomic(zram->table[index].page) +
+		zram->table[index].offset;
+
+	/* Page is stored uncompressed since it's incompressible */
+	if (unlikely(zram_test_flag(zram, index, ZRAM_UNCOMPRESSED))) {
+		memcpy(mem, cmem, PAGE_SIZE);
+		kunmap_atomic(cmem);
+		return 0;
+	}
+
+	ret = DECOMPRESS(cmem + sizeof(*zheader),
+			xv_get_object_size(cmem) - sizeof(*zheader),
+			mem, &clen);
+	kunmap_atomic(cmem);
+
+	/* Should NEVER happen. Return bio error if it does. */
+	if (unlikely(ret)) {
+		pr_err("Decompression failed! err=%d, page=%u\n", ret, index);
+		zram_stat64_inc(zram, &zram->stats.failed_reads);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
+			   int offset)
+{
+	int ret;
+	u32 store_offset;
+>>>>>>> 9206bd6... staging: Add Snappy compression support to zram (alt)
 	size_t clen;
 	struct zobj_header *zheader;
 	struct page *page, *page_store;
@@ -287,12 +381,18 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index)
 		return 0;
 	}
 
+<<<<<<< HEAD
 	ret = lzo1x_1_compress(user_mem, PAGE_SIZE, src, &clen,
 			       zram->compress_workmem);
+=======
+	COMPRESS(uncmem, PAGE_SIZE, src, &clen,
+		zram->compress_workmem);
+	ret = 0;
+>>>>>>> 9206bd6... staging: Add Snappy compression support to zram (alt)
 
 	kunmap_atomic(user_mem, KM_USER0);
 
-	if (unlikely(ret != LZO_E_OK)) {
+	if (unlikely(ret != 0)) {
 		pr_err("Compression failed! err=%d\n", ret);
 		zram_stat64_inc(zram, &zram->stats.failed_writes);
 		return ret;
@@ -520,7 +620,7 @@ int zram_init_device(struct zram *zram)
 
 	zram_set_disksize(zram, totalram_pages << PAGE_SHIFT);
 
-	zram->compress_workmem = kzalloc(LZO1X_MEM_COMPRESS, GFP_KERNEL);
+	zram->compress_workmem = kzalloc(WMSIZE, GFP_KERNEL);
 	if (!zram->compress_workmem) {
 		pr_err("Error allocating compressor working memory!\n");
 		ret = -ENOMEM;
