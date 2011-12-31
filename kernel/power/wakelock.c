@@ -244,7 +244,7 @@ static void expire_wake_lock(struct wake_lock *lock)
 }
 
 /* Caller must acquire the list_lock spinlock */
-static void print_active_locks(int type)
+void print_active_locks(int type)
 {
 	struct wake_lock *lock;
 	bool print_expired = true;
