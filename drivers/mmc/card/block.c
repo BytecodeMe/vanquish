@@ -1464,6 +1464,7 @@ static void mmc_blk_remove(struct mmc_card *card)
 {
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 
+	set_bit(BDI_removing, &md->disk->queue->backing_dev_info.state);
 	mmc_blk_remove_parts(card, md);
 	mmc_claim_host(card->host);
 	mmc_blk_part_switch(card, md);
