@@ -953,11 +953,6 @@ struct platform_device msm_pil_tzapps = {
 	.id = -1,
 };
 
-struct platform_device msm_device_smd = {
-	.name		= "msm_smd",
-	.id		= -1,
-};
-
 struct platform_device msm_device_bam_dmux = {
 	.name		= "BAM_RMNT",
 	.id		= -1,
