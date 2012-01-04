@@ -195,6 +195,7 @@ struct msm_camera_csi2_params {
 #define VFE31_OUTPUT_MODE_T (0x1 << 4)
 
 #define CSI_EMBED_DATA 0x12
+#define CSI_YUV422_8  0x1E
 #define CSI_RAW8    0x2A
 #define CSI_RAW10   0x2B
 #define CSI_RAW12   0x2C
@@ -323,7 +324,8 @@ struct msm_sensor_ctrl {
 
 struct msm_actuator_ctrl {
 	int (*a_init_table)(void);
-	int (*a_power_down)(void);
+	int (*a_power_up)(void *);
+	int (*a_power_down)(void *);
 	int (*a_create_subdevice)(void *, void *);
 	int (*a_config)(void __user *);
 };

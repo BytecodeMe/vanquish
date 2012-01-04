@@ -193,16 +193,16 @@ struct bms_notify {
 /**
  * struct pm8921_chg_chip -device information
  * @dev:			device pointer to access the parent
- * @is_usb_path_used:		indicates whether USB charging is used at all
- * @is_usb_path_used:		indicates whether DC charging is used at all
  * @usb_present:		present status of usb
  * @dc_present:			present status of dc
  * @usb_charger_current:	usb current to charge the battery with used when
  *				the usb path is enabled or charging is resumed
  * @safety_time:		max time for which charging will happen
  * @update_time:		how frequently the userland needs to be updated
- * @max_voltage:		the max volts the batt should be charged up to
- * @min_voltage:		the min battery voltage before turning the FETon
+ * @max_voltage_mv:		the max volts the batt should be charged up to
+ * @min_voltage_mv:		the min battery voltage before turning the FETon
+ * @cool_temp_dc:		the cool temp threshold in deciCelcius
+ * @warm_temp_dc:		the warm temp threshold in deciCelcius
  * @resume_voltage_delta:	the voltage delta from vdd max at which the
  *				battery should resume charging
  * @term_current:		The charging based term current
@@ -218,10 +218,10 @@ struct pm8921_chg_chip {
 	unsigned int			safety_time;
 	unsigned int			ttrkl_time;
 	unsigned int			update_time;
-	unsigned int			max_voltage;
-	unsigned int			min_voltage;
-	unsigned int			cool_temp;
-	unsigned int			warm_temp;
+	unsigned int			max_voltage_mv;
+	unsigned int			min_voltage_mv;
+	unsigned int			cool_temp_dc;
+	unsigned int			warm_temp_dc;
 	unsigned int			temp_check_period;
 	unsigned int			cool_bat_chg_current;
 	unsigned int			warm_bat_chg_current;
@@ -240,6 +240,7 @@ struct pm8921_chg_chip {
 	struct dentry			*dent;
 	struct bms_notify		bms_notify;
 	struct ext_chg_pm8921		*ext;
+	bool				keep_btm_on_suspend;
 	bool				ext_charging;
 	bool				ext_charge_done;
 	DECLARE_BITMAP(enabled_irqs, PM_CHG_MAX_INTS);
@@ -258,10 +259,14 @@ struct pm8921_chg_chip {
 	struct wake_lock		eoc_wake_lock;
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
-	int 			factory_mode;
+	int				factory_mode;
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	unsigned int			step_charge_current;
 	unsigned int			step_charge_voltage;
+	unsigned int			force_shutdown;
+#endif
+#ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
+	void				(*arch_reboot_cb)(void);
 #endif
 };
 
@@ -275,6 +280,8 @@ static struct pm8xxx_adc_arb_btm_param btm_config;
 static int pm8921_charging_reboot(struct notifier_block *, unsigned long,
 				  void *);
 static int configure_btm(struct pm8921_chg_chip *chip);
+static void btm_configure_work(struct work_struct *work);
+DECLARE_WORK(btm_config_work, btm_configure_work);
 static struct notifier_block pm8921_charging_reboot_notifier = {
 	.notifier_call = pm8921_charging_reboot,
 };
@@ -750,15 +757,15 @@ static void pm8921_chg_hw_config(struct pm8921_chg_chip *chip)
 	int rc;
 
 	rc = pm_chg_vbatdet_set(chip,
-				chip->max_voltage - chip->resume_voltage_delta);
+				chip->max_voltage_mv - chip->resume_voltage_delta);
 	if (rc)
 		pr_err("Failed to set vbatdet comprator voltage to %d rc=%d\n",
-			chip->max_voltage - chip->resume_voltage_delta, rc);
+			chip->max_voltage_mv - chip->resume_voltage_delta, rc);
 
-	rc = pm_chg_vddmax_set(chip, chip->max_voltage);
+	rc = pm_chg_vddmax_set(chip, chip->max_voltage_mv);
 	if (rc)
 		pr_err("Failed to set max voltage to %d rc=%d\n",
-						chip->max_voltage, rc);
+						chip->max_voltage_mv, rc);
 
 	rc = pm_chg_ibatmax_set(chip, chip->max_bat_chg_current);
 	if (rc)
@@ -772,7 +779,7 @@ static void pm8921_chg_hw_config(struct pm8921_chg_chip *chip)
 	 * if both the cool_temp and warm_temp are zero the device doesnt
 	 * care for jeita compliance
 	 */
-	if (!(chip->cool_temp == 0 && chip->warm_temp == 0)) {
+	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)) {
 		rc = configure_btm(chip);
 		if (rc)
 			pr_err("couldn't register with btm rc=%d\n", rc);
@@ -820,10 +827,10 @@ static int is_battery_valid(struct pm8921_chg_chip *chip)
 	if (pdata->get_batt_info) {
 		batt_vld = pdata->get_batt_info(rc, &batt_data);
 		if (batt_vld) {
-			chip->max_voltage = batt_data.max_voltage;
-			pr_debug("max_voltage = %d\n", chip->max_voltage);
-			chip->min_voltage = batt_data.min_voltage;
-			pr_debug("min_voltage = %d\n", chip->min_voltage);
+			chip->max_voltage_mv = batt_data.max_voltage;
+			pr_debug("max_voltage = %d\n", chip->max_voltage_mv);
+			chip->min_voltage_mv = batt_data.min_voltage;
+			pr_debug("min_voltage = %d\n", chip->min_voltage_mv);
 			chip->resume_voltage_delta =
 				batt_data.resume_voltage_delta;
 			pr_debug("resume_voltage_delta = %d\n",
@@ -834,10 +841,10 @@ static int is_battery_valid(struct pm8921_chg_chip *chip)
 				batt_data.max_bat_chg_current;
 			pr_debug("max_bat_chg_current = %d\n",
 				chip->max_bat_chg_current);
-			chip->cool_temp = batt_data.cool_temp;
-			pr_debug("cool_temp = %d\n", chip->cool_temp);
-			chip->warm_temp = batt_data.warm_temp;
-			pr_debug("warm_temp = %d\n", chip->warm_temp);
+			chip->cool_temp_dc = batt_data.cool_temp * 10;
+			pr_debug("cool_temp = %d\n", chip->cool_temp_dc);
+			chip->warm_temp_dc = batt_data.warm_temp * 10;
+			pr_debug("warm_temp = %d\n", chip->warm_temp_dc);
 			chip->cool_bat_chg_current =
 				batt_data.cool_bat_chg_current;
 			pr_debug("cool_bat_chg_current = %d\n",
@@ -1038,7 +1045,7 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_ENERGY_FULL,
 };
 
-static int get_prop_battery_mvolts(struct pm8921_chg_chip *chip)
+static int get_prop_battery_uvolts(struct pm8921_chg_chip *chip)
 {
 	int rc;
 	struct pm8xxx_adc_chan_result result;
@@ -1056,22 +1063,28 @@ static int get_prop_battery_mvolts(struct pm8921_chg_chip *chip)
 
 static unsigned int voltage_based_capacity(struct pm8921_chg_chip *chip)
 {
-	unsigned int current_voltage = get_prop_battery_mvolts(chip);
-	unsigned int low_voltage = chip->min_voltage;
-	unsigned int high_voltage = chip->max_voltage;
+	unsigned int current_voltage_uv = get_prop_battery_uvolts(chip);
+	unsigned int current_voltage_mv = current_voltage_uv / 1000;
+	unsigned int low_voltage = chip->min_voltage_mv;
+	unsigned int high_voltage = chip->max_voltage_mv;
 
-	if (current_voltage <= low_voltage)
+	if (current_voltage_mv <= low_voltage)
 		return 0;
-	else if (current_voltage >= high_voltage)
+	else if (current_voltage_mv >= high_voltage)
 		return 100;
 	else
-		return (current_voltage - low_voltage) * 100
+		return (current_voltage_mv - low_voltage) * 100
 		    / (high_voltage - low_voltage);
 }
 
 static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 {
 	int percent_soc = pm8921_bms_get_percent_charge();
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	if (chip->force_shutdown)
+		return 0;
+#endif
 
 	if (percent_soc == -ENXIO)
 		percent_soc = voltage_based_capacity(chip);
@@ -1084,18 +1097,18 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 
 static int get_prop_batt_current(struct pm8921_chg_chip *chip)
 {
-	int result_ma, rc;
+	int result_ua, rc;
 
-	rc = pm8921_bms_get_battery_current(&result_ma);
+	rc = pm8921_bms_get_battery_current(&result_ua);
 	if (rc == -ENXIO) {
-		rc = pm8xxx_ccadc_get_battery_current(&result_ma);
+		rc = pm8xxx_ccadc_get_battery_current(&result_ua);
 	}
 
 	if (rc) {
 		pr_err("unable to get batt current rc = %d\n", rc);
 		return rc;
 	} else {
-		return result_ma;
+		return result_ua;
 	}
 }
 
@@ -1158,6 +1171,11 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 	int batt_state = POWER_SUPPLY_STATUS_DISCHARGING;
 	int fsm_state = pm_chg_get_fsm_state(chip);
 	int i;
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	if (chip->force_shutdown)
+		return POWER_SUPPLY_STATUS_NOT_CHARGING;
+#endif
 
 	if (chip->ext) {
 		if (chip->ext_charge_done)
@@ -1235,13 +1253,13 @@ static int pm_batt_power_get_property(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
-		val->intval = chip->max_voltage;
+		val->intval = chip->max_voltage_mv * 1000;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
-		val->intval = chip->min_voltage;
+		val->intval = chip->min_voltage_mv * 1000;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		val->intval = get_prop_battery_mvolts(chip);
+		val->intval = get_prop_battery_uvolts(chip);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = get_prop_batt_capacity(chip);
@@ -1256,7 +1274,7 @@ static int pm_batt_power_get_property(struct power_supply *psy,
 		val->intval = get_prop_batt_charge_counter(chip);
 		break;
 	case POWER_SUPPLY_PROP_ENERGY_FULL:
-		val->intval = get_prop_batt_fcc(chip);
+		val->intval = get_prop_batt_fcc(chip) * 1000;
 		break;
 	default:
 		return -EINVAL;
@@ -1951,18 +1969,54 @@ static void update_heartbeat(struct work_struct *work)
 	struct delayed_work *dwork = to_delayed_work(work);
 	struct pm8921_chg_chip *chip = container_of(dwork,
 				struct pm8921_chg_chip, update_heartbeat_work);
-
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if ((chip->step_charge_voltage < chip->max_voltage) &&
-	    (chip->step_charge_voltage > chip->min_voltage)) {
-		if (get_prop_battery_mvolts(chip) >=
+	struct pm8921_charger_platform_data *pdata =
+		chip->dev->platform_data;
+	struct pm8921_charger_battery_data data;
+	int64_t enable = 0;
+	int64_t retval = 0;
+	int batt_mvolt = (get_prop_battery_uvolts(chip) / 1000);
+	int batt_temp = (get_prop_batt_temp(chip) / 10);
+
+	if (pdata->temp_range_cb) {
+		data.max_voltage = chip->max_voltage_mv;
+		data.cool_temp = (chip->cool_temp_dc / 10);
+		data.warm_temp = (chip->warm_temp_dc / 10);
+		data.cool_bat_voltage = chip->cool_bat_voltage;
+		data.warm_bat_voltage = chip->warm_bat_voltage;
+		retval = pdata->temp_range_cb(batt_temp, batt_mvolt,
+					      &data, &enable);
+		if (retval == 1) {
+			pm_chg_vddmax_set(chip, data.max_voltage);
+			pm_chg_vbatdet_set(chip,
+					   data.max_voltage -
+					   chip->resume_voltage_delta);
+			pm_chg_auto_enable(chip, enable);
+			pr_debug("Config VDDMAX = %d mV, Enable = %d\n",
+				 data.max_voltage,
+				(int)enable);
+			btm_config.low_thr_temp = (data.cool_temp * 10);
+			btm_config.high_thr_temp = (data.warm_temp * 10);
+			pr_debug("Config BTM Low = %d dC, High = %d dC\n",
+				btm_config.low_thr_temp,
+				btm_config.high_thr_temp);
+			schedule_work(&btm_config_work);
+		} else if (retval == 2) {
+			chip->force_shutdown = 1;
+			pr_err("Temperature Out of Bounds Force Shutdown\n");
+		}
+	}
+
+	if ((chip->step_charge_voltage < chip->max_voltage_mv) &&
+	    (chip->step_charge_voltage > chip->min_voltage_mv)) {
+		if (batt_mvolt >=
 		    chip->step_charge_voltage) {
 			pr_debug("Step Rate used Batt V = %d\n",
-				get_prop_battery_mvolts(chip));
+				batt_mvolt);
 			pm_chg_ibatmax_set(chip, chip->step_charge_current);
 		} else {
 			pr_debug("Step Rate NOT used Batt V = %d\n",
-				get_prop_battery_mvolts(chip));
+				batt_mvolt);
 			pm_chg_ibatmax_set(chip, chip->max_bat_chg_current);
 		}
 	}
@@ -1993,8 +2047,8 @@ static void eoc_worker(struct work_struct *work)
 	struct delayed_work *dwork = to_delayed_work(work);
 	struct pm8921_chg_chip *chip = container_of(dwork,
 				struct pm8921_chg_chip, eoc_work);
-	int vbat_meas, vbat_programmed;
-	int ichg_meas, iterm_programmed;
+	int vbat_meas_uv, vbat_meas_mv, vbat_programmed;
+	int ichg_meas_ma, iterm_programmed;
 	int regulation_loop, fast_chg, vcp;
 	int rc;
 	static int count;
@@ -2022,18 +2076,19 @@ static void eoc_worker(struct work_struct *work)
 			goto reset_and_reschedule;
 
 		/* reset count if battery voltage is less than vddmax */
-		vbat_meas = get_prop_battery_mvolts(chip);
-		if (vbat_meas < 0)
+		vbat_meas_uv = get_prop_battery_uvolts(chip);
+		if (vbat_meas_uv < 0)
 			goto reset_and_reschedule;
+		vbat_meas_mv = vbat_meas_uv / 1000;
 
 		rc = pm_chg_vddmax_get(chip, &vbat_programmed);
 		if (rc) {
 			pr_err("couldnt read vddmax rc = %d\n", rc);
 			goto reset_and_reschedule;
 		}
-		pr_debug("vddmax = %d vbat_meas=%d\n",
-			 vbat_programmed, vbat_meas);
-		if (vbat_meas < vbat_programmed - VBAT_TOLERANCE_MV)
+		pr_debug("vddmax = %d vbat_meas_mv=%d\n",
+			 vbat_programmed, vbat_meas_mv);
+		if (vbat_meas_mv < vbat_programmed - VBAT_TOLERANCE_MV)
 			goto reset_and_reschedule;
 	} /* !is_ext_charging */
 
@@ -2044,17 +2099,17 @@ static void eoc_worker(struct work_struct *work)
 		goto reset_and_reschedule;
 	}
 
-	ichg_meas = get_prop_batt_current(chip);
-	pr_debug("iterm_programmed = %d ichg_meas=%d\n",
-				iterm_programmed, ichg_meas);
+	ichg_meas_ma = (get_prop_batt_current(chip)) / 1000;
+	pr_debug("iterm_programmed = %d ichg_meas_ma=%d\n",
+				iterm_programmed, ichg_meas_ma);
 	/*
-	 * ichg_meas < 0 means battery is drawing current
-	 * ichg_meas > 0 means battery is providing current
+	 * ichg_meas_ma < 0 means battery is drawing current
+	 * ichg_meas_ma > 0 means battery is providing current
 	 */
-	if (ichg_meas > 0)
+	if (ichg_meas_ma > 0)
 		goto reset_and_reschedule;
 
-	if (ichg_meas * -1 > iterm_programmed)
+	if (ichg_meas_ma * -1 > iterm_programmed)
 		goto reset_and_reschedule;
 
 	if (!is_ext_charging(chip)) {
@@ -2110,8 +2165,6 @@ static void btm_configure_work(struct work_struct *work)
 		pr_err("failed to configure btm rc=%d", rc);
 }
 
-DECLARE_WORK(btm_config_work, btm_configure_work);
-
 static void set_appropriate_battery_current(struct pm8921_chg_chip *chip)
 {
 	unsigned int chg_current = chip->max_bat_chg_current;
@@ -2132,48 +2185,72 @@ static void set_appropriate_battery_current(struct pm8921_chg_chip *chip)
 #define TEMP_HYSTERISIS_DEGC 2
 static void battery_cool(bool enter)
 {
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	struct pm8921_charger_platform_data *pdata =
+		the_chip->dev->platform_data;
+
+	if (pdata->temp_range_cb) {
+		cancel_delayed_work(&the_chip->update_heartbeat_work);
+		schedule_delayed_work(&the_chip->update_heartbeat_work,
+				      msecs_to_jiffies(0));
+		return;
+	}
+#endif
 	pr_debug("enter = %d\n", enter);
 	if (enter == the_chip->is_bat_cool)
 		return;
 	the_chip->is_bat_cool = enter;
 	if (enter) {
 		btm_config.low_thr_temp =
-			the_chip->cool_temp + TEMP_HYSTERISIS_DEGC;
+			the_chip->cool_temp_dc + TEMP_HYSTERISIS_DEGC;
 		set_appropriate_battery_current(the_chip);
 		pm_chg_vddmax_set(the_chip, the_chip->cool_bat_voltage);
 		pm_chg_vbatdet_set(the_chip,
 			the_chip->cool_bat_voltage
 			- the_chip->resume_voltage_delta);
 	} else {
-		btm_config.low_thr_temp = the_chip->cool_temp;
+		btm_config.low_thr_temp = the_chip->cool_temp_dc;
 		set_appropriate_battery_current(the_chip);
-		pm_chg_vddmax_set(the_chip, the_chip->max_voltage);
+		pm_chg_vddmax_set(the_chip, the_chip->max_voltage_mv);
 		pm_chg_vbatdet_set(the_chip,
-			the_chip->max_voltage - the_chip->resume_voltage_delta);
+			the_chip->max_voltage_mv
+			- the_chip->resume_voltage_delta);
 	}
 	schedule_work(&btm_config_work);
 }
 
 static void battery_warm(bool enter)
 {
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	struct pm8921_charger_platform_data *pdata =
+		the_chip->dev->platform_data;
+
+	if (pdata->temp_range_cb) {
+		cancel_delayed_work(&the_chip->update_heartbeat_work);
+		schedule_delayed_work(&the_chip->update_heartbeat_work,
+				      msecs_to_jiffies(0));
+		return;
+	}
+#endif
 	pr_debug("enter = %d\n", enter);
 	if (enter == the_chip->is_bat_warm)
 		return;
 	the_chip->is_bat_warm = enter;
 	if (enter) {
 		btm_config.high_thr_temp =
-			the_chip->warm_temp - TEMP_HYSTERISIS_DEGC;
+			the_chip->warm_temp_dc - TEMP_HYSTERISIS_DEGC;
 		set_appropriate_battery_current(the_chip);
 		pm_chg_vddmax_set(the_chip, the_chip->warm_bat_voltage);
 		pm_chg_vbatdet_set(the_chip,
 			the_chip->warm_bat_voltage
 			- the_chip->resume_voltage_delta);
 	} else {
-		btm_config.high_thr_temp = the_chip->warm_temp;
+		btm_config.high_thr_temp = the_chip->warm_temp_dc;
 		set_appropriate_battery_current(the_chip);
-		pm_chg_vddmax_set(the_chip, the_chip->max_voltage);
+		pm_chg_vddmax_set(the_chip, the_chip->max_voltage_mv);
 		pm_chg_vbatdet_set(the_chip,
-			the_chip->max_voltage - the_chip->resume_voltage_delta);
+			the_chip->max_voltage_mv
+			- the_chip->resume_voltage_delta);
 	}
 	schedule_work(&btm_config_work);
 }
@@ -2184,8 +2261,8 @@ static int configure_btm(struct pm8921_chg_chip *chip)
 
 	btm_config.btm_warm_fn = battery_warm;
 	btm_config.btm_cool_fn = battery_cool;
-	btm_config.low_thr_temp = chip->cool_temp;
-	btm_config.high_thr_temp = chip->warm_temp;
+	btm_config.low_thr_temp = chip->cool_temp_dc;
+	btm_config.high_thr_temp = chip->warm_temp_dc;
 	btm_config.interval = chip->temp_check_period;
 	rc = pm8xxx_adc_btm_configure(&btm_config);
 	if (rc)
@@ -2464,24 +2541,25 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		return rc;
 	}
 
-	rc = pm_chg_vddsafe_set(chip, chip->max_voltage);
+	rc = pm_chg_vddsafe_set(chip, chip->max_voltage_mv);
 	if (rc) {
 		pr_err("Failed to set safe voltage to %d rc=%d\n",
-						chip->max_voltage, rc);
+						chip->max_voltage_mv, rc);
 		return rc;
 	}
 	rc = pm_chg_vbatdet_set(chip,
-				chip->max_voltage - chip->resume_voltage_delta);
+				chip->max_voltage_mv
+				- chip->resume_voltage_delta);
 	if (rc) {
 		pr_err("Failed to set vbatdet comprator voltage to %d rc=%d\n",
-			chip->max_voltage - chip->resume_voltage_delta, rc);
+			chip->max_voltage_mv - chip->resume_voltage_delta, rc);
 		return rc;
 	}
 
-	rc = pm_chg_vddmax_set(chip, chip->max_voltage);
+	rc = pm_chg_vddmax_set(chip, chip->max_voltage_mv);
 	if (rc) {
 		pr_err("Failed to set max voltage to %d rc=%d\n",
-						chip->max_voltage, rc);
+						chip->max_voltage_mv, rc);
 		return rc;
 	}
 	rc = pm_chg_ibatsafe_set(chip, SAFE_CURRENT_MA);
@@ -2676,6 +2754,11 @@ static int pm8921_charging_reboot(struct notifier_block *nb,
 
 		if (!the_chip->factory_mode)
 			break;
+
+#ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
+		if (the_chip->arch_reboot_cb)
+			the_chip->arch_reboot_cb();
+#endif
 
 		res.physical = 0;
 		do {
@@ -2925,6 +3008,37 @@ static DEVICE_ATTR(force_chg_usb_suspend, 0644,
 		force_chg_usb_suspend_show,
 		force_chg_usb_suspend_store);
 
+static int pm8921_charger_resume(struct device *dev)
+{
+	int rc;
+	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
+
+	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)
+		&& !(chip->keep_btm_on_suspend)) {
+		rc = pm8xxx_adc_btm_configure(&btm_config);
+		if (rc)
+			pr_err("couldn't reconfigure btm rc=%d\n", rc);
+
+		rc = pm8xxx_adc_btm_start();
+		if (rc)
+			pr_err("couldn't restart btm rc=%d\n", rc);
+	}
+	return 0;
+}
+
+static int pm8921_charger_suspend(struct device *dev)
+{
+	int rc;
+	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
+
+	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)
+		&& !(chip->keep_btm_on_suspend)) {
+		rc = pm8xxx_adc_btm_end();
+		if (rc)
+			pr_err("Failed to disable BTM on suspend rc=%d\n", rc);
+	}
+	return 0;
+}
 static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -2948,8 +3062,8 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->safety_time = pdata->safety_time;
 	chip->ttrkl_time = pdata->ttrkl_time;
 	chip->update_time = pdata->update_time;
-	chip->max_voltage = pdata->max_voltage;
-	chip->min_voltage = pdata->min_voltage;
+	chip->max_voltage_mv = pdata->max_voltage;
+	chip->min_voltage_mv = pdata->min_voltage;
 	chip->resume_voltage_delta = pdata->resume_voltage_delta;
 	chip->term_current = pdata->term_current;
 	chip->vbat_channel = pdata->charger_cdata.vbat_channel;
@@ -2957,14 +3071,15 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->batt_id_channel = pdata->charger_cdata.batt_id_channel;
 	chip->batt_id_min = pdata->batt_id_min;
 	chip->batt_id_max = pdata->batt_id_max;
-	chip->cool_temp = pdata->cool_temp;
-	chip->warm_temp = pdata->warm_temp;
+	chip->cool_temp_dc = pdata->cool_temp * 10;
+	chip->warm_temp_dc = pdata->warm_temp * 10;
 	chip->temp_check_period = pdata->temp_check_period;
 	chip->max_bat_chg_current = pdata->max_bat_chg_current;
 	chip->cool_bat_chg_current = pdata->cool_bat_chg_current;
 	chip->warm_bat_chg_current = pdata->warm_bat_chg_current;
 	chip->cool_bat_voltage = pdata->cool_bat_voltage;
 	chip->warm_bat_voltage = pdata->warm_bat_voltage;
+	chip->keep_btm_on_suspend = pdata->keep_btm_on_suspend;
 	chip->trkl_voltage = pdata->trkl_voltage;
 	chip->weak_voltage = pdata->weak_voltage;
 	chip->trkl_current = pdata->trkl_current;
@@ -2973,6 +3088,9 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->thermal_mitigation = pdata->thermal_mitigation;
 	chip->thermal_levels = pdata->thermal_levels;
 	chip->factory_mode = pdata->factory_mode;
+#ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
+	chip->arch_reboot_cb = pdata->arch_reboot_cb;
+#endif
 
 	chip->cold_thr = pdata->cold_thr;
 	chip->hot_thr = pdata->hot_thr;
@@ -3048,10 +3166,10 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	enable_irq_wake(chip->pmic_chg_irq[BAT_TEMP_OK_IRQ]);
 	enable_irq_wake(chip->pmic_chg_irq[VBATDET_LOW_IRQ]);
 	/*
-	 * if both the cool_temp and warm_temp are zero the device doesnt
+	 * if both the cool_temp_dc and warm_temp_dc are zero the device doesnt
 	 * care for jeita compliance
 	 */
-	if (!(chip->cool_temp == 0 && chip->warm_temp == 0)) {
+	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)) {
 		rc = configure_btm(chip);
 		if (rc) {
 			pr_err("couldn't register with btm rc=%d\n", rc);
@@ -3105,13 +3223,17 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 	kfree(chip);
 	return 0;
 }
-
+static const struct dev_pm_ops pm8921_pm_ops = {
+	.suspend	= pm8921_charger_suspend,
+	.resume		= pm8921_charger_resume,
+};
 static struct platform_driver pm8921_charger_driver = {
-	.probe	= pm8921_charger_probe,
-	.remove	= __devexit_p(pm8921_charger_remove),
-	.driver	= {
-		.name	= PM8921_CHARGER_DEV_NAME,
-		.owner	= THIS_MODULE,
+	.probe		= pm8921_charger_probe,
+	.remove		= __devexit_p(pm8921_charger_remove),
+	.driver		= {
+			.name	= PM8921_CHARGER_DEV_NAME,
+			.owner	= THIS_MODULE,
+			.pm	= &pm8921_pm_ops,
 	},
 };
 

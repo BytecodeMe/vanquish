@@ -3475,18 +3475,6 @@ static void hdmi_msm_audio_info_setup(boolean enabled, int num_of_channels,
 	HDMI_OUTP(0x002C, audio_info_ctrl_reg);
 }
 
-static void hdmi_msm_audio_ctrl_setup(boolean enabled, int delay)
-{
-	uint32 audio_pkt_ctrl_reg = 0;
-
-	/* Enable Packet Transmission */
-	audio_pkt_ctrl_reg |= enabled ? 0x00000001 : 0;
-	audio_pkt_ctrl_reg |= (delay << 4);
-
-	/* HDMI_AUDIO_PKT_CTRL1[0x0020] */
-	HDMI_OUTP(0x0020, audio_pkt_ctrl_reg);
-}
-
 static void hdmi_msm_en_gc_packet(boolean av_mute_is_requested)
 {
 	/* HDMI_GC[0x0040] */
@@ -3591,12 +3579,6 @@ static void hdmi_msm_audio_setup(void)
 		msm_hdmi_sample_rate, channels);
 	hdmi_msm_audio_info_setup(TRUE, channels, 0, FALSE);
 
-	/* Add this line back in the avoid an HDCP failure
-	 * issue.  This is only a temporary work-around
-	 * until a complete fix is provided.
-	 */
-	hdmi_msm_audio_ctrl_setup(TRUE, 1);
-
 	/* Turn on Audio FIFO and SAM DROP ISR */
 	HDMI_OUTP(0x02CC, HDMI_INP(0x02CC) | BIT(1) | BIT(3));
 	DEV_INFO("HDMI Audio: Enabled\n");
@@ -3627,7 +3609,6 @@ static int hdmi_msm_audio_off(void)
 		}
 	}
 	hdmi_msm_audio_info_setup(FALSE, 0, 0, FALSE);
-	hdmi_msm_audio_ctrl_setup(FALSE, 0);
 	hdmi_msm_audio_acr_setup(FALSE, 0, 0, 0);
 	DEV_INFO("HDMI Audio: Disabled\n");
 	return 0;
@@ -4542,7 +4523,7 @@ static int __init hdmi_msm_init(void)
 {
 	int rc;
 
-	if (cpu_is_msm8627())
+	if (cpu_is_msm8930())
 		return 0;
 
 	if (msm_fb_detect_client("hdmi_msm"))

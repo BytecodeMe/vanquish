@@ -261,6 +261,45 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 			rc = p_mctl->sync.sctrl.s_config(argp);
 			break;
 
+	case MSM_CAM_IOCTL_SENSOR_V4l2_S_CTRL: {
+			struct v4l2_control v4l2_ctrl;
+			CDBG("subdev call\n");
+			if (copy_from_user(&v4l2_ctrl,
+				(void *)argp,
+				sizeof(struct v4l2_control))) {
+				CDBG("copy fail\n");
+				return -EFAULT;
+			}
+			CDBG("subdev call ok\n");
+			rc = v4l2_subdev_call(p_mctl->sensor_sdev,
+				core, s_ctrl, &v4l2_ctrl);
+			break;
+	}
+
+	case MSM_CAM_IOCTL_SENSOR_V4l2_QUERY_CTRL: {
+			struct v4l2_queryctrl v4l2_qctrl;
+			CDBG("query called\n");
+			if (copy_from_user(&v4l2_qctrl,
+				(void *)argp,
+				sizeof(struct v4l2_queryctrl))) {
+				CDBG("copy fail\n");
+				rc = -EFAULT;
+				break;
+			}
+			rc = v4l2_subdev_call(p_mctl->sensor_sdev,
+				core, queryctrl, &v4l2_qctrl);
+			if (rc < 0) {
+				rc = -EFAULT;
+				break;
+			}
+			if (copy_to_user((void *)argp,
+					 &v4l2_qctrl,
+					 sizeof(struct v4l2_queryctrl))) {
+				rc = -EFAULT;
+			}
+			break;
+	}
+
 	case MSM_CAM_IOCTL_ACTUATOR_IO_CFG: {
 		struct msm_actuator_cfg_data act_data;
 		if (p_mctl->sync.actctrl.a_config) {
@@ -504,6 +543,15 @@ static int msm_mctl_open(struct msm_cam_media_controller *p_mctl,
 			goto msm_open_done;
 		}
 
+		if (sync->actctrl.a_power_up)
+			rc = sync->actctrl.a_power_up(
+				sync->sdata->actuator_info);
+
+		if (rc < 0) {
+			pr_err("%s: act power failed:%d\n", __func__, rc);
+			goto msm_open_done;
+		}
+
 		pm_qos_add_request(&p_mctl->pm_qos_req_list,
 					PM_QOS_CPU_DMA_LATENCY,
 					PM_QOS_DEFAULT_VALUE);
@@ -537,7 +585,7 @@ static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 		VIDIOC_MSM_CSIPHY_RELEASE, NULL);
 
 	if (p_mctl->sync.actctrl.a_power_down)
-		p_mctl->sync.actctrl.a_power_down();
+		p_mctl->sync.actctrl.a_power_down(sync->sdata->actuator_info);
 
 	if (p_mctl->sync.sctrl.s_release)
 		p_mctl->sync.sctrl.s_release();

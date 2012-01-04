@@ -1,3 +1,10 @@
+ifdef CONFIG_FUNCTION_TRACER
+CFLAGS_REMOVE_timer.o = -pg
+CFLAGS_REMOVE_clock.o = -pg
+CFLAGS_REMOVE_acpuclock.o = -pg
+CFLAGS_REMOVE_scm.o = -pg
+endif
+
 obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
@@ -71,6 +78,7 @@ ifdef CONFIG_MSM_PIL
 obj-$(CONFIG_ARCH_MSM8X60) += peripheral-reset.o
 obj-$(CONFIG_ARCH_MSM8960) += peripheral-reset-8960.o
 endif
+obj-$(CONFIG_MSM_PIL_QDSP6V3) += pil-q6v3.o
 obj-$(CONFIG_MSM_PIL_QDSP6V4) += pil-q6v4.o
 obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
 obj-$(CONFIG_ARCH_FSM9XXX) += sirc-fsm9xxx.o
@@ -231,7 +239,7 @@ obj-$(CONFIG_ARCH_MSM8960) += devices-8960.o
 obj-$(CONFIG_ARCH_APQ8064) += devices-8960.o devices-8064.o
 board-8960-all-objs += board-8960.o board-8960-camera.o board-8960-display.o board-8960-pmic.o board-8960-storage.o board-8960-gpiomux.o
 board-8930-all-objs += board-8930.o board-8930-camera.o board-8930-display.o board-8930-pmic.o board-8930-storage.o board-8930-gpiomux.o
-board-8064-all-objs += board-8064.o board-8064-storage.o
+board-8064-all-objs += board-8064.o board-8064-pmic.o board-8064-storage.o board-8064-gpiomux.o
 obj-$(CONFIG_MACH_MSM8960_SIM) += board-8960-all.o board-8960-regulator.o
 obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-8960-all.o board-8960-regulator.o
 obj-$(CONFIG_MACH_MSM8960_CDP) += board-8960-all.o board-8960-regulator.o

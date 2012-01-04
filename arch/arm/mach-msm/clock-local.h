@@ -90,6 +90,8 @@ struct bank_masks {
  * struct branch - branch on/off
  * @ctl_reg: clock control register
  * @en_mask: ORed with @ctl_reg to enable the clock
+ * @hwcg_reg: hardware clock gating register
+ * @hwcg_mask: ORed with @hwcg_reg to enable hardware clock gating
  * @halt_reg: halt register
  * @halt_check: type of halt check to perform
  * @halt_bit: ANDed with @halt_reg to test for clock halted
@@ -100,6 +102,9 @@ struct branch {
 	void __iomem *const ctl_reg;
 	const u32 en_mask;
 
+	void __iomem *hwcg_reg;
+	u32 hwcg_mask;
+
 	void __iomem *const halt_reg;
 	const u16 halt_check;
 	const u16 halt_bit;
@@ -108,9 +113,10 @@ struct branch {
 	const u32 reset_mask;
 };
 
-int branch_reset(struct branch *clk, enum clk_reset_action action);
+int branch_reset(struct branch *b, enum clk_reset_action action);
 void __branch_clk_enable_reg(const struct branch *clk, const char *name);
 u32 __branch_clk_disable_reg(const struct branch *clk, const char *name);
+int branch_clk_handoff(struct clk *c);
 
 /*
  * Generic clock-definition struct and macros
@@ -150,6 +156,10 @@ int rcg_clk_is_enabled(struct clk *clk);
 long rcg_clk_round_rate(struct clk *clk, unsigned long rate);
 struct clk *rcg_clk_get_parent(struct clk *c);
 int rcg_clk_handoff(struct clk *c);
+int rcg_clk_reset(struct clk *clk, enum clk_reset_action action);
+void rcg_clk_enable_hwcg(struct clk *clk);
+void rcg_clk_disable_hwcg(struct clk *clk);
+int rcg_clk_in_hwcg_mode(struct clk *c);
 
 /**
  * struct cdiv_clk - integer divider clock with external source selection
@@ -286,6 +296,9 @@ struct clk *branch_clk_get_parent(struct clk *clk);
 int branch_clk_set_parent(struct clk *clk, struct clk *parent);
 int branch_clk_is_enabled(struct clk *clk);
 int branch_clk_reset(struct clk *c, enum clk_reset_action action);
+void branch_clk_enable_hwcg(struct clk *clk);
+void branch_clk_disable_hwcg(struct clk *clk);
+int branch_clk_in_hwcg_mode(struct clk *c);
 
 /**
  * struct measure_clk - for rate measurement debug use
@@ -336,6 +349,11 @@ void set_rate_nop(struct rcg_clk *clk, struct clk_freq_tbl *nf);
 void set_rate_mnd_8(struct rcg_clk *clk, struct clk_freq_tbl *nf);
 void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf);
 void set_rate_div_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf);
+
+extern int msm_gsbi12_uart_clk_ptr(struct clk **ptr);
+extern int msm_gsbi12_qup_clk_ptr(struct clk **ptr);
+extern int msm_gsbi12_p_clk_ptr(struct clk **ptr);
+extern int msm_clocks_8960_v1_info(struct clk_lookup **ptr, int *num_lookups);
 
 #endif /* __ARCH_ARM_MACH_MSM_CLOCK_LOCAL_H */
 

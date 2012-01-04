@@ -98,6 +98,9 @@
 
 #define PM8921_IRQ_BASE		(NR_MSM_IRQS + NR_GPIO_IRQS)
 
+#define GSBI_PROTOCOL_UNDEFINED	0x70
+#define GSBI_PROTOCOL_I2C_UART	0x60
+
 #define MSM_USB_BASE		(emud->regs)
 #define PHY_SESS_VLD		(1 << 29)
 #define PHY_SESS_VLD_CHG	(1 << 30)
@@ -114,7 +117,7 @@
 	DEF(FLOAT_UP,	2200, 2480), \
 	DEF(FLOAT_P,	10, 60), \
 	DEF(GROUND,	60, 90), \
-	DEF(STD_100K,	940, 1100), \
+	DEF(STD_100K,	940, 1200), \
 	DEF(STD_200K,	1400, 1590), \
 	DEF(ALT_100K,	1550, 1700), \
 	DEF(ALT_200K,	1850, 2100), \
@@ -177,6 +180,12 @@ static bool in_range(int voltage, int idx)
 #define MUXMODE_USB	0
 #define MUXMODE_UART	1
 #define MUXMODE_AUDIO	2
+
+#define DRVMODE_USB	MUXMODE_USB
+#define DRVMODE_UART	MUXMODE_UART
+#define DRVMODE_AUDIO	MUXMODE_AUDIO
+#define DRVMODE_FACTORY	3
+#define DRVMODE_NORMAL	4
 
 static int debug_mask = PRINT_ERROR | PRINT_DEBUG |
 	PRINT_STATUS | PRINT_TRANSITION /*| PRINT_PARANOIC*/;
@@ -312,6 +321,8 @@ enum emu_det_gpios {
 	EMU_ID_EN_GPIO,
 	EMU_MUX_CTRL0_GPIO,
 	EMU_MUX_CTRL1_GPIO,
+	WHISPER_TX_GPIO,
+	WHISPER_RX_GPIO,
 	PMGPIO_BASE,
 	SEMU_PPD_DET_GPIO = PMGPIO_BASE,
 	SEMU_ALT_MODE_EN_GPIO,
@@ -411,24 +422,22 @@ static char *bit_names[] = BITS;
 ********************************************************************/
 
 #define SENSE_USB           (test_bit(FLOAT_BIT, &data->sense) && \
-			     test_bit(B_SESSVLD_BIT, &data->sense) && \
-			     test_bit(SESS_VLD_BIT, &data->sense))
+			     test_bit(SESS_VLD_BIT, &data->sense) && \
+			    !test_bit(CHG_DET_BIT, &data->sense))
 
 #define SENSE_FACTORY       (test_bit(FACTORY_BIT, &data->sense) && \
 			     test_bit(FLOAT_BIT, &data->sense) && \
-			     test_bit(B_SESSVLD_BIT, &data->sense) && \
 			     test_bit(SESS_VLD_BIT, &data->sense))
 
 #define SENSE_CHARGER_FLOAT (test_bit(FLOAT_BIT, &data->sense) && \
-			     test_bit(B_SESSVLD_BIT, &data->sense) && \
 			     test_bit(SESS_VLD_BIT, &data->sense) && \
 			     test_bit(CHG_DET_BIT, &data->sense))
 
-#define SENSE_CHARGER       (test_bit(B_SESSVLD_BIT, &data->sense) && \
-			     test_bit(SESS_VLD_BIT, &data->sense) && \
+#define SENSE_CHARGER       (test_bit(SESS_VLD_BIT, &data->sense) && \
 			     test_bit(CHG_DET_BIT, &data->sense))
 
-#define SENSE_WHISPER_SPD   (test_bit(SESS_VLD_BIT, &data->sense))
+#define SENSE_WHISPER_SPD   (test_bit(SESS_VLD_BIT, &data->sense) && \
+			     test_bit(PD_100K_BIT, &data->sense))
 
 #define SENSE_CHARGER_IND   (test_bit(FLOAT_BIT, &data->sense) && \
 			     test_bit(DP_BIT, &data->sense) && \
@@ -446,8 +455,7 @@ static char *bit_names[] = BITS;
 #define SENSE_WHISPER_CABLE (0) /* FIXME: */
 
 #define SENSE_WHISPER_SMART (test_bit(GRND_BIT, &data->sense) && \
-			     test_bit(SESS_VLD_BIT, &data->sense) && \
-			     test_bit(DP_BIT, &data->sense))
+			     test_bit(SESS_VLD_BIT, &data->sense))
 
 #define SENSE_WHISPER_LD2   (test_bit(GRND_BIT, &data->sense) && \
 			     test_bit(SE1_BIT, &data->sense) && \
@@ -456,6 +464,9 @@ static char *bit_names[] = BITS;
 			     test_bit(DP_BIT, &data->sense))
 
 #define SENSE_USB_ADAPTER   (test_bit(GRND_BIT, &data->sense))
+
+#define SENSE_DISCONNECT    (test_bit(B_SESSEND_BIT, &data->sense) && \
+			     test_bit(FLOAT_BIT, &data->sense))
 
 struct emu_det_data {
 	struct device *dev;
@@ -499,6 +510,7 @@ struct emu_det_data {
 	bool semu_alt_mode;
 	bool ext_5v_switch_enabled;
 	void __iomem *regs;
+	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
 };
 
@@ -606,6 +618,74 @@ static const char *print_state_name(enum emu_det_state st)
 	return (st < STATE_MAX ? state_names[st] : "NA");
 }
 
+static struct gpiomux_setting gsbi12_gpio_mode = {
+	.func = 0, /* GPIO function assigned in whisper_gpio_mode() */
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct msm_gpiomux_config gsbi12_gpio_configs[] = {
+	{
+		.gpio      = 42,	/* GSBI12 GPIO */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi12_gpio_mode,
+			[GPIOMUX_ACTIVE] = &gsbi12_gpio_mode,
+		},
+	},
+	{
+		.gpio      = 43,	/* GSBI12 GPIO */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi12_gpio_mode,
+			[GPIOMUX_ACTIVE] = &gsbi12_gpio_mode,
+		},
+	},
+};
+
+static void whisper_gpio_mode(int mode)
+{
+	switch (mode) {
+	case DRVMODE_FACTORY:
+		gsbi12_gpio_mode.func = GPIOMUX_FUNC_GPIO; break;
+	case DRVMODE_NORMAL:
+		gsbi12_gpio_mode.func = GPIOMUX_FUNC_1; break;
+	}
+	msm_gpiomux_install(gsbi12_gpio_configs,
+		ARRAY_SIZE(gsbi12_gpio_configs));
+}
+
+static void gsbi_ctrl_register(bool restore)
+{
+	struct emu_det_data *emud = the_emud;
+	void *gsbi_ctrl;
+	uint32_t new;
+	static uint32_t value;
+	static bool stored;
+
+	gsbi_ctrl = ioremap_nocache(emud->gsbi_phys, 4);
+	if (IS_ERR_OR_NULL(gsbi_ctrl)) {
+		pr_emu_det(ERROR, "cannot map GSBI ctrl reg\n");
+		return;
+	} else {
+		if (restore) {
+			if (stored) {
+				writel_relaxed(value, gsbi_ctrl);
+				stored = false;
+				pr_emu_det(DEBUG, "GSBI reg 0x%x restored\n",
+									value);
+			}
+		} else {
+			new = value = readl_relaxed(gsbi_ctrl);
+			stored = true;
+			new &= ~GSBI_PROTOCOL_UNDEFINED;
+			new |= GSBI_PROTOCOL_I2C_UART;
+			writel_relaxed(new, gsbi_ctrl);
+			mb();
+			pr_emu_det(DEBUG, "GSBI reg updated\n");
+		}
+	}
+	iounmap(gsbi_ctrl);
+}
+
 static void mux_ctrl_mode(int mode)
 {
 	struct emu_det_data *emud = the_emud;
@@ -623,6 +703,7 @@ static void mux_ctrl_mode(int mode)
 	gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], sel1);
 }
 
+/* Returns voltage in mV */
 static int adc_emu_id_get(void)
 {
 	struct pm8xxx_adc_chan_result res;
@@ -630,10 +711,11 @@ static int adc_emu_id_get(void)
 	if (pm8xxx_adc_read(CHANNEL_MPP_2, &res))
 		pr_err("CHANNEL_MPP_2 ADC read error\n");
 	else
-		pr_emu_det(DEBUG, "emu_id=%lld mV\n", res.physical);
-	return (int)res.physical;
+		pr_emu_det(DEBUG, "emu_id=%lld uV\n", res.physical);
+	return (int)res.physical/1000;
 }
 
+/* Returns voltage in mV */
 static int adc_vbus_get(void)
 {
 	struct pm8xxx_adc_chan_result res;
@@ -641,8 +723,8 @@ static int adc_vbus_get(void)
 	if (pm8xxx_adc_read(CHANNEL_USBIN, &res))
 		pr_err("VBUS ADC read error\n");
 	else
-		pr_emu_det(DEBUG, "vbus=%lld mV\n", res.physical);
-	return (int)res.physical;
+		pr_emu_det(DEBUG, "vbus=%lld uV\n", res.physical);
+	return (int)res.physical/1000;
 }
 
 
@@ -880,7 +962,8 @@ static void otgsc_setup(int disable)
 #define dcd_disable()		dcd_setup(1)
 #define emu_id_protection_on()	emu_id_protection_setup(true)
 #define emu_id_protection_off()	emu_id_protection_setup(false)
-
+#define gsbi_ctrl_reg_store()	gsbi_ctrl_register(0)
+#define gsbi_ctrl_reg_restore()	gsbi_ctrl_register(1)
 #define pmic_gpio_config_store(_idx)	pmic_gpio_config(1, _idx)
 #define pmic_gpio_config_restore(_idx)	pmic_gpio_config(0, _idx)
 
@@ -907,35 +990,39 @@ static void sense_emu_id(unsigned long *lsense)
 			set_bit(FLOAT_BIT, lsense);
 			return;
 		} else {
+			emu_det_disable_irq(emud->emu_irq[SEMU_PPD_DET_IRQ]);
+			emu_det_disable_irq(emud->emu_irq[EMU_SCI_OUT_IRQ]);
+
 			clear_bit(FACTORY_BIT, lsense);
 			emu_id_protection_off();
 			msleep(20);
 			id = adc_emu_id_get();
+
+			emu_det_enable_irq(emud->emu_irq[SEMU_PPD_DET_IRQ]);
+			emu_det_enable_irq(emud->emu_irq[EMU_SCI_OUT_IRQ]);
 		}
 	}
-#if 0
-	/* this belongs to EMU_SCI_OUT, but not happening */
-	if (in_range(id, REF_GROUND))
-		set_bit(GRND_BIT, lsense);
-	else
-		clear_bit(GRND_BIT, lsense);
 
-	/* this belongs to SEMU_PPD_DET, but not happening reliably */
-	if (in_range(id, REF_FLOAT_UP))
-		set_bit(FLOAT_BIT, lsense);
-	/*else
-		clear_bit(FLOAT_BIT, &emud->sense);*/
-#endif
 	if (emud->semu_alt_mode) {
-		if (in_range(id, REF_ALT_100K))
+		if (in_range(id, REF_ALT_100K)) {
 			set_bit(PD_100K_BIT, lsense);
-		else if (in_range(id, REF_ALT_200K))
+			clear_bit(GRND_BIT, lsense);
+			clear_bit(FLOAT_BIT, lsense);
+		} else if (in_range(id, REF_ALT_200K)) {
 			set_bit(PD_200K_BIT, lsense);
+			clear_bit(GRND_BIT, lsense);
+			clear_bit(FLOAT_BIT, lsense);
+		}
 	} else {
-		if (in_range(id, REF_STD_100K))
+		if (in_range(id, REF_STD_100K)) {
 			set_bit(PD_100K_BIT, lsense);
-		else if (in_range(id, REF_STD_200K))
+			clear_bit(GRND_BIT, lsense);
+			clear_bit(FLOAT_BIT, lsense);
+		} else if (in_range(id, REF_STD_200K)) {
 			set_bit(PD_200K_BIT, lsense);
+			clear_bit(GRND_BIT, lsense);
+			clear_bit(FLOAT_BIT, lsense);
+		}
 	}
 }
 
@@ -950,62 +1037,63 @@ static int get_sense(bool do_adc)
 	u8 ulpi_reg;
 
 	irq = atomic_read(&emud->last_irq);
-/*
-	clear_bit(DCD_BIT, &lsense);
-	clear_bit(CHG_DET_BIT, &lsense);
-*/
-/*	if (irq == emud->emu_irq[SEMU_PPD_DET_IRQ]) {*/
 
+	value = gpio_get_value_cansleep(
+				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
+	pr_emu_det(DEBUG, "SEMU_PPD_DET indicates ID %s floating\n",
+				value ? "not" : "");
+	if (value) {
+		clear_bit(FLOAT_BIT, &lsense);
+	} else {
+		set_bit(FLOAT_BIT, &lsense);
+		clear_bit(GRND_BIT, &lsense);
+	}
+
+	if ((debug_mask & PRINT_PARANOIC)) {
 		value = gpio_get_value_cansleep(
-					emud->emu_gpio[SEMU_PPD_DET_GPIO]);
-		pr_emu_det(DEBUG, "SEMU_PPD_DET indicates ID %s floating\n",
-					value ? "not" : "");
-		if (value) {
-			clear_bit(FLOAT_BIT, &lsense);
-		} else {
-			set_bit(FLOAT_BIT, &lsense);
-			clear_bit(GRND_BIT, &lsense);
-		}
-		value = gpio_get_value_cansleep(
-					emud->emu_gpio[EMU_SCI_OUT_GPIO]);
+				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
 		pr_emu_det(PARANOIC, "while EMU_SCI_OUT is %s\n",
-					value ? "high" : "low");
+				value ? "high" : "low");
+	}
 
-/*	} else
-	if (irq == emud->emu_irq[EMU_SCI_OUT_IRQ]) {
+	value = gpio_get_value_cansleep(
+				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
+	pr_emu_det(DEBUG, "EMU_SCI_OUT indicates ID %s grounded\n",
+				value ? "" : "not");
+	if (value) {
+		set_bit(GRND_BIT, &lsense);
+		clear_bit(FLOAT_BIT, &lsense);
+	} else
+		clear_bit(GRND_BIT, &lsense);
 
-*/		value = gpio_get_value_cansleep(
-					emud->emu_gpio[EMU_SCI_OUT_GPIO]);
-		pr_emu_det(DEBUG, "EMU_SCI_OUT indicates ID %s grounded\n",
-					value ? "" : "not");
-		if (value) {
-			set_bit(GRND_BIT, &lsense);
-			clear_bit(FLOAT_BIT, &lsense);
-		} else
-			clear_bit(GRND_BIT, &lsense);
-
+	if ((debug_mask & PRINT_PARANOIC)) {
 		value = gpio_get_value_cansleep(
-					emud->emu_gpio[SEMU_PPD_DET_GPIO]);
+				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
 		pr_emu_det(PARANOIC, "while SEMU_PPD_DET is %s\n",
 					value ? "high" : "low");
-/*
-	} else if (irq == emud->emu_irq[PHY_USB_IRQ]) {
-*/
-		ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_CTRL));
-		is_dcd_en = (ulpi_reg & 0x10);
-		is_chgdet_en = (ulpi_reg & 0x3);
+	}
 
-		/* read CHARGING_DETECTION_OUTPUT register */
-		ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_OUT));
-		if (ulpi_reg)
-			pr_emu_det(DEBUG, "CHARGING_DETECTION_OUTPUT: 0x%x\n",
+	ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_CTRL));
+	is_dcd_en = (ulpi_reg & 0x10);
+	is_chgdet_en = (ulpi_reg & 0x3);
+
+	ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_OUT));
+	if (ulpi_reg)
+		pr_emu_det(DEBUG, "CHARGING_DETECTION_OUTPUT: 0x%x\n",
 						ulpi_reg);
-		if (is_dcd_en && (ulpi_reg & 2))
+	if (is_dcd_en) {
+		if (ulpi_reg & 2)
 			set_bit(DCD_BIT, &lsense);
+		else
+			clear_bit(DCD_BIT, &lsense);
+	}
 
-		if (is_chgdet_en && (ulpi_reg & 1))
+	if (is_chgdet_en) {
+		if (ulpi_reg & 1)
 			set_bit(CHG_DET_BIT, &lsense);
-/*	}*/
+		else
+			clear_bit(CHG_DET_BIT, &lsense);
+	}
 
 	otgsc = readl(USB_OTGSC);
 	portsc = readl(USB_PORTSC);
@@ -1070,40 +1158,40 @@ static int configure_hardware(enum emu_det_accy accy)
 	switch (accy) {
 	case ACCY_USB:
 	case ACCY_FACTORY:
+	case ACCY_UNKNOWN:
+	case ACCY_WHISPER_SMART:
 		mux_ctrl_mode(MUXMODE_USB);
+		gsbi_ctrl_reg_restore();
 
 		break;
 
 	case ACCY_CHARGER:
 		mux_ctrl_mode(MUXMODE_UART);
+		gsbi_ctrl_reg_store();
 
 		break;
 
 	case ACCY_WHISPER_PPD:
+		mux_ctrl_mode(MUXMODE_UART);
+		gsbi_ctrl_reg_store();
 		if (emu_pdata && emu_pdata->enable_5v)	{
 			emu_pdata->enable_5v(1);
 			emud->ext_5v_switch_enabled = true;
 			pr_emu_det(DEBUG, "5VS_OTG enabled\n");
 		}
-		mux_ctrl_mode(MUXMODE_UART);
-
-		break;
-
-	case ACCY_UNKNOWN:
-		mux_ctrl_mode(MUXMODE_UART);
-
-		emud->whisper_auth = AUTH_NOT_STARTED;
-
-		break;
-
-	case ACCY_WHISPER_SMART:
-		mux_ctrl_mode(MUXMODE_USB);
 
 		break;
 
 	case ACCY_NONE:
-
+		mux_ctrl_mode(MUXMODE_USB);
+		gsbi_ctrl_reg_restore();
 		emud->whisper_auth = AUTH_NOT_STARTED;
+		if (emu_pdata && emu_pdata->enable_5v &&
+			emud->ext_5v_switch_enabled) {
+			emu_pdata->enable_5v(0);
+			emud->ext_5v_switch_enabled = false;
+			pr_emu_det(DEBUG, "5VS_OTG disabled\n");
+		}
 		emu_id_protection_on();
 
 		break;
@@ -1135,6 +1223,11 @@ static void notify_otg(enum emu_det_accy accy)
 	case ACCY_CHARGER:
 		atomic_notifier_call_chain(&data->trans->notifier,
 					USB_EVENT_CHARGER, NULL);
+			break;
+
+	case ACCY_USB_DEVICE:
+		atomic_notifier_call_chain(&data->trans->notifier,
+					USB_EVENT_ID, NULL);
 			break;
 	default:
 			break;
@@ -1171,6 +1264,7 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 	if ((accy == ACCY_CHARGER) ||
 		(accy == ACCY_WHISPER_PPD)) {
 		switch_set_state(&data->wsdev, DOCKED);
+		pr_emu_det(DEBUG, "whisper switch set to DOCKED\n");
 	/* LD2 open->close */
 	} else if ((accy == ACCY_WHISPER_SMART) &&
 		   (data->state == WHISPER_SMART_LD2_CLOSE)) {
@@ -1189,6 +1283,7 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 
 	} else {
 		switch_set_state(&data->wsdev, UNDOCKED);
+		pr_emu_det(DEBUG, "whisper switch set to UNDOCKED\n");
 		switch_set_state(&data->dsdev, NO_DOCK);
 		switch_set_state(&data->edsdev, NO_DOCK);
 		switch_set_state(&data->emusdev, NO_DEVICE);
@@ -1228,11 +1323,11 @@ static void detection_work(bool caused_by_irq)
 	switch (data->state) {
 	case CONFIG:
 		pm_runtime_get(data->trans->dev);
+		gsbi_ctrl_reg_restore();
+		memset(&data->sense, 0, sizeof(data->sense));
 		data->trans->init(data->trans); /* reset PHY */
 		phy_block_on();
 		otgsc_enable();
-		/*dpdm_disable();*/
-		/*dcd_enable();*/
 		chgdet_enable(0);
 
 		configure_hardware(ACCY_UNKNOWN);
@@ -1305,8 +1400,8 @@ static void detection_work(bool caused_by_irq)
 			break;
 
 	case IDENTIFY:
+		data->state = CONFIG;
 		last_irq = get_sense(true);
-		data->state = CONFIG; /* re-arm in case of failed detection */
 
 		if (SENSE_FACTORY) {
 			data->state = FACTORY;
@@ -1318,9 +1413,7 @@ static void detection_work(bool caused_by_irq)
 
 		} else if (SENSE_CHARGER ||
 			   SENSE_CHARGER_FLOAT ||
-			   SENSE_WHISPER_SPD ||
-			   SENSE_WHISPER_PPD ||
-			   SENSE_WHISPER_CABLE) {
+			   SENSE_WHISPER_PPD) {
 			pr_emu_det(STATUS,
 					"detection_work: IW Identified\n");
 			data->state = IDENTIFY_WHISPER_SEMU;
@@ -1338,17 +1431,12 @@ static void detection_work(bool caused_by_irq)
 			  (data->accy == ACCY_NONE)) {
 			pr_emu_det(STATUS,
 				"detection_work: PARTIAL INSERTION\n");
-			data->state = CONFIG;
 
 		} else {
 			pr_emu_det(DEBUG, "no accessory\n");
 			notify_accy(ACCY_NONE);
 			notify_whisper_switch(ACCY_NONE);
 		}
-
-		if (test_bit(CHG_DET_BIT, &data->sense))
-			clear_bit(CHG_DET_BIT, &data->sense);
-
 		break;
 
 	case IDENTIFY_WHISPER_SEMU:
@@ -1359,8 +1447,8 @@ static void detection_work(bool caused_by_irq)
 		    SENSE_WHISPER_SPD) {
 			pr_emu_det(STATUS,
 				"detection_work: CHARGER Identified\n");
-			notify_accy(ACCY_CHARGER);
 			data->state = CHARGER;
+			notify_accy(ACCY_CHARGER);
 			notify_whisper_switch(ACCY_CHARGER);
 
 		} else if (SENSE_WHISPER_PPD ||
@@ -1368,17 +1456,20 @@ static void detection_work(bool caused_by_irq)
 			   SENSE_WHISPER_CABLE) {
 			pr_emu_det(STATUS,
 				"detection_work: PPD Identified\n");
-			notify_accy(ACCY_WHISPER_PPD);
+
+			emu_id_protection_off();
+
 			data->state = WHISPER_PPD;
+			notify_accy(ACCY_WHISPER_PPD);
 			notify_whisper_switch(ACCY_WHISPER_PPD);
 
-		} else {
+		} else
 			queue_delayed_work(data->wq, &data->timer_work, 0);
-		}
 		break;
 
 	case IDENTIFY_WHISPER_SMART:
 		data->state = CONFIG;
+
 		if (SENSE_WHISPER_SMART || SENSE_WHISPER_LD2) {
 			pr_emu_det(STATUS,
 				"detection_work: SMART Identified\n");
@@ -1461,7 +1552,7 @@ static void detection_work(bool caused_by_irq)
 				notify_accy(ACCY_NONE);
 			}
 
-			if ((last_irq == EMU_SCI_OUT_IRQ) &&
+			if ((last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 			    (data->whisper_auth == AUTH_PASSED)) {
 				/*whisper_audio_check(data); temporary out */
 			}
@@ -1510,10 +1601,10 @@ static void detection_work(bool caused_by_irq)
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->timer_work, 0);
 		} else if ((test_bit(SESS_VLD_BIT, &data->sense) &&
-				(last_irq == EMU_SCI_OUT_IRQ) &&
+				(last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 				test_bit(GRND_BIT, &data->sense)) ||
 			(test_bit(SESS_VLD_BIT, &data->sense) &&
-				(last_irq == EMU_SCI_OUT_IRQ) &&
+				(last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 				!test_bit(GRND_BIT, &data->sense) &&
 				test_bit(SE1_BIT, &data->sense))) {
 			pr_emu_det(STATUS,
@@ -1521,9 +1612,8 @@ static void detection_work(bool caused_by_irq)
 			notify_accy(ACCY_CHARGER);
 			data->state = WHISPER_SMART_LD2_CLOSE;
 			notify_whisper_switch(ACCY_WHISPER_SMART);
-		} else {
+		} else
 			data->state = WHISPER_SMART_LD2_OPEN;
-		}
 		break;
 
 	case WHISPER_SMART_LD2_CLOSE:
@@ -1534,7 +1624,7 @@ static void detection_work(bool caused_by_irq)
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->timer_work, 0);
 		} else if (test_bit(SESS_VLD_BIT, &data->sense) &&
-			(last_irq == EMU_SCI_OUT_IRQ) &&
+			(last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 			test_bit(GRND_BIT, &data->sense)) {
 			pr_emu_det(STATUS,
 					"detection_work: LD2 lid opened\n");
@@ -1545,6 +1635,18 @@ static void detection_work(bool caused_by_irq)
 			notify_accy(ACCY_USB_DEVICE);
 		} else
 			data->state = WHISPER_SMART_LD2_CLOSE;
+		break;
+
+	case WHISPER_PPD_UNKNOWN:
+		pr_emu_det(STATUS, "detection_work: PPD_UNKNOWN\n");
+		last_irq = get_sense(true);
+
+		if (SENSE_DISCONNECT ||
+		    (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) ||
+		    (last_irq == data->emu_irq[SEMU_PPD_DET_IRQ])) {
+			data->state = CONFIG;
+			queue_delayed_work(data->wq, &data->timer_work, 0);
+		}
 		break;
 
 	default:
@@ -1573,11 +1675,7 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 	otgsc = readl(USB_OTGSC);
 
 	if (irq == emud->emu_irq[PHY_USB_IRQ]) {
-
-		if (!(usbsts & PHY_ALT_INT)) {
-			count++;
-			return IRQ_NONE;
-		} else {
+		if ((usbsts & PHY_ALT_INT)) {
 			struct otg_transceiver *otg = emud->trans;
 			u8 ulpi_reg;
 
@@ -1591,25 +1689,22 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 				pr_emu_det(DEBUG, "ALT_INTERRUPT_LATCH:"
 						  " 0x%02x\n", ulpi_reg);
 			}
-
 			goto put_on_schedule;
+
+		} else {
+			if ((otgsc & emud->otgsc_mask))
+				writel(otgsc, USB_OTGSC);
+			else {
+				count++;
+				if ((debug_mask & PRINT_PARANOIC)) {
+					u32 portsc = readl(USB_PORTSC);
+					pr_emu_det(PARANOIC, "USBSTS: 0x%x," \
+						" OTGSC: 0x%x, PORTSC: 0x%x\n",
+							usbsts, otgsc, portsc);
+				}
+				return IRQ_NONE;
+			}
 		}
-
-		if (!(otgsc & emud->otgsc_mask)) {
-			count++;
-			return IRQ_NONE;
-		}
-
-		writel(otgsc, USB_OTGSC);
-	}
-
-	if ((irq == emud->emu_irq[SEMU_PPD_DET_IRQ]) &&
-	    (debug_mask & PRINT_PARANOIC)) {
-		int value;
-		value = gpio_get_value_cansleep(
-				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
-		pr_emu_det(PARANOIC, "SEMU_PPD_DET is %s\n",
-					value ? "high" : "low");
 	}
 
 put_on_schedule:
@@ -1745,57 +1840,65 @@ err_out:
 	return -EINVAL;
 }
 
-static struct gpiomux_setting emu_id_en_config = {
+static struct gpiomux_setting gpio_np_config = {
 	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting emu_sci_out_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
+	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting mux_ctrl0_config = {
+static struct gpiomux_setting gpio_pu_config = {
 	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
+	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_UP,
 };
 
-static struct gpiomux_setting mux_ctrl1_config = {
+static struct gpiomux_setting gpio_pd_config = {
 	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
+	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
 
 static struct msm_gpiomux_config msm_gpio_configs[] = {
 	{
-		.gpio = 0,
+		.gpio = 0, /* EMU_SCI_OUT */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &emu_sci_out_config,
-			[GPIOMUX_ACTIVE] = &emu_sci_out_config,
+			[GPIOMUX_SUSPENDED] = &gpio_np_config,
+			[GPIOMUX_ACTIVE] = &gpio_np_config,
 		}
 	},
 	{
-		.gpio = 0,
+		.gpio = 0, /* EMU_ID_EN */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &emu_id_en_config,
-			[GPIOMUX_ACTIVE] = &emu_id_en_config,
+			[GPIOMUX_SUSPENDED] = &gpio_pd_config,
+			[GPIOMUX_ACTIVE] = &gpio_pd_config,
 		}
 	},
 	{
-		.gpio = 0,
+		.gpio = 0, /* EMU_MUX_CTRL0 */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &mux_ctrl0_config,
-			[GPIOMUX_ACTIVE] = &mux_ctrl0_config,
+			[GPIOMUX_SUSPENDED] = &gpio_pu_config,
+			[GPIOMUX_ACTIVE] = &gpio_pu_config,
 		}
 	},
 	{
-		.gpio = 0,
+		.gpio = 0, /* EMU_MUX_CTRL1 */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &mux_ctrl1_config,
-			[GPIOMUX_ACTIVE] = &mux_ctrl1_config,
+			[GPIOMUX_SUSPENDED] = &gpio_pd_config,
+			[GPIOMUX_ACTIVE] = &gpio_pd_config,
+		}
+	},
+	{
+		.gpio = 0, /* WHISPER_TX */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_np_config,
+			[GPIOMUX_ACTIVE] = &gpio_np_config,
+		}
+	},
+	{
+		.gpio = 0, /* WHISPER_RX */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_np_config,
+			[GPIOMUX_ACTIVE] = &gpio_np_config,
 		}
 	},
 };
@@ -2029,6 +2132,37 @@ static int debug_mask_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(debug_mask_debugfs_fops, debug_mask_get, \
 						debug_mask_set, "%llx\n");
 
+static int mode_set(void *data, u64 val)
+{
+	switch ((int)val) {
+	case DRVMODE_USB:
+		pr_emu_det(TRANSITION, "USB mode\n");
+		mux_ctrl_mode(MUXMODE_USB);
+		break;
+	case DRVMODE_UART:
+		pr_emu_det(TRANSITION, "UART mode\n");
+		mux_ctrl_mode(MUXMODE_UART);
+		break;
+	case DRVMODE_AUDIO:
+		pr_emu_det(TRANSITION, "AUDIO mode\n");
+		mux_ctrl_mode(MUXMODE_AUDIO);
+		break;
+	case DRVMODE_FACTORY:
+		pr_emu_det(TRANSITION, "GPIO mode\n");
+		whisper_gpio_mode(DRVMODE_FACTORY);
+		break;
+	case DRVMODE_NORMAL:
+		pr_emu_det(TRANSITION, "GSBI12 mode\n");
+		whisper_gpio_mode(DRVMODE_NORMAL);
+		break;
+	default:
+		pr_emu_det(ERROR, "unsupported mode\n");
+		break;
+	}
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(mode_debugfs_fops, NULL, mode_set, "%llx\n");
+
 static void create_debugfs_entries(void)
 {
 	struct dentry *dent = debugfs_create_dir("emu_det", NULL);
@@ -2052,6 +2186,8 @@ static void create_debugfs_entries(void)
 			    (void *)NULL, &emu_id_en_debugfs_fops);
 	debugfs_create_file("debug", 0644, dent,
 			    (void *)NULL, &debug_mask_debugfs_fops);
+	debugfs_create_file("mode", 0644, dent,
+			    (void *)NULL, &mode_debugfs_fops);
 }
 #else
 static inline void create_debugfs_entries(void)
@@ -2147,6 +2283,7 @@ static long emu_det_ioctl(struct file *file,
 						CPCAP_WHISPER_PROP_SIZE);
 				/*whisper_audio_check(data); temporary out */
 			}
+			retval = 0;
 
 		} else if ((data->state == WHISPER_SMART) ||
 			(data->state == WHISPER_SMART_LD2_OPEN)) {
@@ -2229,6 +2366,14 @@ static int emu_det_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto free_data;
 	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res) {
+		pr_err("failed to get platform resource mem\n");
+		ret = -ENODEV;
+		goto free_data;
+	}
+	data->gsbi_phys = res->start;
 
 	data->trans = otg_get_transceiver();
 	if (!data->trans || !data->trans->io_ops ||
@@ -2352,6 +2497,8 @@ free_misc_dev:
 free_gpios:
 	free_gpios();
 free_data:
+	if (data->regs)
+		iounmap(data->regs);
 	kfree(data);
 	return ret;
 }
@@ -2384,6 +2531,8 @@ static int __exit emu_det_remove(struct platform_device *pdev)
 	misc_deregister(&emu_det_dev);
 	if (emu_pdata && emu_pdata->core_power)
 		emu_pdata->core_power(0);
+	if (data->regs)
+		iounmap(data->regs);
 	kfree(data);
 
 	return 0;
@@ -2415,5 +2564,4 @@ module_exit(emu_det_exit);
 MODULE_ALIAS("platform:emu_det");
 MODULE_DESCRIPTION("Motorola MSM8960 EMU detection driver");
 MODULE_LICENSE("GPL");
-
 

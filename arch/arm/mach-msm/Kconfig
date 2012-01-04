@@ -41,6 +41,8 @@ config ARCH_MSM7X30
 	select ARCH_HAS_HOLES_MEMORYMODEL
 	select MEMORY_HOTPLUG
 	select MEMORY_HOTREMOVE
+	select ARCH_ENABLE_MEMORY_HOTPLUG
+	select ARCH_ENABLE_MEMORY_HOTREMOVE
 	select MIGRATION
 	select ARCH_MEMORY_PROBE
 	select ARCH_MEMORY_REMOVE
@@ -143,10 +145,14 @@ config ARCH_MSM8960
 	select ARCH_HAS_HOLES_MEMORYMODEL
 	select MEMORY_HOTPLUG
 	select MEMORY_HOTREMOVE
+	select ARCH_ENABLE_MEMORY_HOTPLUG
+	select ARCH_ENABLE_MEMORY_HOTREMOVE
 	select MIGRATION
 	select ARCH_MEMORY_PROBE
 	select ARCH_MEMORY_REMOVE
 	select FIX_MOVABLE_ZONE
+	select CLEANCACHE
+	select QCACHE
 
 config ARCH_MSM8930
 	bool "MSM8930"
@@ -174,6 +180,8 @@ config ARCH_MSM8930
 	select ARCH_HAS_HOLES_MEMORYMODEL
 	select MEMORY_HOTPLUG
 	select MEMORY_HOTREMOVE
+	select ARCH_ENABLE_MEMORY_HOTPLUG
+	select ARCH_ENABLE_MEMORY_HOTREMOVE
 	select MIGRATION
 	select ARCH_MEMORY_PROBE
 	select ARCH_MEMORY_REMOVE
@@ -1581,6 +1589,13 @@ config MSM_PIL
 	  brought out of reset.
 
 	  Say yes to support these devices.
+
+config MSM_PIL_QDSP6V3
+	tristate "QDSP6v3 (Hexagon) Boot Support"
+	depends on MSM_PIL
+	help
+	  Support for booting and shutting down QDSP6v3 processors (hexagon).
+	  The QDSP6 is a low power DSP used in audio software applications.
 
 config MSM_PIL_QDSP6V4
 	tristate "QDSP6v4 (Hexagon) Boot Support"

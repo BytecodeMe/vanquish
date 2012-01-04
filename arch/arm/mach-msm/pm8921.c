@@ -127,6 +127,154 @@ static int pm8921_therm_mitigation[] = {
 	325,
 };
 
+static const struct pm8xxx_adc_map_pt adcmap_batt_therm[] = {
+	{-400,	1512},
+	{-390,	1509},
+	{-380,	1506},
+	{-370,	1503},
+	{-360,	1499},
+	{-350,	1494},
+	{-340,	1491},
+	{-330,	1487},
+	{-320,	1482},
+	{-310,	1477},
+	{-300,	1471},
+	{-290,	1467},
+	{-280,	1462},
+	{-270,	1456},
+	{-260,	1450},
+	{-250,	1443},
+	{-240,	1437},
+	{-230,	1431},
+	{-220,	1424},
+	{-210,	1416},
+	{-200,	1407},
+	{-190,	1400},
+	{-180,	1393},
+	{-170,	1384},
+	{-160,	1375},
+	{-150,	1365},
+	{-140,	1356},
+	{-130,	1347},
+	{-120,	1337},
+	{-110,	1327},
+	{-100,	1315},
+	{-90,	1305},
+	{-80,	1295},
+	{-70,	1283},
+	{-60,	1271},
+	{-50,	1258},
+	{-40,	1247},
+	{-30,	1235},
+	{-20,	1223},
+	{-10,	1209},
+	{-0,	1194},
+	{10,	1182},
+	{20,	1170},
+	{30,	1156},
+	{40,	1141},
+	{50,	1126},
+	{60,	1113},
+	{70,	1100},
+	{80,	1085},
+	{90,	1070},
+	{100,	1054},
+	{110,	1041},
+	{120,	1027},
+	{130,	1013},
+	{140,	997},
+	{150,	981},
+	{160,	968},
+	{170,	954},
+	{180,	940},
+	{190,	924},
+	{200,	909},
+	{210,	896},
+	{220,	882},
+	{230,	868},
+	{240,	854},
+	{250,	839},
+	{260,	826},
+	{270,	813},
+	{280,	800},
+	{290,	787},
+	{300,	772},
+	{310,	761},
+	{320,	749},
+	{330,	737},
+	{340,	724},
+	{350,	711},
+	{360,	701},
+	{370,	690},
+	{380,	679},
+	{390,	668},
+	{400,	656},
+	{410,	646},
+	{420,	637},
+	{430,	627},
+	{440,	617},
+	{450,	606},
+	{460,	598},
+	{470,	589},
+	{480,	580},
+	{490,	571},
+	{500,	562},
+	{510,	555},
+	{520,	547},
+	{530,	540},
+	{540,	532},
+	{550,	524},
+	{560,	517},
+	{570,	511},
+	{580,	504},
+	{590,	497},
+	{600,	491},
+	{610,	485},
+	{620,	479},
+	{630,	473},
+	{640,	468},
+	{650,	462},
+	{660,	457},
+	{670,	452},
+	{680,	447},
+	{690,	442},
+	{700,	437},
+	{710,	433},
+	{720,	429},
+	{730,	424},
+	{740,	420},
+	{750,	416},
+	{760,	412},
+	{770,	409},
+	{780,	405},
+	{790,	402},
+	{800,	398},
+	{810,	395},
+	{820,	392},
+	{830,	389},
+	{840,	386},
+	{850,	382},
+	{860,	380},
+	{870,	377},
+	{880,	375},
+	{890,	372},
+	{900,	369},
+	{950,	358},
+	{1000,	348},
+	{1050,	340},
+	{1100,	333},
+	{1150,	327},
+	{1200,	322},
+	{1250,	317}
+};
+
+static struct pm8xxx_adc_scale_tbl adc_scale_tbls[ADC_SCALE_NONE] = {
+	[ADC_SCALE_BATT_THERM] = {
+		.scale_lu_tbl = adcmap_batt_therm,
+		.scale_lu_tbl_size = ARRAY_SIZE(adcmap_batt_therm),
+	},
+};
+
 #ifdef CONFIG_MACH_MSM8960_MMI
 static int battery_timeout;
 
@@ -205,10 +353,200 @@ int64_t read_mmi_battery_bms(int64_t battery_id,
 	return 0;
 }
 
+enum pm8921_btm_state {
+	BTM_NORM = 0,
+	BTM_COLD,
+	BTM_COOL_HV,
+	BTM_COOL_LV,
+	BTM_WARM_HV,
+	BTM_WARM_LV,
+	BTM_HOT,
+	BTM_POWER_OFF,
+};
+
+static enum pm8921_btm_state btm_state;
+
+#define TEMP_HYSTERISIS_DEGC 2
+#define TEMP_OVERSHOOT 10
+#define TEMP_HOT 60
+#define TEMP_COLD -20
+static int64_t temp_range_check(int batt_temp, int batt_mvolt,
+				struct pm8921_charger_battery_data *data,
+				int64_t *enable)
+{
+	int64_t chrg_enable = 0;
+	int64_t btm_change = 0;
+
+	if (!enable || !data)
+		return btm_change;
+
+	/* Check for a State Change */
+	if (btm_state == BTM_POWER_OFF) {
+		btm_change = 2;
+	} else if (btm_state == BTM_NORM) {
+		if (batt_temp >= (signed int)(data->warm_temp)) {
+			data->cool_temp =
+				data->warm_temp - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT;
+			if (batt_mvolt >= data->warm_bat_voltage) {
+				btm_state = BTM_WARM_HV;
+				chrg_enable = 0;
+			} else {
+				btm_state = BTM_WARM_LV;
+				data->max_voltage = data->warm_bat_voltage;
+				chrg_enable = 1;
+			}
+			btm_change = 1;
+		} else if (batt_temp <= (signed int)(data->cool_temp)) {
+			data->warm_temp =
+				data->cool_temp + TEMP_HYSTERISIS_DEGC;
+			data->cool_temp = TEMP_COLD;
+			if (batt_mvolt >= data->cool_bat_voltage) {
+				btm_state = BTM_COOL_HV;
+				chrg_enable = 0;
+			} else {
+				btm_state = BTM_COOL_LV;
+				data->max_voltage = data->cool_bat_voltage;
+				chrg_enable = 1;
+			}
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_COLD) {
+		if (batt_temp <= TEMP_COLD - TEMP_OVERSHOOT) {
+			btm_state = BTM_POWER_OFF;
+			btm_change = 2;
+		} else if (batt_temp >= TEMP_COLD + TEMP_HYSTERISIS_DEGC) {
+			data->warm_temp =
+				data->cool_temp + TEMP_HYSTERISIS_DEGC;
+			data->cool_temp = TEMP_COLD;
+			if (batt_mvolt >= data->cool_bat_voltage) {
+				btm_state = BTM_COOL_HV;
+				chrg_enable = 0;
+			} else {
+				btm_state = BTM_COOL_LV;
+				data->max_voltage = data->cool_bat_voltage;
+				chrg_enable = 1;
+			}
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_COOL_LV) {
+		if (batt_temp <= TEMP_COLD) {
+			btm_state = BTM_COLD;
+			data->cool_temp = TEMP_COLD - TEMP_OVERSHOOT;
+			data->warm_temp = TEMP_COLD + TEMP_HYSTERISIS_DEGC;
+			chrg_enable = 0;
+			btm_change = 1;
+		} else if (batt_temp >=
+			   ((signed int)(data->cool_temp) +
+			    TEMP_HYSTERISIS_DEGC)) {
+			btm_state = BTM_NORM;
+			chrg_enable = 1;
+			btm_change = 1;
+		} else if (batt_mvolt >= data->cool_bat_voltage) {
+			btm_state = BTM_COOL_HV;
+			data->warm_temp =
+				data->cool_temp + TEMP_HYSTERISIS_DEGC;
+			data->cool_temp = TEMP_COLD;
+			data->max_voltage = data->cool_bat_voltage;
+			chrg_enable = 0;
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_COOL_HV) {
+		if (batt_temp <= TEMP_COLD) {
+			btm_state = BTM_COLD;
+			data->cool_temp = TEMP_COLD - TEMP_OVERSHOOT;
+			data->warm_temp = TEMP_COLD + TEMP_HYSTERISIS_DEGC;
+			chrg_enable = 0;
+			btm_change = 1;
+		} else if (batt_temp >=
+			   ((signed int)(data->cool_temp) +
+			    TEMP_HYSTERISIS_DEGC)) {
+			btm_state = BTM_NORM;
+			chrg_enable = 1;
+			btm_change = 1;
+		} else if (batt_mvolt < data->cool_bat_voltage) {
+			btm_state = BTM_COOL_LV;
+			data->warm_temp =
+				data->cool_temp + TEMP_HYSTERISIS_DEGC;
+			data->cool_temp = TEMP_COLD;
+			data->max_voltage = data->cool_bat_voltage;
+			chrg_enable = 1;
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_WARM_LV) {
+		if (batt_temp >= TEMP_HOT) {
+			btm_state = BTM_HOT;
+			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT;
+			chrg_enable = 0;
+			btm_change = 1;
+		} else if (batt_temp <=
+			   ((signed int)(data->warm_temp) -
+			    TEMP_HYSTERISIS_DEGC)) {
+			btm_state = BTM_NORM;
+			chrg_enable = 1;
+			btm_change = 1;
+		} else if (batt_mvolt >= data->warm_bat_voltage) {
+			btm_state = BTM_WARM_HV;
+			data->cool_temp =
+				data->warm_temp - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT;
+			data->max_voltage = data->warm_bat_voltage;
+			chrg_enable = 0;
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_WARM_HV) {
+		if (batt_temp >= TEMP_HOT) {
+			btm_state = BTM_HOT;
+			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT;
+			chrg_enable = 0;
+			btm_change = 1;
+		} else if (batt_temp <=
+			   ((signed int)(data->warm_temp) -
+			    TEMP_HYSTERISIS_DEGC)) {
+			btm_state = BTM_NORM;
+			chrg_enable = 1;
+			btm_change = 1;
+		} else if (batt_mvolt < data->warm_bat_voltage) {
+			btm_state = BTM_WARM_LV;
+			data->cool_temp =
+				data->warm_temp - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT;
+			data->max_voltage = data->warm_bat_voltage;
+			chrg_enable = 1;
+			btm_change = 1;
+		}
+	} else if (btm_state == BTM_HOT) {
+		if (batt_temp >= TEMP_HOT + TEMP_OVERSHOOT) {
+			btm_state = BTM_POWER_OFF;
+			btm_change = 2;
+		} else if (batt_temp <= TEMP_HOT - TEMP_HYSTERISIS_DEGC) {
+			data->cool_temp =
+				data->warm_temp - TEMP_HYSTERISIS_DEGC;
+			data->warm_temp = TEMP_HOT;
+			if (batt_mvolt >= data->warm_bat_voltage) {
+				btm_state = BTM_WARM_HV;
+				chrg_enable = 0;
+			} else {
+				btm_state = BTM_WARM_LV;
+				data->max_voltage = data->warm_bat_voltage;
+				chrg_enable = 1;
+			}
+			btm_change = 1;
+		}
+	}
+
+	*enable = chrg_enable;
+
+	return btm_change;
+}
+
+#define MAX_VOLTAGE_MV		4350
 static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.safety_time		= 180,
 	.update_time		= 60000,
-	.max_voltage		= 4350,
+	.max_voltage		= MAX_VOLTAGE_MV,
 	.min_voltage		= 3200,
 	.resume_voltage_delta	= 100,
 	.term_current		= 100,
@@ -224,8 +562,11 @@ static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.batt_id_max            = 1,
 	.thermal_mitigation	= pm8921_therm_mitigation,
 	.thermal_levels		= ARRAY_SIZE(pm8921_therm_mitigation),
+	.cold_thr               = PM_SMBC_BATT_TEMP_COLD_THR__HIGH,
+	.hot_thr                = PM_SMBC_BATT_TEMP_HOT_THR__LOW,
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	.get_batt_info          = read_mmi_battery_chrg,
+	.temp_range_cb          = temp_range_check,
 #endif
 };
 #else
@@ -259,6 +600,7 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 	.i_test			= 2500,
 	.v_failure		= 3200,
 	.calib_delay_ms		= 600000,
+	.max_voltage_uv		= MAX_VOLTAGE_MV * 1000,
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	.get_batt_info          = read_mmi_battery_bms,
 #endif
@@ -269,6 +611,7 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 	.i_test			= 2500,
 	.v_failure		= 3000,
 	.calib_delay_ms		= 600000,
+	.max_voltage_uv		= MAX_VOLTAGE_MV * 1000,
 };
 #endif
 
@@ -389,6 +732,7 @@ static struct pm8xxx_adc_platform_data pm8921_adc_pdata = {
 	.adc_num_board_channel	= ARRAY_SIZE(pm8921_adc_channels_data),
 	.adc_prop		= &pm8921_adc_data,
 	.adc_mpp_base		= PM8921_MPP_PM_TO_SYS(1),
+	.scale_tbls		= adc_scale_tbls,
 };
 
 struct pm8921_platform_data pm8921_platform_data __devinitdata = {
@@ -525,7 +869,8 @@ void __init msm8960_pm_init(unsigned wakeup_irq)
 }
 
 void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad, 
-						int mode, int cool_temp, int warm_temp)
+						int mode, int cool_temp,
+						int warm_temp, void *cb)
 {
 	msm8960_device_ssbi_pmic.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
@@ -538,5 +883,8 @@ void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad,
 #ifdef CONFIG_MACH_MSM8960_MMI
 	pm8921_platform_data.charger_pdata->factory_mode = mode;
 	battery_timeout = mode;
+#ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
+	pm8921_platform_data.charger_pdata->arch_reboot_cb = cb;
+#endif
 #endif
 }

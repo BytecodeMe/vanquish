@@ -915,6 +915,10 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] __initdata = {
 	},
 };
 
+static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
+	.mode = MSM_PM_BOOT_CONFIG_TZ,
+};
+
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
 
 #define ISP1763_INT_GPIO		117
@@ -5082,6 +5086,7 @@ static struct platform_device *asoc_devices[] __initdata = {
 static struct platform_device *surf_devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_uart_dm12,
+	&msm_pil_q6v3,
 #ifdef CONFIG_I2C_QUP
 	&msm_gsbi3_qup_i2c_device,
 	&msm_gsbi4_qup_i2c_device,
@@ -6633,6 +6638,10 @@ static struct pm8901_vreg_pdata pm8901_vreg_init[] = {
 	PM8901_VREG_INIT_VS(HDMI_MVS),
 };
 
+static struct pm8xxx_misc_platform_data pm8901_misc_pdata = {
+	.priority		= 1,
+};
+
 static struct pm8xxx_irq_platform_data pm8901_irq_pdata = {
 	.irq_base		= PM8901_IRQ_BASE,
 	.devirq			= MSM_GPIO_TO_INT(PM8901_GPIO_INT),
@@ -6648,6 +6657,7 @@ static struct pm8901_platform_data pm8901_platform_data = {
 	.mpp_pdata		= &pm8901_mpp_pdata,
 	.regulator_pdatas	= pm8901_vreg_init,
 	.num_regulators		= ARRAY_SIZE(pm8901_vreg_init),
+	.misc_pdata		= &pm8901_misc_pdata,
 };
 
 static struct msm_ssbi_platform_data msm8x60_ssbi_pm8901_pdata __devinitdata = {
@@ -10169,7 +10179,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	msm_pm_set_rpm_wakeup_irq(RPM_SCSS_CPU0_WAKE_UP_IRQ);
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
-	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_TZ, NULL));
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 
 	pm8058_gpios_init();
 

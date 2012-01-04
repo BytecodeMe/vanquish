@@ -122,6 +122,7 @@
 #define PM8XXX_ADC_PA_THERM_VREG_UV_MAX			1800000
 #define PM8XXX_ADC_PA_THERM_VREG_UA_LOAD		100000
 #define PM8XXX_ADC_HWMON_NAME_LENGTH			32
+#define PM8XXX_ADC_BTM_INTERVAL_MAX			0x14
 
 struct pm8xxx_adc {
 	struct device				*dev;
@@ -144,6 +145,7 @@ struct pm8xxx_adc {
 	struct wake_lock			adc_wakelock;
 	int					msm_suspend_check;
 	struct pm8xxx_adc_amux_properties	*conv;
+	struct pm8xxx_adc_scale_tbl		*scale_tbls;
 	struct pm8xxx_adc_arb_btm_param		batt[0];
 	struct sensor_device_attribute		sens_attr[0];
 };
@@ -344,12 +346,16 @@ static int32_t pm8xxx_adc_configure(
 	if (rc < 0)
 		return rc;
 
+	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_USRP_RSV, &data_arb_rsv);
+	if (rc < 0)
+		return rc;
+
 	data_arb_rsv &= (PM8XXX_ADC_ARB_USRP_RSV_RST |
 		PM8XXX_ADC_ARB_USRP_RSV_DTEST0 |
 		PM8XXX_ADC_ARB_USRP_RSV_DTEST1 |
-		PM8XXX_ADC_ARB_USRP_RSV_OP |
-		PM8XXX_ADC_ARB_USRP_RSV_TRM);
-	data_arb_rsv |= chan_prop->amux_ip_rsv << PM8XXX_ADC_RSV_IP_SEL;
+		PM8XXX_ADC_ARB_USRP_RSV_OP);
+	data_arb_rsv |= (chan_prop->amux_ip_rsv << PM8XXX_ADC_RSV_IP_SEL |
+				PM8XXX_ADC_ARB_USRP_RSV_TRM);
 
 	rc = pm8xxx_adc_write_reg(PM8XXX_ADC_ARB_USRP_RSV, data_arb_rsv);
 	if (rc < 0)
@@ -501,7 +507,7 @@ static uint32_t pm8xxx_adc_calib_device(void)
 {
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	struct pm8xxx_adc_amux_properties conv;
-	int rc, offset_adc, slope_adc, calib_read_1, calib_read_2;
+	int rc, calib_read_1, calib_read_2;
 	u8 data_arb_usrp_cntrl1 = 0;
 
 	conv.amux_channel = CHANNEL_125V;
@@ -564,18 +570,14 @@ static uint32_t pm8xxx_adc_calib_device(void)
 	}
 	pm8xxx_adc_calib_first_adc = false;
 
-	slope_adc = (((calib_read_1 - calib_read_2) << PM8XXX_ADC_MUL)/
-					PM8XXX_CHANNEL_ADC_625_MV);
-	offset_adc = calib_read_2 -
-			((slope_adc * PM8XXX_CHANNEL_ADC_625_MV) >>
-							PM8XXX_ADC_MUL);
-
-	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].offset
-								= offset_adc;
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].dy =
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].dx
-						= PM8XXX_CHANNEL_ADC_625_MV;
+						= PM8XXX_CHANNEL_ADC_625_UV;
+	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].adc_vref =
+					calib_read_1;
+	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].adc_gnd =
+					calib_read_2;
 	rc = pm8xxx_adc_arb_cntrl(0, CHANNEL_NONE);
 	if (rc < 0) {
 		pr_err("%s: Configuring ADC Arbiter disable"
@@ -643,14 +645,6 @@ static uint32_t pm8xxx_adc_calib_device(void)
 	}
 	pm8xxx_adc_calib_first_adc = false;
 
-	slope_adc = (((calib_read_1 - calib_read_2) << PM8XXX_ADC_MUL)/
-				adc_pmic->adc_prop->adc_vdd_reference);
-	offset_adc = calib_read_2 -
-			((slope_adc * adc_pmic->adc_prop->adc_vdd_reference)
-							>> PM8XXX_ADC_MUL);
-
-	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].offset
-								= offset_adc;
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dy =
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dx =
@@ -675,6 +669,7 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	int i = 0, rc = 0, rc_fail, amux_prescaling, scale_type;
 	enum pm8xxx_adc_premux_mpp_scale_type mpp_scale;
+	struct pm8xxx_adc_scale_tbl *scale_tbl;
 
 	if (!pm8xxx_adc_initialized)
 		return -ENODEV;
@@ -746,8 +741,14 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail;
 	}
 
+	if (adc_pmic->scale_tbls)
+		scale_tbl = &adc_pmic->scale_tbls[scale_type];
+	else
+		scale_tbl = NULL;
+
 	adc_scale_fn[scale_type].chan(result->adc_code,
-			adc_pmic->adc_prop, adc_pmic->conv->chan_prop, result);
+			adc_pmic->adc_prop, adc_pmic->conv->chan_prop, result,
+			scale_tbl);
 
 	rc = pm8xxx_adc_channel_power_enable(channel, false);
 	if (rc) {
@@ -824,6 +825,7 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 	u8 arb_btm_cntrl1;
 	unsigned long flags = 0;
 	int rc;
+	struct pm8xxx_adc_scale_tbl *scale_tbl;
 
 	if (adc_pmic == NULL) {
 		pr_err("PMIC ADC not valid\n");
@@ -836,11 +838,23 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		return -EINVAL;
 	}
 
+	if (adc_pmic->scale_tbls)
+		scale_tbl = &adc_pmic->scale_tbls[ADC_SCALE_BATT_THERM];
+	else
+		scale_tbl = NULL;
+
 	rc = pm8xxx_adc_batt_scaler(btm_param, adc_pmic->adc_prop,
-					adc_pmic->conv->chan_prop);
+					adc_pmic->conv->chan_prop,
+					scale_tbl);
 	if (rc < 0) {
 		pr_err("Failed to lookup the BTM thresholds\n");
 		return rc;
+	}
+
+	if (btm_param->interval > PM8XXX_ADC_BTM_INTERVAL_MAX) {
+		pr_info("Bug in PMIC BTM interval time and cannot set"
+		" a value greater than 0x14 %x\n", btm_param->interval);
+		btm_param->interval = PM8XXX_ADC_BTM_INTERVAL_MAX;
 	}
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
@@ -974,22 +988,14 @@ uint32_t pm8xxx_adc_btm_end(void)
 {
 	struct pm8xxx_adc *adc_pmic = pmic_adc;
 	int i, rc;
-	u8 data_arb_btm_cntrl;
+	u8 data_arb_btm_cntrl = 0;
 	unsigned long flags;
 
 	disable_irq_nosync(adc_pmic->btm_warm_irq);
 	disable_irq_nosync(adc_pmic->btm_cool_irq);
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
-	/* Set BTM registers to Disable mode */
-	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_BTM_CNTRL1,
-						&data_arb_btm_cntrl);
-	if (rc < 0) {
-		spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
-		return rc;
-	}
 
-	data_arb_btm_cntrl |= ~PM8XXX_ADC_ARB_BTM_CNTRL1_EN_BTM;
 	/* Write twice to the CNTRL register for the arbiter settings
 	   to take into effect */
 	for (i = 0; i < 2; i++) {
@@ -1193,6 +1199,7 @@ static int __devinit pm8xxx_adc_probe(struct platform_device *pdev)
 	adc_pmic->adc_num_board_channel = pdata->adc_num_board_channel;
 	adc_pmic->adc_num_channel = ADC_MPP_2_CHANNEL_NONE;
 	adc_pmic->mpp_base = pdata->adc_mpp_base;
+	adc_pmic->scale_tbls = pdata->scale_tbls;
 
 	mutex_init(&adc_pmic->adc_lock);
 	mutex_init(&adc_pmic->mpp_adc_lock);

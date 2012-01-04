@@ -1670,6 +1670,12 @@ static void msm_otg_sm_work(struct work_struct *w)
 		msm_otg_reset(otg);
 		msm_otg_init_sm(motg);
 		otg->state = OTG_STATE_B_IDLE;
+		if (!test_bit(B_SESS_VLD, &motg->inputs) &&
+				test_bit(ID, &motg->inputs)) {
+			pm_runtime_put_noidle(otg->dev);
+			pm_runtime_suspend(otg->dev);
+			break;
+		}
 		/* FALL THROUGH */
 	case OTG_STATE_B_IDLE:
 		dev_dbg(otg->dev, "OTG_STATE_B_IDLE state\n");
@@ -1873,7 +1879,7 @@ static void msm_otg_set_vbus_state(int online)
 	struct msm_otg *motg = the_msm_otg;
 
 	/* We depend on PMIC for only VBUS ON interrupt */
-	if (!atomic_read(&motg->in_lpm) || !online)
+	if (!atomic_read(&motg->in_lpm) || !online || motg->async_int)
 		return;
 
 	/*
@@ -2076,7 +2082,7 @@ static int msm_otg_show_chg_type(struct seq_file *s, void *unused)
 {
 	struct msm_otg *motg = s->private;
 
-	seq_printf(s, chg_to_string(motg->chg_type));
+	seq_printf(s, "%s\n", chg_to_string(motg->chg_type));
 	return 0;
 }
 

@@ -24,6 +24,7 @@
 #include <sound/pcm.h>
 #include <sound/jack.h>
 #include <asm/mach-types.h>
+#include <mach/socinfo.h>
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
 
@@ -1078,6 +1079,10 @@ static int __init msm8960_audio_init(void)
 {
 	int ret;
 
+	if (!cpu_is_msm8960()) {
+		pr_err("%s: Not the right machine type\n", __func__);
+		return -ENODEV ;
+	}
 	msm8960_snd_device = platform_device_alloc("soc-audio", 0);
 	if (!msm8960_snd_device) {
 		pr_err("Platform device allocation failed\n");
@@ -1104,6 +1109,10 @@ module_init(msm8960_audio_init);
 
 static void __exit msm8960_audio_exit(void)
 {
+	if (!cpu_is_msm8960()) {
+		pr_err("%s: Not the right machine type\n", __func__);
+		return ;
+	}
 	msm8960_free_headset_mic_gpios();
 	platform_device_unregister(msm8960_snd_device);
 }

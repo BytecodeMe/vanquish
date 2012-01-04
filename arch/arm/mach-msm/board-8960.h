@@ -96,7 +96,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 
 #endif
 
-#define MSM_PMEM_ADSP_SIZE         0x3800000
+#define MSM_PMEM_ADSP_SIZE         0x4200000
 #define MSM_PMEM_AUDIO_SIZE        0x28B000
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 #define MSM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
@@ -181,6 +181,18 @@ struct pm8xxx_mpp_init {
 			PM_GPIO_STRENGTH_HIGH, \
 			PM_GPIO_FUNC_NORMAL, 0, 0)
 
+#define PM8XXX_GPIO_PAIRED_IN_VIN(_gpio, _vin) \
+	PM8XXX_GPIO_INIT(_gpio, PM_GPIO_DIR_IN, PM_GPIO_OUT_BUF_CMOS, 0, \
+			PM_GPIO_PULL_UP_1P5, _vin, \
+			PM_GPIO_STRENGTH_NO, \
+			PM_GPIO_FUNC_PAIRED, 0, 0)
+
+#define PM8XXX_GPIO_PAIRED_OUT_VIN(_gpio, _vin) \
+	PM8XXX_GPIO_INIT(_gpio, PM_GPIO_DIR_OUT, PM_GPIO_OUT_BUF_CMOS, 0, \
+			PM_GPIO_PULL_UP_1P5, _vin, \
+			PM_GPIO_STRENGTH_MED, \
+			PM_GPIO_FUNC_PAIRED, 0, 0)
+
 extern struct gpio_regulator_platform_data
 	msm_gpio_regulator_pdata[] __devinitdata;
 
@@ -227,9 +239,10 @@ extern void __init pm8921_gpio_mpp_init(struct pm8xxx_gpio_init *pm8921_gpios,
 extern void __init msm8960_init_slim(void);
 extern void __init msm8960_pm_init(unsigned wakeup_irq);
 extern void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad,
-								int mode, int cool_temp, int warm_temp);
+								int mode, int cool_temp,
+								int warm_temp, void *cb);
 
-extern int  __init msm8960_change_memory_power(u64 start, u64 size, int change_type);
+extern int  msm8960_change_memory_power(u64 start, u64 size, int change_type);
 extern void __init msm8960_map_io(void);
 extern void __init msm8960_reserve(void);
 extern void __init msm8960_allocate_memory_regions(void);
@@ -262,12 +275,13 @@ enum {
 	GPIO_CAM_GP_XMT_FLASH_INT,
 	GPIO_CAM_GP_LED_EN1,
 	GPIO_CAM_GP_LED_EN2,
-
+	GPIO_LIQUID_EXPANDER_BASE = GPIO_CAM_EXPANDER_BASE + 8,
 };
 #endif
 
 enum {
 	SX150X_CAM,
+	SX150X_LIQUID,
 };
 
 #endif

@@ -77,6 +77,8 @@
 #include <linux/ion.h>
 #include <mach/ion.h>
 
+#include <linux/fmem.h>
+
 #include "timer.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -499,7 +501,7 @@ static struct msm_gpiomux_config msm8960_cam_common_configs[] = {
 	{
 		.gpio = 5,
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[1],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
 			[GPIOMUX_SUSPENDED] = &cam_settings[0],
 		},
 	},
@@ -695,6 +697,9 @@ static struct platform_device android_pmem_audio_device = {
 };
 #endif
 
+struct fmem_platform_data fmem_pdata = {
+};
+
 #define DSP_RAM_BASE_8960 0x8da00000
 #define DSP_RAM_SIZE_8960 0x1800000
 static int dspcrashd_pdata_8960 = 0xDEADDEAD;
@@ -776,6 +781,10 @@ static void __init reserve_ram_console_memory(void)
 #endif
 }
 
+static void __init reserve_fmem_memory(void)
+{
+}
+
 static int msm8960_paddr_to_memtype(unsigned int paddr)
 {
 	return MEMTYPE_EBI1;
@@ -826,6 +835,12 @@ struct platform_device ion_dev = {
 };
 #endif
 
+struct platform_device fmem_device = {
+	.name = "fmem",
+	.id = 1,
+	.dev = { .platform_data = &fmem_pdata },
+};
+
 static void reserve_ion_memory(void)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
@@ -838,6 +853,7 @@ static void __init msm8960_calculate_reserve_sizes(void)
 	size_pmem_devices();
 	reserve_pmem_memory();
 	reserve_ion_memory();
+	reserve_fmem_memory();
 	reserve_ram_console_memory();
 }
 
@@ -899,6 +915,7 @@ void __init msm8960_early_memory(void)
 void __init msm8960_reserve(void)
 {
 	msm_reserve();
+	fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size);
 }
 
 int msm8960_change_memory_power(u64 start, u64 size,
@@ -1703,7 +1720,7 @@ static struct gpiomux_setting hdmi_active_2_cfg = {
 static struct gpiomux_setting hdmi_active_3_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
+	.pull = GPIOMUX_PULL_UP,
 	.dir = GPIOMUX_IN,
 };
 
@@ -2305,7 +2322,7 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
-struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
+static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
@@ -2420,17 +2437,6 @@ static struct platform_device msm8960_device_ext_5v_vreg __devinitdata = {
 	},
 };
 
-/* this does not appear to be used */
-#ifdef WE_NEED_EXT_L2
-static struct platform_device msm8960_device_ext_l2_vreg __devinitdata = {
-	.name	= GPIO_REGULATOR_DEV_NAME,
-	.id	= 91,
-	.dev	= {
-		.platform_data = &msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_L2],
-	},
-};
-#endif
-
 struct platform_device msm8960_device_rpm_regulator __devinitdata = {
 	.name	= "rpm-regulator",
 	.id	= -1,
@@ -2516,6 +2522,7 @@ struct platform_device msm_tsens_device = {
 
 void __init msm8960_init_usb(void (*vbus_power)(bool on))
 {
+	msm_otg_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
 	msm_otg_pdata.vbus_power = vbus_power;
 	msm8960_device_otg.dev.platform_data = &msm_otg_pdata;
 }
@@ -2568,9 +2575,6 @@ struct platform_device *common_devices[] __initdata = {
 	&msm_device_saw_core0,
 	&msm_device_saw_core1,
 	&msm8960_device_ext_5v_vreg,
-#ifdef WE_NEED_EXT_L2
-	&msm8960_device_ext_l2_vreg,
-#endif
 	&msm8960_device_ssbi_pmic,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
@@ -2597,6 +2601,7 @@ struct platform_device *common_devices[] __initdata = {
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
 #endif
+	&fmem_device,
 #ifdef CONFIG_ANDROID_PMEM
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&android_pmem_device,

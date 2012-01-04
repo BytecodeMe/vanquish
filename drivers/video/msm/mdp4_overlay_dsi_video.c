@@ -508,6 +508,7 @@ void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 	} else {
 
 		mdp4_overlay_dsi_video_wait4event(mfd, INTR_PRIMARY_VSYNC);
+		mdp4_dsi_panel_on(mfd);
 	}
 }
 

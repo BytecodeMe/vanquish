@@ -676,6 +676,10 @@ static unsigned int msm_bahama_setup_power(void)
 		goto reg_fail;
 	}
 
+	gpio_tlmm_config(GPIO_CFG(GPIO_BT_SYS_REST_EN, 0,
+				GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+
 	/*setup Bahama_sys_reset_n*/
 	rc = gpio_request(GPIO_BT_SYS_REST_EN, "bahama sys_rst_n");
 	if (rc < 0) {
@@ -1600,6 +1604,11 @@ static struct msm_pm_platform_data msm7627a_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 					.latency = 2,
 					.residency = 0,
 	},
+};
+
+static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
+	.mode = MSM_PM_BOOT_CONFIG_RESET_VECTOR_VIRT,
+	.v_addr = (uint32_t *)PAGE_OFFSET,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
@@ -2561,8 +2570,7 @@ static void __init msm_qrd1_init(void)
 #endif
 	msm_pm_set_platform_data(msm7627a_pm_data,
 				ARRAY_SIZE(msm7627a_pm_data));
-	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_RESET_VECTOR,
-				ioremap(0, PAGE_SIZE)));
+	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
 
 	msm_fb_add_devices();
 
