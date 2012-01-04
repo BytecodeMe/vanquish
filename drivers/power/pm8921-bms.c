@@ -176,6 +176,9 @@ module_param_cb(bms_end_percent, &bms_ro_param_ops, &bms_end_percent, 0644);
 module_param_cb(bms_end_ocv_uv, &bms_ro_param_ops, &bms_end_ocv_uv, 0644);
 module_param_cb(bms_end_cc_mah, &bms_ro_param_ops, &bms_end_cc_mah, 0644);
 
+static int bms_aged_capacity = 0;
+module_param(bms_aged_capacity, int, 0644);
+
 static int interpolate_fcc(struct pm8921_bms_chip *chip, int batt_temp);
 static void readjust_fcc_table(void)
 {
@@ -1310,6 +1313,13 @@ int pm8921_bms_get_fcc(void)
 	return calculate_fcc(the_chip, batt_temp, last_chargecycles);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_fcc);
+
+int pm8921_bms_get_aged_capacity(int *result)
+{
+	*result = bms_aged_capacity;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pm8921_bms_get_aged_capacity);
 
 void pm8921_bms_charging_began(void)
 {
