@@ -140,7 +140,7 @@ static int msm_camera_vreg_enable(struct device *dev)
 {
 	// FIXME: this is a hack to escape the msm_camera framework for
 	// regulators
-	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
+	struct msm_camera_sensor_info *sinfo = dev->platform_data;
 
 	if (mipi_csi_vdd == NULL) {
 		mipi_csi_vdd = regulator_get(dev, "mipi_csi_vdd");
