@@ -15,6 +15,7 @@
 
 #include <linux/regulator/gpio-regulator.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
+#include <linux/i2c.h>
 #include <linux/i2c/sx150x.h>
 #include <mach/irqs.h>
 #include <mach/msm_spi.h>
@@ -23,6 +24,7 @@
 #include <mach/board.h>
 #include <linux/leds.h>
 #include <mach/mdm2.h>
+#include <mach/msm_memtypes.h>
 
 /* Macros assume PMIC GPIOs and MPPs start at 1 */
 #define PM8921_GPIO_BASE		NR_GPIO_IRQS
@@ -31,7 +33,7 @@
 #define PM8921_MPP_PM_TO_SYS(pm_gpio)	(pm_gpio - 1 + PM8921_MPP_BASE)
 #define PM8921_IRQ_BASE			(NR_MSM_IRQS + NR_GPIO_IRQS)
 
-extern struct pm8921_regulator_platform_data
+extern struct pm8xxx_regulator_platform_data
 	msm_pm8921_regulator_pdata[] __devinitdata;
 
 extern int msm_pm8921_regulator_pdata_len __devinitdata;
@@ -46,6 +48,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define GPIO_VREG_ID_EXT_5V		0
 #define GPIO_VREG_ID_EXT_L2		1
 #define GPIO_VREG_ID_EXT_3P3V		2
+#define GPIO_VREG_ID_EXT_OTG_SW		3
 
 #define MDP_VSYNC_GPIO 0
 
@@ -287,6 +290,7 @@ enum {
 #endif
 
 extern struct sx150x_platform_data msm8960_sx150x_data[];
+extern struct msm_camera_board_info msm8960_camera_board_info;
 void msm8960_init_cam(void);
 void msm8960_init_fb(void);
 void msm8960_init_pmic(void);
@@ -294,7 +298,7 @@ void msm8960_init_mmc(unsigned sd_detect);
 int msm8960_init_gpiomux(void);
 void msm8960_allocate_fb_region(void);
 void msm8960_pm8921_gpio_mpp_init(void);
-
+void msm8960_mdp_writeback(struct memtype_reserve *reserve_table);
 #define PLATFORM_IS_CHARM25() \
 	(machine_is_msm8960_cdp() && \
 		(socinfo_get_platform_subtype() == 1) \

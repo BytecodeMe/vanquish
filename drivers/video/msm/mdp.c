@@ -31,7 +31,7 @@
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
-
+#include <linux/memory_alloc.h>
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <linux/semaphore.h>
@@ -52,6 +52,7 @@ static struct clk *mdp_lut_clk;
 int mdp_rev;
 
 static struct regulator *footswitch;
+static unsigned int mdp_footswitch_on;
 
 struct completion mdp_ppp_comp;
 struct semaphore mdp_ppp_mutex;
@@ -104,6 +105,11 @@ static struct mdp_dma_data dma_s_data;
 static struct mdp_dma_data dma_e_data;
 #endif
 #endif
+
+#ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+struct mdp_dma_data dma_wb_data;
+#endif
+
 static struct mdp_dma_data dma3_data;
 
 extern ktime_t mdp_dma2_last_update_time;
@@ -600,6 +606,10 @@ void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 		mdp_pipe_ctrl(MDP_OVERLAY1_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		mdp_lut_enable();
 		outpdw(MDP_BASE + 0x0008, 0);
+	} else if (term == MDP_OVERLAY2_TERM) {
+		mdp_pipe_ctrl(MDP_OVERLAY2_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		mdp_lut_enable();
+		outpdw(MDP_BASE + 0x00D0, 0);
 	}
 #else
 	} else if (term == MDP_DMA_S_TERM) {
@@ -958,6 +968,14 @@ static void mdp_drv_init(void)
 	init_completion(&dma_e_data.comp);
 	mutex_init(&dma_e_data.ov_mutex);
 #endif
+#ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+	dma_wb_data.busy = FALSE;
+	dma_wb_data.waiting = FALSE;
+	init_completion(&dma_wb_data.comp);
+	mutex_init(&dma_wb_data.ov_mutex);
+#endif
+
+
 
 #ifndef CONFIG_FB_MSM_MDP22
 	init_completion(&mdp_hist_comp);
@@ -1122,18 +1140,6 @@ void mdp_hw_version(void)
 				__func__, mdp_hw_revision);
 }
 
-int mdp4_writeback_offset(void)
-{
-	int off = 0;
-
-	if (mdp_pdata->writeback_offset)
-		off = mdp_pdata->writeback_offset();
-
-	pr_debug("%s: writeback_offset=%d %x\n", __func__, off, off);
-
-	return off;
-}
-
 #ifdef CONFIG_FB_MSM_MDP40
 static void configure_mdp_core_clk_table(uint32 min_clk_rate)
 {
@@ -1251,8 +1257,10 @@ static int mdp_irq_clk_setup(void)
 	footswitch = regulator_get(NULL, "fs_mdp");
 	if (IS_ERR(footswitch))
 		footswitch = NULL;
-	else
+	else {
 		regulator_enable(footswitch);
+		mdp_footswitch_on = 1;
+	}
 
 	mdp_clk = clk_get(NULL, "mdp_clk");
 	if (IS_ERR(mdp_clk)) {
@@ -1312,6 +1320,7 @@ static int mdp_probe(struct platform_device *pdev)
 #endif
 
 	if ((pdev->id == 0) && (pdev->num_resources > 0)) {
+
 		mdp_pdata = pdev->dev.platform_data;
 
 		size =  resource_size(&pdev->resource[0]);
@@ -1349,6 +1358,28 @@ static int mdp_probe(struct platform_device *pdev)
 #endif
 
 		mdp_resource_initialized = 1;
+
+		if (!mdp_pdata)
+			return 0;
+
+		size = mdp_pdata->mdp_writeback_size_ov0 +
+			mdp_pdata->mdp_writeback_size_ov1;
+		if (size) {
+			mdp_pdata->mdp_writeback_phys =
+				(void *)allocate_contiguous_memory_nomap
+				(size,
+				 mdp_pdata->mdp_writeback_memtype,
+				 4); /* align to word size */
+			if (mdp_pdata->mdp_writeback_phys) {
+				pr_info("allocating %d bytes at %p for mdp writeback\n",
+					size, mdp_pdata->mdp_writeback_phys);
+			} else {
+				pr_err("%s cannot allocate memory for mdp writeback!\n",
+				       __func__);
+			}
+		} else {
+			mdp_pdata->mdp_writeback_phys = 0;
+		}
 		return 0;
 	}
 
@@ -1592,11 +1623,25 @@ static int mdp_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
 	case WRITEBACK_PANEL:
-		pdata->on = mdp4_overlay_writeback_on;
-		pdata->off = mdp4_overlay_writeback_off;
-		mfd->dma_fnc = mdp4_writeback_overlay;
-		mfd->dma = &dma_e_data;
-		mdp4_display_intf_sel(EXTERNAL_INTF_SEL, DTV_INTF);
+		{
+			unsigned int mdp_version;
+			mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON,
+						 FALSE);
+			mdp_version = inpdw(MDP_BASE + 0x0);
+			mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF,
+						FALSE);
+			if (mdp_version < 0x04030303) {
+				pr_err("%s: writeback panel not supprted\n",
+					 __func__);
+				rc = -ENODEV;
+				goto mdp_probe_err;
+			}
+			pdata->on = mdp4_overlay_writeback_on;
+			pdata->off = mdp4_overlay_writeback_off;
+			mfd->dma_fnc = mdp4_writeback_overlay;
+			mfd->dma = &dma_wb_data;
+			mdp4_display_intf_sel(EXTERNAL_INTF_SEL, DTV_INTF);
+		}
 		break;
 #endif
 	default:
@@ -1623,6 +1668,20 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 	}
 #endif
+
+	if (mdp_pdata && mdp_pdata->mdp_writeback_phys) {
+		mfd->writeback_overlay0_phys =
+			(mdp_pdata->mdp_writeback_size_ov0) ?
+			mdp_pdata->mdp_writeback_phys : 0;
+		mfd->writeback_overlay1_phys =
+			(mdp_pdata->mdp_writeback_size_ov1) ?
+			(mdp_pdata->mdp_writeback_phys +
+			 mdp_pdata->mdp_writeback_size_ov0) : 0;
+	} else {
+		mfd->writeback_overlay0_phys = 0;
+		mfd->writeback_overlay1_phys = 0;
+	}
+
 	/* set driver data */
 	platform_set_drvdata(msm_fb_dev, mfd);
 
@@ -1646,6 +1705,28 @@ static int mdp_probe(struct platform_device *pdev)
 		msm_bus_scale_unregister_client(mdp_bus_scale_handle);
 #endif
 	return rc;
+}
+
+void mdp_footswitch_ctrl(boolean on)
+{
+	mutex_lock(&mdp_suspend_mutex);
+	if (!mdp_suspended || mdp4_extn_disp || !footswitch ||
+		mdp_rev <= MDP_REV_41) {
+		mutex_unlock(&mdp_suspend_mutex);
+		return;
+	}
+
+	if (on && !mdp_footswitch_on) {
+		pr_debug("Enable MDP FS\n");
+		regulator_enable(footswitch);
+		mdp_footswitch_on = 1;
+	} else if (!on && mdp_footswitch_on) {
+		pr_debug("Disable MDP FS\n");
+		regulator_disable(footswitch);
+		mdp_footswitch_on = 0;
+	}
+
+	mutex_unlock(&mdp_suspend_mutex);
 }
 
 #ifdef CONFIG_PM
@@ -1692,15 +1773,12 @@ static void mdp_early_suspend(struct early_suspend *h)
 #ifdef CONFIG_FB_MSM_DTV
 	mdp4_dtv_set_black_screen();
 #endif
-	if (footswitch && mdp_rev > MDP_REV_42)
-		regulator_disable(footswitch);
+	mdp_footswitch_ctrl(FALSE);
 }
 
 static void mdp_early_resume(struct early_suspend *h)
 {
-	if (footswitch && mdp_rev > MDP_REV_42)
-		regulator_enable(footswitch);
-
+	mdp_footswitch_ctrl(TRUE);
 	mutex_lock(&mdp_suspend_mutex);
 	mdp_suspended = FALSE;
 	mutex_unlock(&mdp_suspend_mutex);

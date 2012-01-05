@@ -53,6 +53,7 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/setup.h>
+#include <asm/hardware/gic.h>
 
 #include <mach/dma.h>
 #include <mach/board.h>
@@ -602,6 +603,7 @@ static struct msm_ce_hw_support qcrypto_ce_hw_suppport = {
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
 	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
+	.bus_scale_table = NULL,
 };
 
 static struct platform_device qcrypto_device = {
@@ -624,6 +626,7 @@ static struct msm_ce_hw_support qcedev_ce_hw_suppport = {
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
 	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
+	.bus_scale_table = NULL,
 };
 
 static struct platform_device qcedev_device = {
@@ -2627,23 +2630,12 @@ static void __init msm8x60_init_dsps(void)
 #define MSM_FB_EXT_BUFT_SIZE	0
 #endif
 
-#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
-/* width x height x 3 bpp x 2 frame buffer */
-#define MSM_FB_WRITEBACK_SIZE (1024 * 600 * 3 * 2)
-#define MSM_FB_WRITEBACK_OFFSET  \
-		(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
-#else
-#define MSM_FB_WRITEBACK_SIZE	0
-#define MSM_FB_WRITEBACK_OFFSET 0
-#endif
-
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 /* 4 bpp x 2 page HDMI case */
 #define MSM_FB_SIZE roundup((1920 * 1088 * 4 * 2), 4096)
 #else
 /* Note: must be multiple of 4096 */
 #define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
-				MSM_FB_WRITEBACK_SIZE + \
 				MSM_FB_DSUB_PMEM_ADDER, 4096)
 #endif
 
@@ -2653,10 +2645,17 @@ static void __init msm8x60_init_dsps(void)
 #define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
 #endif
 
-static int writeback_offset(void)
-{
-	return MSM_FB_WRITEBACK_OFFSET;
-}
+#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE roundup((1376 * 768 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY0_WRITEBACK */
+
+#ifdef CONFIG_FB_MSM_OVERLAY1_WRITEBACK
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE roundup((1920 * 1088 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
 #define MSM_PMEM_ADSP_SIZE         0x2000000
@@ -2861,36 +2860,39 @@ static struct platform_device android_pmem_audio_device = {
 		}, \
 	.num_paths = 1, \
 	}
-#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
-static struct msm_bus_paths pmem_smi_table[] = {
+
+static struct msm_bus_paths mem_smi_table[] = {
 	[0] = PMEM_BUS_WIDTH(0), /* Off */
 	[1] = PMEM_BUS_WIDTH(1), /* On */
 };
 
 static struct msm_bus_scale_pdata smi_client_pdata = {
-	.usecase = pmem_smi_table,
-	.num_usecases = ARRAY_SIZE(pmem_smi_table),
-	.name = "pmem_smi",
+	.usecase = mem_smi_table,
+	.num_usecases = ARRAY_SIZE(mem_smi_table),
+	.name = "mem_smi",
 };
 
-void request_smi_region(void *data)
+int request_smi_region(void *data)
 {
 	int bus_id = (int) data;
 
 	msm_bus_scale_client_update_request(bus_id, 1);
+	return 0;
 }
 
-void release_smi_region(void *data)
+int release_smi_region(void *data)
 {
 	int bus_id = (int) data;
 
 	msm_bus_scale_client_update_request(bus_id, 0);
+	return 0;
 }
 
 void *setup_smi_region(void)
 {
 	return (void *)msm_bus_scale_register_client(&smi_client_pdata);
 }
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static struct android_pmem_platform_data android_pmem_smipool_pdata = {
 	.name = "pmem_smipool",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
@@ -5087,6 +5089,8 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_uart_dm12,
 	&msm_pil_q6v3,
+	&msm_pil_modem,
+	&msm_pil_tzapps,
 #ifdef CONFIG_I2C_QUP
 	&msm_gsbi3_qup_i2c_device,
 	&msm_gsbi4_qup_i2c_device,
@@ -5268,6 +5272,9 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_SMI_HEAP_NAME,
 			.size	= MSM_ION_SMI_SIZE,
 			.memory_type = ION_SMI_TYPE,
+			.request_region = request_smi_region,
+			.release_region = release_smi_region,
+			.setup_region = setup_smi_region,
 		},
 #endif
 	}
@@ -5347,13 +5354,14 @@ static void __init reserve_pmem_memory(void)
 #endif
 }
 
-
+static void __init reserve_mdp_memory(void);
 
 static void __init msm8x60_calculate_reserve_sizes(void)
 {
 	size_pmem_devices();
 	reserve_pmem_memory();
 	reserve_ion_memory();
+	reserve_mdp_memory();
 }
 
 static int msm8x60_paddr_to_memtype(unsigned int paddr)
@@ -9421,8 +9429,20 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_41,
-	.writeback_offset = writeback_offset,
+	.mdp_writeback_memtype = MEMTYPE_EBI1,
+	.mdp_writeback_phys = NULL,
 };
+
+static void __init reserve_mdp_memory(void)
+{
+	mdp_pdata.mdp_writeback_size_ov0 = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
+	mdp_pdata.mdp_writeback_size_ov1 = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
+
+	msm8x60_reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov0;
+	msm8x60_reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov1;
+}
 
 #ifdef CONFIG_FB_MSM_TVOUT
 
@@ -10259,6 +10279,7 @@ MACHINE_START(MSM8X60_RUMI3, "QCT MSM8X60 RUMI3")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_rumi3_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10268,6 +10289,7 @@ MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_sim_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10277,6 +10299,7 @@ MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_surf_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10286,6 +10309,7 @@ MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_ffa_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10295,6 +10319,7 @@ MACHINE_START(MSM8X60_FLUID, "QCT MSM8X60 FLUID")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_fluid_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10304,6 +10329,7 @@ MACHINE_START(MSM8X60_FUSION, "QCT MSM8X60 FUSION SURF")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_charm_surf_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10313,6 +10339,7 @@ MACHINE_START(MSM8X60_FUSN_FFA, "QCT MSM8X60 FUSION FFA")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_charm_ffa_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
@@ -10322,6 +10349,7 @@ MACHINE_START(MSM8X60_DRAGON, "QCT MSM8X60 DRAGON")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = msm8x60_dragon_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,

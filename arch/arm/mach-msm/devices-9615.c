@@ -480,6 +480,7 @@ static struct msm_ce_hw_support qcrypto_ce_hw_suppport = {
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
 	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
+	.bus_scale_table = NULL,
 };
 
 struct platform_device msm9615_qcrypto_device = {
@@ -502,6 +503,7 @@ static struct msm_ce_hw_support qcedev_ce_hw_suppport = {
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
 	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
+	.bus_scale_table = NULL,
 };
 
 struct platform_device msm9615_qcedev_device = {
@@ -767,10 +769,13 @@ static uint16_t msm_mpm_bypassed_apps_irqs[] = {
 	RPM_APCC_CPU0_GP_MEDIUM_IRQ,
 	RPM_APCC_CPU0_GP_LOW_IRQ,
 	RPM_APCC_CPU0_WAKE_UP_IRQ,
+	MSS_TO_APPS_IRQ_0,
+	MSS_TO_APPS_IRQ_1,
 	LPASS_SCSS_GP_LOW_IRQ,
 	LPASS_SCSS_GP_MEDIUM_IRQ,
 	LPASS_SCSS_GP_HIGH_IRQ,
 	SPS_MTI_31,
+	A2_BAM_IRQ,
 };
 
 struct msm_mpm_device_data msm_mpm_dev_data = {
@@ -883,8 +888,6 @@ void __init msm9615_map_io(void)
 
 void __init msm9615_init_irq(void)
 {
-	unsigned int i;
-
 	msm_mpm_irq_extn_init();
 	gic_init(0, GIC_PPI_START, MSM_QGIC_DIST_BASE,
 						(void *)MSM_QGIC_CPU_BASE);
@@ -894,16 +897,6 @@ void __init msm9615_init_irq(void)
 
 	writel_relaxed(0x0000FFFF, MSM_QGIC_DIST_BASE + GIC_DIST_ENABLE_SET);
 	mb();
-
-	/*
-	 * FIXME: Not installing AVS_SVICINT and AVS_SVICINTSWDONE yet
-	 * as they are configured as level, which does not play nice with
-	 * handle_percpu_irq.
-	 */
-	for (i = GIC_PPI_START; i < GIC_SPI_START; i++) {
-		if (i != AVS_SVICINT && i != AVS_SVICINTSWDONE)
-			irq_set_handler(i, handle_percpu_irq);
-	}
 }
 
 struct platform_device msm_bus_9615_sys_fabric = {

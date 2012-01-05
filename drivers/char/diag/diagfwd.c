@@ -9,7 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -40,7 +39,7 @@ int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
 static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
 struct diag_master_table entry;
-smd_channel_t *ch_temp;
+smd_channel_t *ch_temp, *chqdsp_temp, *ch_wcnss_temp;
 struct diag_send_desc_type send = { NULL, NULL, DIAG_STATE_START, 0 };
 struct diag_hdlc_dest_type enc = { NULL, NULL, 0 };
 
@@ -69,6 +68,10 @@ do {									\
 
 int chk_config_get_id(void)
 {
+	/* For all Fusion targets, Modem will always be present */
+	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())
+		return 0;
+
 	switch (socinfo_get_id()) {
 	case APQ8060_MACHINE_ID:
 	case MSM8660_MACHINE_ID:
@@ -77,6 +80,8 @@ int chk_config_get_id(void)
 		return AO8960_TOOLS_ID;
 	case APQ8064_MACHINE_ID:
 		return APQ8064_TOOLS_ID;
+	case MSM8930_MACHINE_ID:
+		return MSM8930_TOOLS_ID;
 	default:
 		return 0;
 	}
@@ -91,6 +96,12 @@ int chk_apps_only(void)
 	switch (socinfo_get_id()) {
 	case AO8960_MACHINE_ID:
 	case APQ8064_MACHINE_ID:
+	case MSM8930_MACHINE_ID:
+	case MSM8630_MACHINE_ID:
+	case MSM8230_MACHINE_ID:
+	case APQ8030_MACHINE_ID:
+	case MSM8627_MACHINE_ID:
+	case MSM8227_MACHINE_ID:
 		return 1;
 	default:
 		return 0;
@@ -188,6 +199,13 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 			queue_work(driver->diag_wq, &(driver->
 				diag_read_smd_wcnss_work));
 		}
+#ifdef CONFIG_DIAG_SDIO_PIPE
+		else if (proc_num == SDIO_DATA) {
+			driver->in_busy_sdio = 0;
+			queue_work(driver->diag_sdio_wq,
+				&(driver->diag_read_sdio_work));
+		}
+#endif
 		err = -1;
 	}
 #if defined(CONFIG_DIAG_OVER_USB) || defined(CONFIG_DIAG_INTERNAL)
@@ -224,7 +242,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 #ifdef CONFIG_DIAG_SDIO_PIPE
 		else if (proc_num == SDIO_DATA) {
 			if (machine_is_msm8x60_fusion() ||
-					machine_is_msm8x60_fusn_ffa()) {
+					 machine_is_msm8x60_fusn_ffa()) {
 				write_ptr->buf = buf;
 				err = channel_diag_write(driver->mdm_ch,
 							write_ptr);
@@ -1071,7 +1089,7 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 #ifdef CONFIG_DIAG_SDIO_PIPE
 	else if (buf == (void *)driver->buf_in_sdio)
 		if (machine_is_msm8x60_fusion() ||
-					 machine_is_msm8x60_fusn_ffa())
+			 machine_is_msm8x60_fusn_ffa())
 			diagfwd_write_complete_sdio();
 		else
 			pr_err("diag: Incorrect buffer pointer while WRITE");
@@ -1117,7 +1135,7 @@ int diagfwd_read_complete(struct diag_request *diag_read_ptr)
 #ifdef CONFIG_DIAG_SDIO_PIPE
 	else if (buf == (void *)driver->usb_buf_mdm_out) {
 		if (machine_is_msm8x60_fusion() ||
-					 machine_is_msm8x60_fusn_ffa()) {
+				 machine_is_msm8x60_fusn_ffa()) {
 			driver->read_len_mdm = diag_read_ptr->actual;
 			diagfwd_read_complete_sdio();
 		} else
@@ -1243,12 +1261,28 @@ static void diag_smd_notify(void *ctxt, unsigned event)
 #if defined(CONFIG_MSM_N_WAY_SMD)
 static void diag_smd_qdsp_notify(void *ctxt, unsigned event)
 {
+	if (event == SMD_EVENT_CLOSE) {
+		pr_info("diag: clean lpass registration\n");
+		diag_clear_reg(QDSP_PROC);
+		driver->chqdsp = 0;
+		return;
+	} else if (event == SMD_EVENT_OPEN) {
+		driver->chqdsp = chqdsp_temp;
+	}
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 }
 #endif
 
 static void diag_smd_wcnss_notify(void *ctxt, unsigned event)
 {
+	if (event == SMD_EVENT_CLOSE) {
+		pr_info("diag: clean wcnss registration\n");
+		diag_clear_reg(WCNSS_PROC);
+		driver->ch_wcnss = 0;
+		return;
+	} else if (event == SMD_EVENT_OPEN) {
+		driver->ch_wcnss = ch_wcnss_temp;
+	}
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_work));
 }
 
@@ -1261,13 +1295,17 @@ static int diag_smd_probe(struct platform_device *pdev)
 		ch_temp = driver->ch;
 	}
 #if defined(CONFIG_MSM_N_WAY_SMD)
-	if (pdev->id == SMD_APPS_QDSP)
+	if (pdev->id == SMD_APPS_QDSP) {
 		r = smd_named_open_on_edge("DIAG", SMD_APPS_QDSP
 			, &driver->chqdsp, driver, diag_smd_qdsp_notify);
+		chqdsp_temp = driver->chqdsp;
+	}
 #endif
-	if (pdev->id == SMD_APPS_WCNSS)
+	if (pdev->id == SMD_APPS_WCNSS) {
 		r = smd_named_open_on_edge("APPS_RIVA_DATA", SMD_APPS_WCNSS
 			, &driver->ch_wcnss, driver, diag_smd_wcnss_notify);
+		ch_wcnss_temp = driver->ch_wcnss;
+	}
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	pr_debug("diag: open SMD port, Id = %d, r = %d\n", pdev->id, r);

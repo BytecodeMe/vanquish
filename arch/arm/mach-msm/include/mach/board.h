@@ -223,6 +223,11 @@ struct msm_camera_sensor_info {
 	struct msm_actuator_info *actuator_info;
 };
 
+struct msm_camera_board_info {
+	struct i2c_board_info *board_info;
+	uint8_t num_i2c_board_info;
+};
+
 int msm_get_cam_resources(struct msm_camera_sensor_info *);
 
 struct clk_lookup;
@@ -315,8 +320,13 @@ struct msm_panel_common_pdata {
 	struct msm_bus_scale_pdata *mdp_bus_scale_table;
 #endif
 	int mdp_rev;
-	int (*writeback_offset)(void);
+	int mdp_writeback_memtype;
+	void *mdp_writeback_phys;    /* writeback physical addr */
+	int mdp_writeback_size_ov0;  /* overlay0 writeback size */
+	int mdp_writeback_size_ov1;  /* overlay1 writeback size */
 };
+
+
 
 struct lcdc_platform_data {
 	int (*lcdc_gpio_config)(int on);
