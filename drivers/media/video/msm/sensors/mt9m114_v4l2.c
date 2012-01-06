@@ -1297,21 +1297,6 @@ static struct msm_sensor_id_info_t mt9m114_id_info = {
 	.sensor_id = 0x2481,
 };
 
-static int mt9m114_sensor_config(void __user *argp)
-{
-	return msm_sensor_config(&mt9m114_s_ctrl, argp);
-}
-
-static int mt9m114_sensor_open_init(const struct msm_camera_sensor_info *data)
-{
-	return msm_sensor_open_init(&mt9m114_s_ctrl, data);
-}
-
-static int mt9m114_sensor_release(void)
-{
-	return mt9m114_power_off(mt9m114_s_ctrl.sensordata);
-}
-
 static const struct i2c_device_id mt9m114_i2c_id[] = {
 	{SENSOR_NAME, (kernel_ulong_t)&mt9m114_s_ctrl},
 	{ }
@@ -1329,33 +1314,16 @@ static struct msm_camera_i2c_client mt9m114_sensor_i2c_client = {
 	.addr_type = MSM_CAMERA_I2C_WORD_ADDR,
 };
 
-static int mt9m114_sensor_v4l2_probe(const struct msm_camera_sensor_info *info,
-	struct v4l2_subdev *sdev, struct msm_sensor_ctrl *s)
+static int __init msm_sensor_init_module(void)
 {
-	return msm_sensor_v4l2_probe(&mt9m114_s_ctrl, info, sdev, s);
-}
-
-static int mt9m114_probe(struct platform_device *pdev)
-{
-	return msm_sensor_register(pdev, mt9m114_sensor_v4l2_probe);
-}
-
-struct platform_driver mt9m114_driver = {
-	.probe = mt9m114_probe,
-	.driver = {
-		.name = PLATFORM_DRIVER_NAME,
-		.owner = THIS_MODULE,
-	},
-};
-
-static int __init mt9m114_init_module(void)
-{
-	return platform_driver_register(&mt9m114_driver);
+	return i2c_add_driver(&mt9m114_i2c_driver);
 }
 
 static struct v4l2_subdev_core_ops mt9m114_subdev_core_ops = {
 	.s_ctrl = msm_sensor_v4l2_s_ctrl,
 	.queryctrl = msm_sensor_v4l2_query_ctrl,
+	.ioctl = msm_sensor_subdev_ioctl,
+	.s_power = msm_sensor_power,
 };
 
 static struct v4l2_subdev_video_ops mt9m114_subdev_video_ops = {
@@ -1374,12 +1342,9 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_set_sensor_mode = msm_sensor_set_sensor_mode,
 	.sensor_mode_init = msm_sensor_mode_init,
 	.sensor_get_output_info = msm_sensor_get_output_info,
-	.sensor_config = mt9m114_sensor_config,
-	.sensor_open_init = mt9m114_sensor_open_init,
-	.sensor_release = mt9m114_sensor_release,
+	.sensor_config = msm_sensor_config,
 	.sensor_power_up = mt9m114_power_on,
 	.sensor_power_down = mt9m114_power_off,
-	.sensor_probe = msm_sensor_probe,
 };
 
 static struct msm_sensor_reg_t mt9m114_regs = {
@@ -1411,6 +1376,6 @@ static struct msm_sensor_ctrl_t mt9m114_s_ctrl = {
 	.func_tbl = &mt9m114_func_tbl,
 };
 
-module_init(mt9m114_init_module);
+module_init(msm_sensor_init_module);
 MODULE_DESCRIPTION("Aptina 1.26MP YUV sensor driver");
 MODULE_LICENSE("GPL v2");

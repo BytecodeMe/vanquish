@@ -176,6 +176,9 @@ module_param_cb(bms_end_percent, &bms_ro_param_ops, &bms_end_percent, 0644);
 module_param_cb(bms_end_ocv_uv, &bms_ro_param_ops, &bms_end_ocv_uv, 0644);
 module_param_cb(bms_end_cc_mah, &bms_ro_param_ops, &bms_end_cc_mah, 0644);
 
+static int bms_aged_capacity = 0;
+module_param(bms_aged_capacity, int, 0644);
+
 static int interpolate_fcc(struct pm8921_bms_chip *chip, int batt_temp);
 static void readjust_fcc_table(void)
 {
@@ -1085,12 +1088,6 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		soc = 100;
 	pr_debug("SOC = %u%%\n", soc);
 
-	if (bms_fake_battery) {
-		soc = BATTERY_POWER_SUPPLY_SOC;
-		pr_debug("setting SOC = %u%% bms_fake_battery = %d\n", soc,
-							bms_fake_battery);
-	}
-
 	if (soc < 0) {
 		pr_err("bad rem_usb_chg = %d rem_chg %d,"
 				"cc_mah %d, unusb_chg %d\n",
@@ -1107,7 +1104,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 
 	if (last_soc == -EINVAL || soc <= last_soc) {
 		last_soc = update_userspace ? soc : last_soc;
-		return soc;
+		return bms_fake_battery ? BATTERY_POWER_SUPPLY_SOC : soc;
 	}
 
 	/*
@@ -1122,7 +1119,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		soc = last_soc;
 	}
 
-	return soc;
+	return bms_fake_battery ? BATTERY_POWER_SUPPLY_SOC : soc;
 }
 
 #define XOADC_MAX_1P25V		1312500
@@ -1310,6 +1307,13 @@ int pm8921_bms_get_fcc(void)
 	return calculate_fcc(the_chip, batt_temp, last_chargecycles);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_fcc);
+
+int pm8921_bms_get_aged_capacity(int *result)
+{
+	*result = bms_aged_capacity;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pm8921_bms_get_aged_capacity);
 
 void pm8921_bms_charging_began(void)
 {

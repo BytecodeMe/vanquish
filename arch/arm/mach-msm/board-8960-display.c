@@ -17,6 +17,7 @@
 #include <linux/bootmem.h>
 #include <asm/mach-types.h>
 #include <mach/msm_bus_board.h>
+#include <mach/msm_memtypes.h>
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
@@ -24,9 +25,9 @@
 #include "board-8960.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_PRIM_BUF_SIZE (1376 * 768 * 4 * 3) /* 4 bpp x 3 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 3) /* 4 bpp x 3 pages */
 #else
-#define MSM_FB_PRIM_BUF_SIZE (1376 * 768 * 4 * 2) /* 4 bpp x 2 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 2) /* 4 bpp x 2 pages */
 #endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
@@ -37,24 +38,25 @@
 #define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
-#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
-/* width x height x 3 bpp x 2 frame buffer */
-#define MSM_FB_WRITEBACK_SIZE (1376 * 768 * 3 * 2)
-#define MSM_FB_WRITEBACK_OFFSET  \
-		(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
-#else
-#define MSM_FB_WRITEBACK_SIZE   0
-#define MSM_FB_WRITEBACK_OFFSET 0
-#endif
-
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 /* 4 bpp x 2 page HDMI case */
 #define MSM_FB_SIZE roundup((1920 * 1088 * 4 * 2), 4096)
 #else
 /* Note: must be multiple of 4096 */
-#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
-				MSM_FB_WRITEBACK_SIZE, 4096)
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE, 4096)
 #endif
+
+#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE roundup((1920 * 1200 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY0_WRITEBACK */
+
+#ifdef CONFIG_FB_MSM_OVERLAY1_WRITEBACK
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE roundup((1920 * 1088 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 
 #define MDP_VSYNC_GPIO 0
 
@@ -67,11 +69,6 @@
 #define MIPI_CMD_RENESAS_FWVGA_PANEL_NAME	"mipi_cmd_renesas_fwvga"
 #define HDMI_PANEL_NAME	"hdmi_msm"
 #define TVOUT_PANEL_NAME	"tvout_msm"
-
-static int writeback_offset(void)
-{
-	return MSM_FB_WRITEBACK_OFFSET;
-}
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -553,8 +550,20 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_42,
-	.writeback_offset = writeback_offset,
+	.mdp_writeback_memtype = MEMTYPE_EBI1,
+	.mdp_writeback_phys = NULL,
 };
+
+void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
+{
+	mdp_pdata.mdp_writeback_size_ov0 = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
+	mdp_pdata.mdp_writeback_size_ov1 = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
+
+	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov0;
+	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
+		mdp_pdata.mdp_writeback_size_ov1;
+}
 
 static struct platform_device mipi_dsi_renesas_panel_device = {
 	.name = "mipi_renesas",

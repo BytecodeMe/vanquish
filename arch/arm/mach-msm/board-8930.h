@@ -15,9 +15,11 @@
 
 #include <linux/regulator/gpio-regulator.h>
 #include <linux/mfd/pm8xxx/pm8038.h>
+#include <linux/i2c.h>
 #include <linux/i2c/sx150x.h>
 #include <mach/irqs.h>
 #include <mach/rpm-regulator.h>
+#include <mach/msm_memtypes.h>
 
 /*
  * TODO: When physical 8930/PM8038 hardware becomes
@@ -47,7 +49,7 @@
 extern struct regulator_init_data msm_saw_regulator_pdata_s5;
 extern struct regulator_init_data msm_saw_regulator_pdata_s6;
 
-extern struct pm8921_regulator_platform_data
+extern struct pm8xxx_regulator_platform_data
 	msm_pm8921_regulator_pdata[] __devinitdata;
 
 extern int msm_pm8921_regulator_pdata_len __devinitdata;
@@ -56,12 +58,22 @@ extern struct gpio_regulator_platform_data
 	msm_gpio_regulator_pdata[] __devinitdata;
 
 extern struct rpm_regulator_platform_data msm_rpm_regulator_pdata __devinitdata;
-#endif
 
 #define GPIO_VREG_ID_EXT_5V		0
 #define GPIO_VREG_ID_EXT_L2		1
 #define GPIO_VREG_ID_EXT_3P3V		2
+#endif
 
+extern struct pm8xxx_regulator_platform_data
+	msm8930_pm8038_regulator_pdata[] __devinitdata;
+
+extern int msm8930_pm8038_regulator_pdata_len __devinitdata;
+
+#define MSM8930_GPIO_VREG_ID_EXT_5V		0
+#define MSM8930_GPIO_VREG_ID_EXT_OTG_SW		1
+
+extern struct gpio_regulator_platform_data
+	msm8930_gpio_regulator_pdata[] __devinitdata;
 
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 enum {
@@ -88,6 +100,7 @@ enum {
 #endif
 
 extern struct sx150x_platform_data msm8930_sx150x_data[];
+extern struct msm_camera_board_info msm8930_camera_board_info;
 void msm8930_init_cam(void);
 void msm8930_init_fb(void);
 void msm8930_init_pmic(void);
@@ -106,6 +119,7 @@ void msm8930_init_mmc(void);
 int msm8930_init_gpiomux(void);
 void msm8930_allocate_fb_region(void);
 void msm8930_pm8038_gpio_mpp_init(void);
+void msm8930_mdp_writeback(struct memtype_reserve *reserve_table);
 
 #define PLATFORM_IS_CHARM25() \
 	(machine_is_msm8930_cdp() && \

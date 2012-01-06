@@ -15,6 +15,7 @@
 
 #include <linux/regulator/gpio-regulator.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
+#include <linux/i2c.h>
 #include <linux/i2c/sx150x.h>
 #include <mach/irqs.h>
 #include <mach/msm_spi.h>
@@ -23,6 +24,7 @@
 #include <mach/board.h>
 #include <linux/leds.h>
 #include <mach/mdm2.h>
+#include <mach/msm_memtypes.h>
 
 /* Macros assume PMIC GPIOs and MPPs start at 1 */
 #define PM8921_GPIO_BASE		NR_GPIO_IRQS
@@ -31,7 +33,7 @@
 #define PM8921_MPP_PM_TO_SYS(pm_gpio)	(pm_gpio - 1 + PM8921_MPP_BASE)
 #define PM8921_IRQ_BASE			(NR_MSM_IRQS + NR_GPIO_IRQS)
 
-extern struct pm8921_regulator_platform_data
+extern struct pm8xxx_regulator_platform_data
 	msm_pm8921_regulator_pdata[] __devinitdata;
 
 extern int msm_pm8921_regulator_pdata_len __devinitdata;
@@ -46,6 +48,19 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define GPIO_VREG_ID_EXT_5V		0
 #define GPIO_VREG_ID_EXT_L2		1
 #define GPIO_VREG_ID_EXT_3P3V		2
+#define GPIO_VREG_ID_EXT_OTG_SW		3
+
+#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE roundup((1920 * 1200 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY0_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY0_WRITEBACK */
+
+#ifdef CONFIG_FB_MSM_OVERLAY1_WRITEBACK
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE roundup((1920 * 1088 * 3 * 2), 4096)
+#else
+#define MSM_FB_OVERLAY1_WRITEBACK_SIZE (0)
+#endif  /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 
 #define MDP_VSYNC_GPIO 0
 
@@ -55,11 +70,10 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MDP_VSYNC_DISABLED	false
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_PRIM_BUF_SIZE (1280 * 720 * 4 * 3) /* 4 bpp x 3 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 3) /* 4 bpp x 3 pages */
 #else
-#define MSM_FB_PRIM_BUF_SIZE (1280 * 720 * 4 * 2) /* 4 bpp x 2 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 2) /* 4 bpp x 2 pages */
 #endif
-
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 #define MSM_FB_EXT_BUF_SIZE	(1920 * 1088 * 2 * 1) /* 2 bpp x 1 page */
@@ -69,23 +83,12 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
-#ifdef CONFIG_FB_MSM_OVERLAY0_WRITEBACK
-/* width x height x 3 bpp x 2 frame buffer */
-#define MSM_FB_WRITEBACK_SIZE (1280 * 720 * 3 * 2)
-#define MSM_FB_WRITEBACK_OFFSET  \
-		(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
-#else
-#define MSM_FB_WRITEBACK_SIZE   0
-#define MSM_FB_WRITEBACK_OFFSET 0
-#endif
-
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 /* 4 bpp x 2 page HDMI case */
 #define MSM_FB_SIZE roundup((1920 * 1088 * 4 * 2), 4096)
 #else
 /* Note: must be multiple of 4096 */
-#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
-				MSM_FB_WRITEBACK_SIZE, 4096)
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE, 4096)
 #endif
 
 #ifdef CONFIG_I2C
@@ -97,12 +100,13 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #endif
 
 #define MSM_PMEM_ADSP_SIZE         0x4200000
-#define MSM_PMEM_AUDIO_SIZE        0x28B000
+#define MSM_PMEM_AUDIO_SIZE        0x2B4000
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 #define MSM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 #else
-#define MSM_PMEM_SIZE 0x1C00000 /* 28 Mbytes */
+#define MSM_PMEM_SIZE 0x2800000 /* 40 Mbytes */
 #endif
+#define MSM_LIQUID_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 #define MSM_RAM_CONSOLE_SIZE       128 * SZ_1K
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -110,6 +114,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MSM_ION_EBI_SIZE	(MSM_PMEM_SIZE + 0x600000)
 #define MSM_ION_ADSP_SIZE	MSM_PMEM_ADSP_SIZE
 #define MSM_ION_HEAP_NUM	5
+#define MSM_LIQUID_ION_EBI_SIZE (MSM_LIQUID_PMEM_SIZE + 0x600000)
 #else
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
 #define MSM_ION_HEAP_NUM	2
@@ -205,17 +210,20 @@ extern struct regulator_init_data msm_saw_regulator_pdata_s6;
 
 extern struct rpm_regulator_platform_data msm_rpm_regulator_pdata __devinitdata;
 extern struct lcdc_platform_data dtv_pdata;
-extern struct msm_camera_gpio_conf msm_camif_gpio_conf;
+extern struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk0;
+extern struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk1;
 extern struct platform_device hdmi_msm_device;
 extern struct platform_device android_usb_device;
 extern struct platform_device msm_tsens_device;
 
 extern struct msm_otg_platform_data msm_otg_pdata;
 
+extern bool camera_single_mclk;
+
 extern void msm8960_init_hdmi(struct platform_device *hdmi_dev,
 						struct msm_hdmi_platform_data *hdmi_data);
 
-extern void __init msm8960_init_usb(void (*vbus_power)(bool on));
+extern void __init msm8960_init_usb(void);
 extern void __init msm8960_init_dsps(void);
 
 extern void __init msm8960_init_hsic(void);
@@ -287,6 +295,7 @@ enum {
 #endif
 
 extern struct sx150x_platform_data msm8960_sx150x_data[];
+extern struct msm_camera_board_info msm8960_camera_board_info;
 void msm8960_init_cam(void);
 void msm8960_init_fb(void);
 void msm8960_init_pmic(void);
@@ -294,7 +303,7 @@ void msm8960_init_mmc(unsigned sd_detect);
 int msm8960_init_gpiomux(void);
 void msm8960_allocate_fb_region(void);
 void msm8960_pm8921_gpio_mpp_init(void);
-
+void msm8960_mdp_writeback(struct memtype_reserve *reserve_table);
 #define PLATFORM_IS_CHARM25() \
 	(machine_is_msm8960_cdp() && \
 		(socinfo_get_platform_subtype() == 1) \
