@@ -34,6 +34,7 @@
 #include "clock-voter.h"
 #include "clock-dss-8960.h"
 #include "devices.h"
+#include "board-8960.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
 #define REG_MM(off)	(MSM_MMSS_CLK_CTL_BASE + (off))
@@ -5524,9 +5525,11 @@ static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
 	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"4-001a"),
 	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"4-006c"),
 	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"4-0048"),
-	CLK_LOOKUP("cam_clk",		cam0_clk.c,		"msm_camera_motsoc1.0"),
-	CLK_LOOKUP("cam_clk",		cam0_clk.c,		"msm_camera_mt9m114.0"),
-	CLK_LOOKUP("cam_clk",		cam0_clk.c,		"msm_camera_ov8820.0"),
+	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"msm_camera_motsoc1.0"),
+	CLK_LOOKUP("cam_clk",		cam1_clk.c,	"msm_camera_mt9m114.0"),
+	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"msm_camera_ov8820.0"),
+	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"msm_camera_imx074.0"),
+	CLK_LOOKUP("cam_clk",		cam0_clk.c,	"msm_camera_ov2720.0"),
 	CLK_LOOKUP("csi_src_clk",	csi0_src_clk.c,		"msm_csid.0"),
 	CLK_LOOKUP("csi_src_clk",	csi1_src_clk.c,		"msm_csid.1"),
 	CLK_LOOKUP("csi_clk",		csi0_clk.c,		"msm_csid.0"),
@@ -6030,6 +6033,19 @@ struct clock_init_data msm8960_clock_init_data __initdata;
 static void __init msm8960_clock_init(void)
 {
 	size_t num_lookups = ARRAY_SIZE(msm_clocks_8960_v1);
+
+	if (camera_single_mclk) {
+		int i;
+		pr_info("using cam0_clk for all cameras\n");
+		for (i = 0; i < num_lookups; i++) {
+			const char *dev_id = msm_clocks_8960_v1[i].dev_id;
+			const char *con_id = msm_clocks_8960_v1[i].con_id;
+			if (dev_id && con_id &&
+					!memcmp(dev_id, "msm_camera", 10) &&
+					!memcmp(con_id, "cam_clk", 7))
+				msm_clocks_8960_v1[i].clk = &cam0_clk.c;
+		}
+	}
 
 	xo_pxo = msm_xo_get(MSM_XO_PXO, "clock-8960");
 	if (IS_ERR(xo_pxo)) {

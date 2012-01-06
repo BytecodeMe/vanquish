@@ -53,8 +53,8 @@ void *restart_reason;
 int pmic_reset_irq;
 static void __iomem *msm_tmr0_base;
 
-#ifdef CONFIG_MSM_DLOAD_MODE
 static int in_panic;
+#ifdef CONFIG_MSM_DLOAD_MODE
 static void *dload_mode_addr;
 
 /* Download mode master kill-switch */
@@ -62,7 +62,7 @@ static int dload_set(const char *val, struct kernel_param *kp);
 static int download_mode = 1;
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
-
+#endif
 static int panic_prep_restart(struct notifier_block *this,
 			      unsigned long event, void *ptr)
 {
@@ -73,7 +73,7 @@ static int panic_prep_restart(struct notifier_block *this,
 static struct notifier_block panic_blk = {
 	.notifier_call	= panic_prep_restart,
 };
-
+#ifdef CONFIG_MSM_DLOAD_MODE
 static void set_dload_mode(int on)
 {
 	if (dload_mode_addr) {
@@ -215,6 +215,10 @@ void arch_reset(char mode, const char *cmd)
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
+	} else if (in_panic == 1) {
+		__raw_writel(0x77665505, restart_reason);
+	} else {
+		__raw_writel(0x77665501, restart_reason);
 	}
 
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
@@ -224,6 +228,7 @@ void arch_reset(char mode, const char *cmd)
 		mdelay(5000);
 		pr_notice("PS_HOLD didn't work, falling back to watchdog\n");
 	}
+	__raw_writel(0, restart_reason);
 
 	__raw_writel(1, msm_tmr0_base + WDT0_RST);
 	__raw_writel(5*0x31F3, msm_tmr0_base + WDT0_BARK_TIME);
@@ -238,8 +243,8 @@ static int __init msm_restart_init(void)
 {
 	int rc;
 
-#ifdef CONFIG_MSM_DLOAD_MODE
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
+#ifdef CONFIG_MSM_DLOAD_MODE
 	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
 
 	/* Reset detection is switched on below.*/
