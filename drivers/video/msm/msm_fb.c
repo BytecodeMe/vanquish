@@ -383,9 +383,13 @@ static int msm_fb_probe(struct platform_device *pdev)
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
 
+	/* Avoiding fb1 blank/unblank to keeps HDMI enable
+	with smooth transition from BL to Kernel*/
 #ifdef CONFIG_FB_MSM_BOOTLOADER_INIT
-	fbi = mfd->fbi;
-	msm_fb_blank_sub(FB_BLANK_UNBLANK, fbi, mfd->op_enable);
+	if (mfd->index == 0) {
+		fbi = mfd->fbi;
+		msm_fb_blank_sub(FB_BLANK_UNBLANK, fbi, mfd->op_enable);
+	}
 #endif
 	return 0;
 }
@@ -1360,9 +1364,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 static int msm_fb_open(struct fb_info *info, int user)
 {
 	int result;
-#ifndef CONFIG_FB_MSM_BOOTLOADER_INIT
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-#endif
 
 	result = pm_runtime_get_sync(info->dev);
 
@@ -1375,7 +1377,13 @@ static int msm_fb_open(struct fb_info *info, int user)
 	 * on the FB's client to call msm_fb_open() or msm_fb_release() which
 	 * cause the display to turn on and off unexpectively
 	 */
-#ifndef CONFIG_FB_MSM_BOOTLOADER_INIT
+#ifdef CONFIG_FB_MSM_BOOTLOADER_INIT
+
+	/* Avoiding fb clients to blank/unblank fb0 */
+	if (mfd->index == 0) {
+		return 0;
+	}
+#endif
 	if (!mfd->ref_cnt) {
 		mdp_set_dma_pan_info(info, NULL, TRUE);
 
@@ -1386,16 +1394,21 @@ static int msm_fb_open(struct fb_info *info, int user)
 	}
 
 	mfd->ref_cnt++;
-#endif
 	return 0;
 }
 
 static int msm_fb_release(struct fb_info *info, int user)
 {
 	int ret = 0;
-#ifndef CONFIG_FB_MSM_BOOTLOADER_INIT
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 
+	/* Avoiding fb clients to powerdown fb0 */
+#ifdef CONFIG_FB_MSM_BOOTLOADER_INIT
+	if (mfd->index == 0) {
+		pm_runtime_put(info->dev);
+		return 0;
+	}
+#endif
 	if (!mfd->ref_cnt) {
 		MSM_FB_INFO("msm_fb_release: try to close unopened fb %d!\n",
 			    mfd->index);
@@ -1412,7 +1425,6 @@ static int msm_fb_release(struct fb_info *info, int user)
 			return ret;
 		}
 	}
-#endif
 
 	pm_runtime_put(info->dev);
 	return ret;
