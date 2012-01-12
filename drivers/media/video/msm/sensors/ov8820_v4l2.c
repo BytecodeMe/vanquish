@@ -464,16 +464,6 @@ static int32_t ov8820_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 	return 0;
 }
 
-static int ov8820_sensor_config(void __user *argp)
-{
-	return msm_sensor_config(&ov8820_s_ctrl, argp);
-}
-
-static int ov8820_sensor_open_init(const struct msm_camera_sensor_info *data)
-{
-	return msm_sensor_open_init(&ov8820_s_ctrl, data);
-}
-
 static int32_t ov8820_regulator_on(struct regulator **reg,
 		char *regname, int uV)
 {
@@ -522,12 +512,11 @@ reg_off_done:
 }
 
 
-static int32_t ov8820_sensor_power_up(const struct msm_camera_sensor_info *data)
+static int32_t ov8820_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 
 	CDBG("ov8820_sensor_power_on\n");
-	mutex_lock(&ov8820_mut);
 
 	/*Turn on VDDIO*/
 	rc = ov8820_regulator_on(&reg_1p8, "8921_l29", 1800000);
@@ -563,6 +552,7 @@ static int32_t ov8820_sensor_power_up(const struct msm_camera_sensor_info *data)
 
 	/*Enable MCLK*/
 	pr_info("ov8820 enabling MCLK\n");
+	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(OV8820_DEFAULT_MCLK_RATE);
 	usleep(5000);
 
@@ -578,15 +568,13 @@ static int32_t ov8820_sensor_power_up(const struct msm_camera_sensor_info *data)
 
 	pr_info("ov8820 power up sequence complete\n");
 power_on_done:
-	mutex_unlock(&ov8820_mut);
 	return rc;
 }
 
 static int32_t ov8820_sensor_power_off(
-		const struct msm_camera_sensor_info *data)
+		struct msm_sensor_ctrl_t *s_ctrl)
 {
 	pr_info("ov8820_sensor_power_off\n");
-	mutex_lock(&ov8820_mut);
 
 	/*Set Reset Low*/
 	gpio_direction_output(CAM1_RESET, 0);
@@ -603,16 +591,9 @@ static int32_t ov8820_sensor_power_off(
 	gpio_free(CAM1_ANALOG_ENABLE);
 	ov8820_regulator_off(reg_2p8, "2.8");
 	ov8820_regulator_off(reg_1p8, "1.8");
+	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
-	mutex_unlock(&ov8820_mut);
 	return 0;
-}
-
-static int ov8820_sensor_release(void)
-{
-	/*return msm_sensor_release(&ov8820_s_ctrl);*/
-	CDBG("%s\n", __func__);
-	return ov8820_sensor_power_off(ov8820_s_ctrl.sensordata);
 }
 
 static const struct i2c_device_id ov8820_i2c_id[] = {
@@ -630,25 +611,6 @@ static struct i2c_driver ov8820_i2c_driver = {
 
 static struct msm_camera_i2c_client ov8820_sensor_i2c_client = {
 	.addr_type = MSM_CAMERA_I2C_WORD_ADDR,
-};
-
-static int ov8820_sensor_v4l2_probe(const struct msm_camera_sensor_info *info,
-	struct v4l2_subdev *sdev, struct msm_sensor_ctrl *s)
-{
-	return msm_sensor_v4l2_probe(&ov8820_s_ctrl, info, sdev, s);
-}
-
-static int ov8820_probe(struct platform_device *pdev)
-{
-	return msm_sensor_register(pdev, ov8820_sensor_v4l2_probe);
-}
-
-struct platform_driver ov8820_driver = {
-	.probe = ov8820_probe,
-	.driver = {
-		.name = PLATFORM_DRIVER_NAME,
-		.owner = THIS_MODULE,
-	},
 };
 
 static int32_t ov8820_match_id(struct msm_sensor_ctrl_t *s_ctrl)
@@ -674,10 +636,14 @@ static int32_t ov8820_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 
 static int __init msm_sensor_init_module(void)
 {
-	return platform_driver_register(&ov8820_driver);
+	return i2c_add_driver(&ov8820_i2c_driver);
 }
 
-static struct v4l2_subdev_core_ops ov8820_subdev_core_ops;
+static struct v4l2_subdev_core_ops ov8820_subdev_core_ops = {
+	.ioctl = msm_sensor_subdev_ioctl,
+	.s_power = msm_sensor_power,
+};
+
 static struct v4l2_subdev_video_ops ov8820_subdev_video_ops = {
 	.enum_mbus_fmt = msm_sensor_v4l2_enum_fmt,
 };
@@ -699,15 +665,12 @@ static struct msm_sensor_fn_t ov8820_func_tbl = {
 	.sensor_set_sensor_mode = msm_sensor_set_sensor_mode,
 	.sensor_mode_init = msm_sensor_mode_init,
 	.sensor_get_output_info = msm_sensor_get_output_info,
-	.sensor_config = ov8820_sensor_config,
-	.sensor_open_init = ov8820_sensor_open_init,
-	.sensor_release = ov8820_sensor_release,
+	.sensor_config = msm_sensor_config,
 	.sensor_power_up = ov8820_sensor_power_up,
 	/*.sensor_power_up = msm_sensor_power_up,*/
 	/*.sensor_power_down = msm_sensor_power_down,*/
 	.sensor_power_down = ov8820_sensor_power_off,
 	.sensor_match_id = ov8820_match_id,
-	.sensor_probe = msm_sensor_probe,
 };
 
 static struct msm_sensor_reg_t ov8820_regs = {
