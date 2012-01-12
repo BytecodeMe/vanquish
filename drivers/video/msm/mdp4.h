@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -235,6 +235,7 @@ enum {
 #define MDP4_PIPE_PER_MIXER	2
 
 #define MDP4_MAX_PLANE		4
+#define VSYNC_PERIOD		16
 
 struct mdp4_hsic_regs {
 	int32_t params[NUM_HSIC_PARAM];
@@ -367,6 +368,9 @@ struct mdp4_statistic {
 	ulong err_size;
 	ulong err_scale;
 	ulong err_format;
+	ulong err_stage;
+	ulong err_play;
+	ulong err_underflow;
 };
 
 struct mdp4_overlay_pipe *mdp4_overlay_ndx2pipe(int ndx);
@@ -403,14 +407,26 @@ uint32 mdp4_overlay_format(struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_unpack_pattern(struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_op_mode(struct mdp4_overlay_pipe *pipe);
 void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd);
-void mdp4_overlay_dtv_ov_done_push(struct msm_fb_data_type *mfd,
-			struct mdp4_overlay_pipe *pipe);
 #ifdef CONFIG_FB_MSM_DTV
 void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
+void mdp4_overlay_dtv_ov_done_push(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe);
+void mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
+	struct mdp4_overlay_pipe *pipe);
 #else
 static inline void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
-				struct mdp4_overlay_pipe *pipe)
+	struct mdp4_overlay_pipe *pipe)
+{
+	/* empty */
+}
+static inline void  mdp4_overlay_dtv_ov_done_push(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe)
+{
+	/* empty */
+}
+static inline void  mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
+	struct mdp4_overlay_pipe *pipe)
 {
 	/* empty */
 }
@@ -428,7 +444,9 @@ static inline void mdp4_dtv_set_black_screen(void)
 static inline int mdp4_overlay_borderfill_supported(void)
 {
 	unsigned int mdp_hw_version;
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	mdp_hw_version = inpdw(MDP_BASE + 0x0); /* MDP_HW_VERSION */
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	return (mdp_hw_version >= 0x0402030b);
 }
 
@@ -465,8 +483,6 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe);
 int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_unset(struct fb_info *info, int ndx);
-void mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
-	struct mdp4_overlay_pipe *pipe);
 int mdp4_overlay_play_wait(struct fb_info *info,
 	struct msmfb_overlay_data *req);
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req);
@@ -679,4 +695,9 @@ int mdp4_writeback_terminate(struct fb_info *info);
 
 void mdp4_hsic_set(struct mdp4_overlay_pipe *pipe, struct dpp_ctrl *ctrl);
 void mdp4_hsic_update(struct mdp4_overlay_pipe *pipe);
+
+u32  mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
+void mdp4_init_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
+void mdp4_free_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
+
 #endif /* MDP_H */

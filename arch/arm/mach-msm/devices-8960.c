@@ -565,7 +565,7 @@ struct msm_vidc_platform_data vidc_platform_data = {
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	.memtype = ION_HEAP_EBI_ID,
+	.memtype = ION_CP_MM_HEAP_ID,
 	.enable_ion = 1,
 #else
 	.memtype = MEMTYPE_EBI1,
@@ -1587,6 +1587,9 @@ static struct msm_rotator_platform_data rotator_pdata = {
 	.hardware_version_number = 0x01020309,
 	.rotator_clks = rotator_clocks,
 	.regulator_name = "fs_rot",
+#ifdef CONFIG_MSM_BUS_SCALING
+	.bus_scale_table = &rotator_bus_scale_pdata,
+#endif
 };
 
 struct platform_device msm_rotator_device = {
@@ -2271,7 +2274,7 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 	.init_level = 0,
 	.num_levels = 5,
 	.set_grp_async = NULL,
-	.idle_timeout = HZ/5,
+	.idle_timeout = HZ/20,
 	.nap_allowed = true,
 	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE | KGSL_CLK_MEM_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -2501,8 +2504,9 @@ struct msm_rpm_map_data rpm_map_data[] __initdata = {
 	MSM_RPM_MAP(USB_OTG_SWITCH, USB_OTG_SWITCH, 1),
 	MSM_RPM_MAP(HDMI_SWITCH, HDMI_SWITCH, 1),
 	MSM_RPM_MAP(DDR_DMM_0, DDR_DMM, 2),
-
+	MSM_RPM_MAP(QDSS_CLK, QDSS_CLK, 1),
 };
+
 unsigned int rpm_map_data_size = ARRAY_SIZE(rpm_map_data);
 
 struct platform_device msm_rpm_device = {

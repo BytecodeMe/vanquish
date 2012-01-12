@@ -54,7 +54,6 @@
 						struct msmfb_mixer_info_req)
 #define MSMFB_OVERLAY_PLAY_WAIT _IOWR(MSMFB_IOCTL_MAGIC, 149, \
 						struct msmfb_overlay_data)
-
 #define MSMFB_WRITEBACK_INIT _IO(MSMFB_IOCTL_MAGIC, 150)
 #define MSMFB_WRITEBACK_REGISTER_BUFFER _IOW(MSMFB_IOCTL_MAGIC, 151, \
 						struct msmfb_writeback_data)
@@ -65,6 +64,7 @@
 #define MSMFB_WRITEBACK_DEQUEUE_BUFFER _IOW(MSMFB_IOCTL_MAGIC, 154, \
 						struct msmfb_data)
 #define MSMFB_WRITEBACK_TERMINATE _IO(MSMFB_IOCTL_MAGIC, 155)
+#define MSMFB_MDP_PP _IOWR(MSMFB_IOCTL_MAGIC, 156, struct msmfb_mdp_pp)
 
 #define MSMFB_REG_READ		_IOWR(MSMFB_IOCTL_MAGIC, 64, struct msmfb_reg_access)
 #define MSMFB_REG_WRITE	_IOW(MSMFB_IOCTL_MAGIC, 65, struct msmfb_reg_access)
@@ -142,9 +142,10 @@ enum {
 #define MDP_DEINTERLACE_ODD		0x00400000
 #define MDP_OV_PLAY_NOWAIT		0x00200000
 #define MDP_SOURCE_ROTATED_90		0x00100000
-#define MDP_BORDERFILL_SUPPORTED	0x00010000
-#define MDP_MEMORY_ID_TYPE_FB		0x00001000
 #define MDP_DPP_HSIC			0x00080000
+#define MDP_BORDERFILL_SUPPORTED	0x00010000
+#define MDP_SECURE_OVERLAY_SESSION      0x00008000
+#define MDP_MEMORY_ID_TYPE_FB		0x00001000
 
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
@@ -302,6 +303,123 @@ struct mdp_histogram {
 	uint32_t *g;
 	uint32_t *b;
 };
+
+
+/*
+
+	mdp_block_type defines the identifiers for each of pipes in MDP 4.3
+
+	MDP_BLOCK_RESERVED is provided for backward compatibility and is
+	deprecated. It corresponds to DMA_P. So MDP_BLOCK_DMA_P should be used
+	instead.
+
+*/
+
+enum {
+	MDP_BLOCK_RESERVED = 0,
+	MDP_BLOCK_OVERLAY_0,
+	MDP_BLOCK_OVERLAY_1,
+	MDP_BLOCK_VG_1,
+	MDP_BLOCK_VG_2,
+	MDP_BLOCK_RGB_1,
+	MDP_BLOCK_RGB_2,
+	MDP_BLOCK_DMA_P,
+	MDP_BLOCK_DMA_S,
+	MDP_BLOCK_DMA_E,
+	MDP_BLOCK_MAX,
+};
+
+struct mdp_pcc_coeff {
+	uint32_t c, r, g, b, rr, gg, bb, rg, gb, rb, rgb_0, rgb_1;
+};
+
+struct mdp_pcc_cfg_data {
+	uint32_t block;
+	uint32_t ops;
+	struct mdp_pcc_coeff r, g, b;
+};
+
+struct mdp_csc_cfg {
+	/* flags for enable CSC, toggling RGB,YUV input/output */
+	uint32_t flags;
+	uint32_t csc_mv[9];
+	uint32_t csc_pre_bv[3];
+	uint32_t csc_post_bv[3];
+	uint32_t csc_pre_lv[6];
+	uint32_t csc_post_lv[6];
+};
+
+struct mdp_csc_cfg_data {
+	uint32_t block;
+	struct mdp_csc_cfg csc_data;
+};
+
+enum {
+	mdp_lut_igc,
+	mdp_lut_pgc,
+	mdp_lut_hist,
+	mdp_lut_max,
+};
+
+
+struct mdp_igc_lut_data {
+	uint32_t block;
+	uint32_t len, ops;
+	uint32_t *c0_c1_data;
+	uint32_t *c2_data;
+};
+
+struct mdp_ar_gc_lut_data {
+	uint32_t x_start;
+	uint32_t slope;
+	uint32_t offset;
+};
+
+struct mdp_pgc_lut_data {
+	uint32_t block;
+	uint32_t flags;
+	uint8_t num_r_stages;
+	uint8_t num_g_stages;
+	uint8_t num_b_stages;
+	struct mdp_ar_gc_lut_data *r_data;
+	struct mdp_ar_gc_lut_data *g_data;
+	struct mdp_ar_gc_lut_data *b_data;
+};
+
+
+struct mdp_hist_lut_data {
+	uint32_t block;
+	uint32_t ops;
+	uint32_t len;
+	uint32_t *data;
+};
+
+
+struct mdp_lut_cfg_data {
+	uint32_t lut_type;
+	union {
+		struct mdp_igc_lut_data igc_lut_data;
+		struct mdp_pgc_lut_data pgc_lut_data;
+		struct mdp_hist_lut_data hist_lut_data;
+	} data;
+};
+
+enum {
+	mdp_op_pcc_cfg,
+	mdp_op_csc_cfg,
+	mdp_op_lut_cfg,
+	mdp_op_max,
+};
+
+struct msmfb_mdp_pp {
+	uint32_t op;
+	union {
+		struct mdp_pcc_cfg_data pcc_cfg_data;
+		struct mdp_csc_cfg_data csc_cfg_data;
+		struct mdp_lut_cfg_data lut_cfg_data;
+	} data;
+};
+
 
 struct mdp_page_protection {
 	uint32_t page_protection;

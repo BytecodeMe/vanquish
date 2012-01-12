@@ -162,6 +162,8 @@ enum usb_bam_pipe_dir {
  *              dfab_usb_hs_clk in case of 8660 and 8960.
  * @pmic_id_irq: IRQ number assigned for PMIC USB ID line.
  * @mhl_enable: indicates MHL connector or not.
+ * @disable_reset_on_disconnect: perform USB PHY and LINK reset
+ *              on USB cable disconnection.
  * @swfi_latency: miminum latency to allow swfi.
  */
 struct msm_otg_platform_data {
@@ -177,6 +179,7 @@ struct msm_otg_platform_data {
 	int pmic_id_irq;
 	struct platform_device *accy_pdev;
 	bool mhl_enable;
+	bool disable_reset_on_disconnect;
 	u32 swfi_latency;
 };
 
@@ -272,6 +275,7 @@ struct msm_otg {
 #define PHY_RETENTIONED			BIT(1)
 #define PHY_OTG_COMP_DISABLED		BIT(2)
 	struct pm_qos_request_list pm_qos_req_dma;
+	int reset_counter;
 };
 
 struct msm_hsic_host_platform_data {

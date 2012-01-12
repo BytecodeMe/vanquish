@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,9 +30,11 @@ VREG_CONSUMERS(L2) = {
 };
 VREG_CONSUMERS(L3) = {
 	REGULATOR_SUPPLY("8038_l3",		NULL),
+	REGULATOR_SUPPLY("HSUSB_3p3",		"msm_otg"),
 };
 VREG_CONSUMERS(L4) = {
 	REGULATOR_SUPPLY("8038_l4",		NULL),
+	REGULATOR_SUPPLY("HSUSB_1p8",		"msm_otg"),
 };
 VREG_CONSUMERS(L5) = {
 	REGULATOR_SUPPLY("8038_l5",		NULL),
@@ -66,6 +68,7 @@ VREG_CONSUMERS(L15) = {
 };
 VREG_CONSUMERS(L16) = {
 	REGULATOR_SUPPLY("8038_l16",		NULL),
+	REGULATOR_SUPPLY("core_vdd",		"pil_qdsp6v4.2"),
 };
 VREG_CONSUMERS(L17) = {
 	REGULATOR_SUPPLY("8038_l17",		NULL),
@@ -75,6 +78,7 @@ VREG_CONSUMERS(L18) = {
 };
 VREG_CONSUMERS(L19) = {
 	REGULATOR_SUPPLY("8038_l19",		NULL),
+	REGULATOR_SUPPLY("core_vdd",		"pil_qdsp6v4.1"),
 };
 VREG_CONSUMERS(L20) = {
 	REGULATOR_SUPPLY("8038_l20",		NULL),
@@ -96,9 +100,11 @@ VREG_CONSUMERS(L26) = {
 };
 VREG_CONSUMERS(L27) = {
 	REGULATOR_SUPPLY("8038_l27",		NULL),
+	REGULATOR_SUPPLY("core_vdd",		"pil_qdsp6v4.0"),
 };
 VREG_CONSUMERS(S1) = {
 	REGULATOR_SUPPLY("8038_s1",		NULL),
+	REGULATOR_SUPPLY("HSUSB_VDDCX",		"msm_otg"),
 };
 VREG_CONSUMERS(S2) = {
 	REGULATOR_SUPPLY("8038_s2",		NULL),
@@ -111,9 +117,11 @@ VREG_CONSUMERS(S4) = {
 };
 VREG_CONSUMERS(S5) = {
 	REGULATOR_SUPPLY("8038_s5",		NULL),
+	REGULATOR_SUPPLY("krait0",		NULL),
 };
 VREG_CONSUMERS(S6) = {
 	REGULATOR_SUPPLY("8038_s6",		NULL),
+	REGULATOR_SUPPLY("krait1",		NULL),
 };
 VREG_CONSUMERS(LVS1) = {
 	REGULATOR_SUPPLY("8038_lvs1",		NULL),
@@ -126,6 +134,7 @@ VREG_CONSUMERS(EXT_5V) = {
 };
 VREG_CONSUMERS(EXT_OTG_SW) = {
 	REGULATOR_SUPPLY("ext_otg_sw",		NULL),
+	REGULATOR_SUPPLY("vbus_otg",          "msm_otg"),
 };
 
 #define PM8XXX_VREG_INIT(_id, _name, _min_uV, _max_uV, _modes, _ops, \
@@ -239,6 +248,18 @@ VREG_CONSUMERS(EXT_OTG_SW) = {
 		.gpio		= _gpio, \
 	}
 
+#define SAW_VREG_INIT(_id, _name, _min_uV, _max_uV) \
+	{ \
+		.constraints = { \
+			.name		= _name, \
+			.valid_ops_mask	= REGULATOR_CHANGE_VOLTAGE, \
+			.min_uV		= _min_uV, \
+			.max_uV		= _max_uV, \
+		}, \
+		.num_consumer_supplies	= ARRAY_SIZE(vreg_consumers_##_id), \
+		.consumer_supplies	= vreg_consumers_##_id, \
+	}
+
 /* GPIO regulator constraints */
 struct gpio_regulator_platform_data
 msm8930_gpio_regulator_pdata[] __devinitdata = {
@@ -246,6 +267,13 @@ msm8930_gpio_regulator_pdata[] __devinitdata = {
 	GPIO_VREG(EXT_5V,     "ext_5v",     "ext_5v_en",     63, NULL),
 	GPIO_VREG(EXT_OTG_SW, "ext_otg_sw", "ext_otg_sw_en", 97, "ext_5v"),
 };
+
+/* SAW regulator constraints */
+struct regulator_init_data msm8930_saw_regulator_core0_pdata =
+	/*	      ID  vreg_name	       min_uV   max_uV */
+	SAW_VREG_INIT(S5, "8038_s5",	       850000, 1300000);
+struct regulator_init_data msm8930_saw_regulator_core1_pdata =
+	SAW_VREG_INIT(S6, "8038_s6",	       850000, 1300000);
 
 /* PM8038 regulator constraints */
 struct pm8xxx_regulator_platform_data
@@ -261,9 +289,6 @@ msm8930_pm8038_regulator_pdata[] __devinitdata = {
 	PM8XXX_SMPS(S3, "8038_s3", 0, 1,  1150000, 1150000, 500, NULL, 0, 28),
 	PM8XXX_SMPS(S4, "8038_s4", 1, 1,  2200000, 2200000, 500, NULL, 100000,
 		29),
-
-	PM8XXX_FTSMPS(S5, "8038_s5", 0, 1, 950000, 1150000, 500, NULL, 0, 30),
-	PM8XXX_FTSMPS(S6, "8038_s6", 0, 1, 950000, 1150000, 500, NULL, 0, 31),
 
 	PM8XXX_NLDO1200(L1, "8038_l1",  0, 1, 1300000, 1300000, 200, "8038_s2",
 		0, 1),

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,14 +10,21 @@
  * GNU General Public License for more details.
  *
  */
-#ifndef __PMIC8058_VIBRATOR_H__
-#define __PMIC8058_VIBRATOR_H__
+#ifndef VIDC_TYPE_H
+#define VIDC_TYPE_H
 
-struct pmic8058_vibrator_pdata {
-	int initial_vibrate_ms;
-	int max_timeout_ms;
+#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/mutex.h>
+#include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/list.h>
+#include <linux/time.h>
+#include <linux/dma-mapping.h>
+#include <linux/android_pmem.h>
 
-	int level_mV;
-};
+#define DEBUG   0
+#define VIDC_ENABLE_DBGFS
 
-#endif /* __PMIC8058_VIBRATOR_H__ */
+#define USE_RES_TRACKER
+#endif

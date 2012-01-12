@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -86,7 +86,7 @@ static void diag_bridge_read_cb(struct urb *urb)
 			urb->status < 0 ? urb->status : urb->actual_length);
 }
 
-int diag_bridge_read(char *data, size_t size)
+int diag_bridge_read(char *data, int size)
 {
 	struct urb		*urb = NULL;
 	unsigned int		pipe;
@@ -153,7 +153,7 @@ static void diag_bridge_write_cb(struct urb *urb)
 			urb->status < 0 ? urb->status : urb->actual_length);
 }
 
-int diag_bridge_write(char *data, size_t size)
+int diag_bridge_write(char *data, int size)
 {
 	struct urb		*urb = NULL;
 	unsigned int		pipe;
@@ -294,6 +294,10 @@ static void diag_bridge_disconnect(struct usb_interface *ifc)
 #define VALID_INTERFACE_NUM	0
 static const struct usb_device_id diag_bridge_ids[] = {
 	{ USB_DEVICE(0x5c6, 0x9001),
+	.driver_info = VALID_INTERFACE_NUM, },
+	{ USB_DEVICE(0x5c6, 0x9034),
+	.driver_info = VALID_INTERFACE_NUM, },
+	{ USB_DEVICE(0x5c6, 0x9048),
 	.driver_info = VALID_INTERFACE_NUM, },
 
 	{} /* terminating entry */

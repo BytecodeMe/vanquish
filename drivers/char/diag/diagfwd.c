@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -247,7 +247,18 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 				err = channel_diag_write(driver->mdm_ch,
 							write_ptr);
 			} else
-				pr_err("diag: Incorrect data while writing channel");
+				pr_err("diag: Incorrect data while "
+						"writing channel");
+		}
+#endif
+#ifdef CONFIG_DIAG_HSIC_PIPE
+		else if (proc_num == HSIC_DATA) {
+			if (driver->hsic_device_enabled) {
+				write_ptr->buf = buf;
+				err = usb_diag_write(driver->mdm_ch, write_ptr);
+			} else
+				pr_err("diag: Incorrect hsic data "
+						"while USB write\n");
 		}
 #endif
 		APPEND_DEBUG('d');
@@ -902,6 +913,11 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 void diag_send_error_rsp(int index)
 {
 	int i;
+
+	if (index > 490) {
+		pr_err("diag: error response too huge, aborting\n");
+		return;
+	}
 	driver->apps_rsp_buf[0] = 0x13; /* error code 13 */
 	for (i = 0; i < index; i++)
 		driver->apps_rsp_buf[i+1] = *(driver->hdlc_buf+i);

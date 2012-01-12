@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -127,12 +127,13 @@ struct sx150x_platform_data msm8930_sx150x_data[] = {
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0xB0C000
-#define MSM_ION_EBI_SIZE	(MSM_PMEM_SIZE + 0x600000)
-#define MSM_ION_ADSP_SIZE	MSM_PMEM_ADSP_SIZE
-#define MSM_ION_HEAP_NUM	4
+#define MSM_ION_SF_SIZE		0x1800000 /* 24MB */
+#define MSM_ION_MM_SIZE		0x4000000 /* (64MB) */
+#define MSM_ION_MFC_SIZE	SZ_8K
+#define MSM_ION_HEAP_NUM	5
 #else
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
-#define MSM_ION_HEAP_NUM	2
+#define MSM_ION_HEAP_NUM	1
 #endif
 
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
@@ -284,29 +285,36 @@ static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
 		{
-			.id	= ION_HEAP_SYSTEM_ID,
+			.id	= ION_SYSTEM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_SYSTEM,
-			.name	= ION_KMALLOC_HEAP_NAME,
-		},
-		{
-			.id	= ION_HEAP_SYSTEM_CONTIG_ID,
-			.type	= ION_HEAP_TYPE_SYSTEM_CONTIG,
 			.name	= ION_VMALLOC_HEAP_NAME,
 		},
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 		{
-			.id	= ION_HEAP_EBI_ID,
+			.id	= ION_SF_HEAP_ID,
 			.type	= ION_HEAP_TYPE_CARVEOUT,
-			.name	= ION_EBI1_HEAP_NAME,
-			.size	= MSM_ION_EBI_SIZE,
+			.name	= ION_SF_HEAP_NAME,
+			.size	= MSM_ION_SF_SIZE,
 			.memory_type = ION_EBI_TYPE,
 		},
 		{
-			.id	= ION_HEAP_ADSP_ID,
+			.id	= ION_CP_MM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_CARVEOUT,
-			.name	= ION_ADSP_HEAP_NAME,
-			.size	= MSM_ION_ADSP_SIZE,
+			.name	= ION_MM_HEAP_NAME,
+			.size	= MSM_ION_MM_SIZE,
 			.memory_type = ION_EBI_TYPE,
+		},
+		{
+			.id	= ION_CP_MFC_HEAP_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_MFC_HEAP_NAME,
+			.size	= MSM_ION_MFC_SIZE,
+			.memory_type = ION_EBI_TYPE,
+		},
+		{
+			.id	= ION_IOMMU_HEAP_ID,
+			.type	= ION_HEAP_TYPE_IOMMU,
+			.name	= ION_IOMMU_HEAP_NAME,
 		},
 #endif
 	}
@@ -322,8 +330,9 @@ static struct platform_device ion_dev = {
 static void reserve_ion_memory(void)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
-	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_EBI_SIZE;
-	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_ADSP_SIZE;
+	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_SF_SIZE;
+	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_MM_SIZE;
+	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_MFC_SIZE;
 #endif
 }
 
@@ -772,43 +781,12 @@ static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
-static void msm_hsusb_vbus_power(bool on)
-{
-	static bool vbus_is_on;
-	static struct regulator *mvs_otg_switch;
-
-	if (vbus_is_on == on)
-		return;
-
-	if (on) {
-		mvs_otg_switch = regulator_get(&msm8960_device_otg.dev,
-					       "vbus_otg");
-		if (IS_ERR(mvs_otg_switch)) {
-			pr_err("Unable to get mvs_otg_switch\n");
-			return;
-		}
-
-		if (regulator_enable(mvs_otg_switch)) {
-			pr_err("unable to enable mvs_otg_switch\n");
-			goto put_mvs_otg;
-		}
-
-		vbus_is_on = true;
-		return;
-	}
-	regulator_disable(mvs_otg_switch);
-put_mvs_otg:
-	regulator_put(mvs_otg_switch);
-	vbus_is_on = false;
-}
-
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control		= OTG_PMIC_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
 	.pmic_id_irq		= PM8038_USB_ID_IN_IRQ(PM8038_IRQ_BASE),
-	.vbus_power		= msm_hsusb_vbus_power,
 	.power_budget		= 750,
 };
 #endif
@@ -1437,14 +1415,7 @@ static struct platform_device msm_device_saw_core0 = {
 	.name	= "saw-regulator",
 	.id	= 0,
 	.dev	= {
-	/*
-	 * TODO: When physical 8930/PM8038 hardware becomes
-	 * available, replace msm_saw_regulator_pdata_s5
-	 * with 8930 saw regulator object.
-	 */
-#ifndef MSM8930_PHASE_2
-		.platform_data = &msm_saw_regulator_pdata_s5,
-#endif
+		.platform_data = &msm8930_saw_regulator_core0_pdata,
 	},
 };
 
@@ -1452,14 +1423,7 @@ static struct platform_device msm_device_saw_core1 = {
 	.name	= "saw-regulator",
 	.id	= 1,
 	.dev	= {
-	/*
-	 * TODO: When physical 8930/PM8038 hardware becomes
-	 * available, replace msm_saw_regulator_pdata_s5
-	 * with 8930 saw regulator object.
-	 */
-#if     !defined(MSM8930_PHASE_2)
-		.platform_data = &msm_saw_regulator_pdata_s6,
-#endif
+		.platform_data = &msm8930_saw_regulator_core1_pdata,
 	},
 };
 

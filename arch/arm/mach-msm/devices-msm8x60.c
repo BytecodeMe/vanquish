@@ -1445,6 +1445,10 @@ static struct msm_rotator_platform_data rotator_pdata = {
 	.hardware_version_number = 0x01010307,
 	.rotator_clks = rotator_clocks,
 	.regulator_name = "fs_rot",
+#ifdef CONFIG_MSM_BUS_SCALING
+	.bus_scale_table = &rotator_bus_scale_pdata,
+#endif
+
 };
 
 struct platform_device msm_rotator_device = {
@@ -2151,7 +2155,7 @@ struct msm_vidc_platform_data vidc_platform_data = {
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	.memtype = ION_HEAP_SMI_ID,
+	.memtype = ION_CP_MM_HEAP_ID,
 	.enable_ion = 1,
 #else
 	.memtype = MEMTYPE_SMI_KERNEL,
