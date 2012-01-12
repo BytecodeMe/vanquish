@@ -22,14 +22,8 @@
 #define CAM1_REG_EN 54
 #define ISP_RESET 97
 
-struct motsoc1_work_t {
-	struct work_struct work;
-};
-static struct motsoc1_work_t *motsoc1_sensorw;
-static struct i2c_client *motsoc1_client;
 static struct msm_sensor_ctrl_t motsoc1_s_ctrl;
 
-static DECLARE_WAIT_QUEUE_HEAD(motsoc1_wait_queue);
 DEFINE_MUTEX(motsoc1_mutex);
 
 static int32_t config_csi;
@@ -86,15 +80,16 @@ static int motsoc1_i2c_txrx(
 {
 	int rc = 0;
 	int msgnum = 2;
+	struct i2c_client *client = motsoc1_s_ctrl.sensor_i2c_client->client;
 	struct i2c_msg msg[] = {
 		{ /* TX */
-			.addr = motsoc1_client->addr,
+			.addr = (client->addr/2),
 			.flags = 0,
 			.len = txlen,
 			.buf = txbuf,
 		},
 		{ /* RX */
-			.addr = motsoc1_client->addr,
+			.addr = (client->addr/2),
 			.flags = I2C_M_RD,
 			.len = rxlen,
 			.buf = rxbuf,
@@ -102,7 +97,7 @@ static int motsoc1_i2c_txrx(
 	};
 	if (rxbuf == NULL || rxlen == 0)
 		msgnum = 1;
-	rc = i2c_transfer(motsoc1_client->adapter, msg, msgnum);
+	rc = i2c_transfer(client->adapter, msg, msgnum);
 	if (rc < 0 && !motsoc1_allow_i2c_errors)
 		pr_err("motsoc1_i2c_txrx: error %d\n", rc);
 	return rc;
@@ -298,7 +293,7 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 
 	pr_info("motsoc1_sensor_setting ut=%d rt=%d\n", update_type, rt);
 
-	v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+	v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 		NOTIFY_ISPIF_STREAM, (void *)ISPIF_STREAM(
 		PIX0, ISPIF_OFF_IMMEDIATELY));
 	/*TODO: add way to ensure we are not streaming*/
@@ -330,15 +325,15 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 				motsoc1_csiphy_params.lane_cnt = 2;
 				motsoc1_csiphy_params.settle_cnt = 7;
 				v4l2_subdev_notify(
-					motsoc1_s_ctrl.sensor_v4l2_subdev,
+					&motsoc1_s_ctrl.sensor_v4l2_subdev,
 					NOTIFY_CSID_CFG,
 					&motsoc1_csid_params);
 				v4l2_subdev_notify(
-					motsoc1_s_ctrl.sensor_v4l2_subdev,
+					&motsoc1_s_ctrl.sensor_v4l2_subdev,
 					NOTIFY_CID_CHANGE, NULL);
 				mb();
 				v4l2_subdev_notify(
-					motsoc1_s_ctrl.sensor_v4l2_subdev,
+					&motsoc1_s_ctrl.sensor_v4l2_subdev,
 					NOTIFY_CSIPHY_CFG,
 					&motsoc1_csiphy_params);
 				mb();
@@ -346,10 +341,10 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 				config_csi = 1;
 			}
 
-			v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+			v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_PCLK_CHANGE,
 				&motsoc1_dimensions[0].op_pixel_clk);
-			v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+			v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_ISPIF_STREAM,
 				(void *)ISPIF_STREAM(
 					PIX0, ISPIF_ON_FRAME_BOUNDARY));
@@ -427,14 +422,14 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 			motsoc1_csiphy_params.lane_cnt = 2;
 			motsoc1_csiphy_params.settle_cnt = 7;
 			v4l2_subdev_notify(
-				motsoc1_s_ctrl.sensor_v4l2_subdev,
+				&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_CSID_CFG,
 				&motsoc1_csid_params);
 			v4l2_subdev_notify(
-				motsoc1_s_ctrl.sensor_v4l2_subdev,
+				&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_CID_CHANGE, NULL);
 			mb();
-			v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+			v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_CSIPHY_CFG,
 				&motsoc1_csiphy_params);
 			if (rc < 0) {
@@ -445,11 +440,11 @@ static int32_t motsoc1_sensor_setting(int update_type, int rt)
 			mb();
 			usleep_range(10000, 10000);
 
-			v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+			v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_PCLK_CHANGE,
 				&motsoc1_dimensions[2].op_pixel_clk);
 			usleep_range(10000, 10000);
-			v4l2_subdev_notify(motsoc1_s_ctrl.sensor_v4l2_subdev,
+			v4l2_subdev_notify(&motsoc1_s_ctrl.sensor_v4l2_subdev,
 				NOTIFY_ISPIF_STREAM,
 				(void *)ISPIF_STREAM(
 					PIX0, ISPIF_ON_FRAME_BOUNDARY));
@@ -602,14 +597,13 @@ reg_off_done:
 	return rc;
 }
 
-static int32_t motsoc1_power_on(const struct msm_camera_sensor_info *data)
+static int32_t motsoc1_power_on(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 	int use_l17 = 0;
 	int use_l29 = 0;
 
 	pr_info("motsoc1_power_on (%04x)\n", system_rev);
-	mutex_lock(&motsoc1_mutex);
 
 	/* Teufel P1/P2, Qinara P1 use L17 instead of L8 */
 	if ((machine_is_teufel() && system_rev < 0x8300) ||
@@ -666,6 +660,7 @@ static int32_t motsoc1_power_on(const struct msm_camera_sensor_info *data)
 	gpio_direction_output(CAM1_REG_EN, 1);
 
 	/* set mclk */
+	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(MOTSOC1_DEFAULT_MCLK_RATE);
 	usleep_range(1000, 2000);
 
@@ -679,14 +674,12 @@ static int32_t motsoc1_power_on(const struct msm_camera_sensor_info *data)
 	motsoc1_is_active = true;
 	pr_info("motsoc1 power on complete\n");
 power_on_done:
-	mutex_unlock(&motsoc1_mutex);
 	return rc;
 }
 
-static int32_t motsoc1_power_off(const struct msm_camera_sensor_info *data)
+static int32_t motsoc1_power_off(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	pr_info("motsoc1_power_off\n");
-	mutex_lock(&motsoc1_mutex);
 
 	/* assert ISP_RESET */
 	gpio_direction_output(ISP_RESET, 0);
@@ -709,87 +702,33 @@ static int32_t motsoc1_power_off(const struct msm_camera_sensor_info *data)
 	motsoc1_regulator_off(reg_1p2, "1.2");
 	motsoc1_regulator_off(reg_1p8, "1.8");
 
+	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
+
 	motsoc1_is_active = false;
 
-	mutex_unlock(&motsoc1_mutex);
 	return 0;
 }
 
-static int motsoc1_probe_init_done(const struct msm_camera_sensor_info *data)
+int32_t motsoc1_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
-	CDBG("motsoc1_probe_init_done\n");
-	return motsoc1_power_off(data);
-}
-
-static int motsoc1_probe_init_sensor(const struct msm_camera_sensor_info *data)
-{
-	int32_t rc = 0;
-	unsigned char byte = 0;
-	pr_info("motsoc1_probe_init_sensor\n");
-
-	rc = motsoc1_power_on(data);
-	if (rc < 0)
-		goto init_probe_fail;
-
 	/* Device will be in flash mode after releasing reset.  We won't read
 	 * any kind of chipid here because the device may not have been
 	 * flashed yet.  Just make sure an i2c transaction doesn't fail and
 	 * returns 0xFF, indicating flash mode
 	 */
+	int32_t rc = 0;
+	unsigned char byte = 0;
+
 	rc = motsoc1_getCP1(0, 0, &byte);
 	if (rc < 0) {
-		pr_err("motsoc1: i2c read failed (%d)\n", rc);
-		goto init_probe_fail;
+		pr_err("motsoc1_match_id: i2c read failed (%d)\n", rc);
+		return -ENODEV;
 	}
 	if (byte != 0xFF) {
-		pr_err("motsoc1: mode check failed (0x%02x)\n", byte);
-		rc = -ENODEV;
-		goto init_probe_fail;
+		pr_err("motsoc1_match_id: mode check failed (0x%02x)\n", byte);
+		return -ENODEV;
 	}
-
-	goto init_probe_done;
-init_probe_fail:
-	motsoc1_probe_init_done(data);
-	return rc;
-init_probe_done:
-	pr_info("motsoc1_probe_init_sensor done\n");
-	return rc;
-}
-
-int motsoc1_sensor_open_init(const struct msm_camera_sensor_info *data)
-{
-	int32_t rc = 0;
-	pr_info("motsoc1_sensor_open_init\n");
-	config_csi = 0;
-	config_sensor = 0;
-
-	if (data)
-		motsoc1_s_ctrl.sensordata = data;
-
-	rc = motsoc1_probe_init_sensor(data);
-	if (rc < 0) {
-		pr_err("motsoc1_sensor_open_init fail (%d)\n", rc);
-		goto probe_fail;
-	}
-
-	rc = motsoc1_sensor_setting(MSM_SENSOR_REG_INIT, SENSOR_PREVIEW_MODE);
-	if (rc < 0) {
-		pr_err("motsoc1_sensor_setting (%d)\n", rc);
-		goto init_fail;
-	}
-	goto init_done;
-init_fail:
-	motsoc1_probe_init_done(data);
-probe_fail:
-	return rc;
-init_done:
-	pr_info("motsoc1_sensor_open_init done\n");
-	return rc;
-}
-
-static int motsoc1_init_client(struct i2c_client *client)
-{
-	init_waitqueue_head(&motsoc1_wait_queue);
+	pr_info("motsoc1: match_id success\n");
 	return 0;
 }
 
@@ -801,50 +740,9 @@ static const struct i2c_device_id motsoc1_i2c_id[] = {
 static struct msm_camera_i2c_client motsoc1_sensor_i2c_client = {
 };
 
-static int motsoc1_i2c_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
-{
-	int rc = 0;
-	pr_info("motsoc1_i2c_probe called\n");
-
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		pr_err("motsoc1_probe: i2c_check_functionality failed\n");
-		/* FIXME rc = ??? */
-		goto probe_failure;
-	}
-
-	motsoc1_sensorw = kzalloc(sizeof(struct motsoc1_work_t), GFP_KERNEL);
-	if (!motsoc1_sensorw) {
-		pr_err("motsoc1_probe: kzalloc failed\n");
-		rc = -ENOMEM;
-		goto probe_failure;
-	}
-
-	i2c_set_clientdata(client, motsoc1_sensorw);
-	motsoc1_init_client(client);
-	motsoc1_client = client;
-	motsoc1_s_ctrl.sensor_i2c_client->client = client;
-
-	pr_info("motsoc1_i2c_probe successful\n");
-	return rc;
-probe_failure:
-	pr_err("motsoc1_i2c_probe failed %d\n", rc);
-	return rc;
-}
-
-static int __exit motsoc1_remove(struct i2c_client *client)
-{
-	struct motsoc1_work_t *sensorw = i2c_get_clientdata(client);
-	free_irq(client->irq, sensorw);
-	motsoc1_client = NULL;
-	kfree(sensorw);
-	return 0;
-}
-
 static struct i2c_driver motsoc1_i2c_driver = {
 	.id_table = motsoc1_i2c_id,
-	.probe    = motsoc1_i2c_probe,
-	.remove   = __exit_p(motsoc1_i2c_remove),
+	.probe    = msm_sensor_i2c_probe,
 	.driver   = {
 		.name = "motsoc1",
 	},
@@ -856,7 +754,7 @@ int32_t motsoc1_sensor_get_output_info(struct msm_sensor_ctrl_t *s_ctrl,
 	panic("motsoc1_sensor_get_output_info not implemented\n");
 }
 
-int motsoc1_sensor_config(void __user *argp)
+int motsoc1_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 {
 	struct sensor_cfg_data cdata;
 	int rc = 0;
@@ -864,8 +762,6 @@ int motsoc1_sensor_config(void __user *argp)
 	if (copy_from_user(&cdata, (void *)argp,
 				sizeof(struct sensor_cfg_data)))
 		return -EFAULT;
-
-	mutex_lock(&motsoc1_mutex);
 
 	pr_info("motsoc1_sensor_config: cfgtype = %d\n", cdata.cfgtype);
 	switch (cdata.cfgtype) {
@@ -899,44 +795,6 @@ int motsoc1_sensor_config(void __user *argp)
 		break;
 	}
 
-	mutex_unlock(&motsoc1_mutex);
-
-	return rc;
-}
-
-static int motsoc1_sensor_release(void)
-{
-	pr_info("motsoc1_sensor_release\n");
-	return motsoc1_power_off(motsoc1_s_ctrl.sensordata);
-}
-
-static int motsoc1_sensor_probe(struct msm_sensor_ctrl_t *s_ctrl,
-		const struct msm_camera_sensor_info *info,
-		struct msm_sensor_ctrl *s)
-{
-	int rc = 0;
-	rc = i2c_add_driver(&motsoc1_i2c_driver);
-	if (rc < 0 || motsoc1_client == NULL) {
-		rc = -ENOTSUPP;
-		goto probe_fail;
-	}
-	/*msm_camio_clk_rate_set(MOTSOC1_DEFAULT_MCLK_RATE);*/
-	rc = motsoc1_probe_init_sensor(info);
-	if (rc < 0)
-		goto probe_fail;
-
-	s->s_init    = motsoc1_sensor_open_init;
-	s->s_release = motsoc1_sensor_release;
-	s->s_config  = motsoc1_sensor_config;
-	s->s_camera_type = BACK_CAMERA_2D;
-	s->s_mount_angle = info->sensor_platform_info->mount_angle;
-
-	motsoc1_probe_init_done(info);
-	return rc;
-
-probe_fail:
-	pr_err("motsoc1_sensor_probe: sensor probe failed! (%d)\n", rc);
-	i2c_del_driver(&motsoc1_i2c_driver);
 	return rc;
 }
 
@@ -950,7 +808,12 @@ static int motsoc1_enum_fmt(struct v4l2_subdev *sd, unsigned int index,
 	return 0;
 }
 
-static struct v4l2_subdev_core_ops motsoc1_subdev_core_ops;
+static struct v4l2_subdev_core_ops motsoc1_subdev_core_ops = {
+	.s_ctrl = msm_sensor_v4l2_s_ctrl,
+	.queryctrl = msm_sensor_v4l2_query_ctrl,
+	.ioctl = msm_sensor_subdev_ioctl,
+	.s_power = msm_sensor_power,
+};
 static struct v4l2_subdev_video_ops motsoc1_subdev_video_ops = {
 	.enum_mbus_fmt = motsoc1_enum_fmt,
 };
@@ -960,42 +823,22 @@ static struct v4l2_subdev_ops motsoc1_subdev_ops = {
 	.video = &motsoc1_subdev_video_ops,
 };
 
-static int motsoc1_sensor_v4l2_probe(const struct msm_camera_sensor_info *info,
-		struct v4l2_subdev *sdev, struct msm_sensor_ctrl *s)
-{
-	return msm_sensor_v4l2_probe(&motsoc1_s_ctrl, info, sdev, s);
-}
-
-static int motsoc1_probe(struct platform_device *pdev)
-{
-	return msm_sensor_register(pdev, motsoc1_sensor_v4l2_probe);
-}
-
-static struct platform_driver motsoc1_driver = {
-	.probe  = motsoc1_probe,
-	.driver = {
-		.name  = "msm_camera_motsoc1",
-		.owner = THIS_MODULE,
-	},
-};
-
 static int __init motsoc1_init_module(void)
 {
-	return platform_driver_register(&motsoc1_driver);
+	return i2c_add_driver(&motsoc1_i2c_driver);
 }
 
 static struct msm_sensor_fn_t motsoc1_func_tbl = {
 	.sensor_get_output_info = motsoc1_sensor_get_output_info,
 	.sensor_config          = motsoc1_sensor_config,
-	.sensor_open_init       = motsoc1_sensor_open_init,
-	.sensor_release         = motsoc1_sensor_release,
 	.sensor_power_up        = motsoc1_power_on,
 	.sensor_power_down      = motsoc1_power_off,
-	.sensor_probe           = motsoc1_sensor_probe,
+	.sensor_match_id        = motsoc1_match_id,
 };
 
 static struct msm_sensor_ctrl_t motsoc1_s_ctrl = {
 	.sensor_i2c_client            = &motsoc1_sensor_i2c_client,
+	.sensor_i2c_addr              = 0x3E,
 	.msm_sensor_mutex             = &motsoc1_mutex,
 	.sensor_i2c_driver            = &motsoc1_i2c_driver,
 	.sensor_v4l2_subdev_info      = motsoc1_subdev_info,

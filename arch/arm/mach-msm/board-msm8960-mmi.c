@@ -1135,24 +1135,6 @@ static struct i2c_board_info msm_camera_flash_boardinfo[] __initdata = {
 
 #ifdef CONFIG_MSM_CAMERA
 
-static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
-#ifdef CONFIG_MOTSOC1
-	{
-	I2C_BOARD_INFO("motsoc1", 0x1F),
-	},
-#endif
-#ifdef CONFIG_MT9M114
-	{
-	I2C_BOARD_INFO("mt9m114", 0x48),
-	},
-#endif
-#ifdef CONFIG_OV8820
-	{
-	I2C_BOARD_INFO("ov8820", 0x6C >> 2),
-	},
-#endif
-};
-
 #ifdef CONFIG_MOTSOC1
 static struct msm_camera_sensor_flash_data flash_motsoc1 = {
 	.flash_type = MSM_CAMERA_FLASH_NONE,
@@ -1176,12 +1158,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_motsoc1_data = {
 	.camera_type          = BACK_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_motsoc1 = {
-	.name    = "msm_camera_motsoc1",
-	.dev     = {
-		.platform_data = &msm_camera_sensor_motsoc1_data,
-	},
-};
 #endif
 #ifdef CONFIG_MT9M114
 static struct msm_camera_sensor_flash_data flash_mt9m114 = {
@@ -1206,12 +1182,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
 	.camera_type          = FRONT_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_mt9m114 = {
-	.name    = "msm_camera_mt9m114",
-	.dev     = {
-		.platform_data = &msm_camera_sensor_mt9m114_data,
-	},
-};
 #endif
 
 #ifdef CONFIG_OV8820
@@ -1237,31 +1207,47 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov8820_data = {
 	.camera_type = BACK_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_ov8820 = {
-	.name	= "msm_camera_ov8820",
-	.dev	= {
-		.platform_data = &msm_camera_sensor_ov8820_data,
-	},
-};
 #endif
+
+static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
+#ifdef CONFIG_MOTSOC1
+	{
+	I2C_BOARD_INFO("motsoc1", 0x1F),
+	.platform_data = &msm_camera_sensor_motsoc1_data,
+	},
+#endif
+#ifdef CONFIG_MT9M114
+	{
+	I2C_BOARD_INFO("mt9m114", 0x48),
+	.platform_data = &msm_camera_sensor_mt9m114_data,
+	},
+#endif
+#ifdef CONFIG_OV8820
+	{
+	I2C_BOARD_INFO("ov8820", 0x36),
+	.platform_data = &msm_camera_sensor_ov8820_data,
+	},
+#endif
+};
+
 void __init msm8960_init_cam(void)
 {
 	int i;
-	struct platform_device *cam_dev[] = {
+	struct msm_camera_sensor_info *cam_data[] = {
 #ifdef CONFIG_MOTSOC1
-		&msm8960_camera_sensor_motsoc1,
+		&msm_camera_sensor_motsoc1_data,
 #endif
 #ifdef CONFIG_MT9M114
-		&msm8960_camera_sensor_mt9m114,
+		&msm_camera_sensor_mt9m114_data,
 #endif
 #ifdef CONFIG_OV8820
-		&msm8960_camera_sensor_ov8820,
+		&msm_camera_sensor_ov8820_data,
 #endif
 	};
 
-	for (i = 0; i < ARRAY_SIZE(cam_dev); i++) {
+	for (i = 0; i < ARRAY_SIZE(cam_data); i++) {
 		struct msm_camera_sensor_info *s_info;
-		s_info = cam_dev[i]->dev.platform_data;
+		s_info = cam_data[i];
 		if (camera_single_mclk &&
 				s_info->camera_type == FRONT_CAMERA_2D) {
 			if (s_info->gpio_conf->cam_gpio_tbl_size != 1)
@@ -1273,8 +1259,6 @@ void __init msm8960_init_cam(void)
 				s_info->gpio_conf->cam_gpio_tbl[0] = 5;
 			}
 		}
-		msm_get_cam_resources(s_info);
-		platform_device_register(cam_dev[i]);
 	}
 
 	platform_device_register(&msm8960_device_csiphy0);

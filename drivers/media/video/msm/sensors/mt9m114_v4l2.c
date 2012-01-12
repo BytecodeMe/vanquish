@@ -33,12 +33,11 @@ static struct msm_sensor_ctrl_t mt9m114_s_ctrl;
 
 #define MT9M114_DEFAULT_MASTER_CLK_RATE 24000000
 
-static int32_t mt9m114_power_on(const struct msm_camera_sensor_info *data)
+static int32_t mt9m114_power_on(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 
-	CDBG("mt9m114_power_on\n");
-	mutex_lock(&mt9m114_mut);
+	pr_info("mt9m114_power_on\n");
 
 	/* obtain gpios */
 	rc = gpio_request(CAM2_DIGITAL_EN_N, "mt9m114");
@@ -66,6 +65,7 @@ static int32_t mt9m114_power_on(const struct msm_camera_sensor_info *data)
 	gpio_direction_output(CAM2_ANALOG_EN, 1);
 
 	/* turn on mclk */
+	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(MT9M114_DEFAULT_MASTER_CLK_RATE);
 	usleep_range(1000, 2000);
 
@@ -76,14 +76,12 @@ static int32_t mt9m114_power_on(const struct msm_camera_sensor_info *data)
 	msleep(50);
 
 power_on_done:
-	mutex_unlock(&mt9m114_mut);
 	return rc;
 }
 
-static int32_t mt9m114_power_off(const struct msm_camera_sensor_info *data)
+static int32_t mt9m114_power_off(struct msm_sensor_ctrl_t *s_ctrl)
 {
-	CDBG("mt9m114_power_off\n");
-	mutex_lock(&mt9m114_mut);
+	pr_info("mt9m114_power_off\n");
 
 	/* assert reset */
 	gpio_direction_output(CAM2_RESET, 0);
@@ -99,7 +97,30 @@ static int32_t mt9m114_power_off(const struct msm_camera_sensor_info *data)
 	gpio_free(CAM2_ANALOG_EN);
 	gpio_free(CAM2_DIGITAL_EN_N);
 
-	mutex_unlock(&mt9m114_mut);
+	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
+
+	return 0;
+}
+
+int32_t mt9m114_match_id(struct msm_sensor_ctrl_t *s_ctrl)
+{
+	int32_t rc = 0;
+	uint16_t chipid = 0;
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			s_ctrl->sensor_id_info->sensor_id_reg_addr, &chipid,
+			MSM_CAMERA_I2C_WORD_DATA);
+	if (rc < 0) {
+		pr_err("%s: read id failed\n", __func__);
+		return rc;
+	}
+
+	pr_info("mt9m114 id: %04x\n", chipid);
+	if (chipid != s_ctrl->sensor_id_info->sensor_id) {
+		pr_err("mt9m114 chip id does not match\n");
+		return -ENODEV;
+	}
+	pr_info("mt9m114: match_id success\n");
 	return 0;
 }
 
@@ -1345,6 +1366,7 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_config = msm_sensor_config,
 	.sensor_power_up = mt9m114_power_on,
 	.sensor_power_down = mt9m114_power_off,
+	.sensor_match_id = mt9m114_match_id,
 };
 
 static struct msm_sensor_reg_t mt9m114_regs = {
