@@ -172,6 +172,12 @@ static struct resource resources_hsic_host[] = {
 		.end	= USB_HSIC_IRQ,
 		.flags	= IORESOURCE_IRQ,
 	},
+	{
+		.start	= MSM_GPIO_TO_INT(69),
+		.end	= MSM_GPIO_TO_INT(69),
+		.name	= "peripheral_status_irq",
+		.flags	= IORESOURCE_IRQ,
+	},
 };
 
 struct platform_device msm_device_hsic_host = {
@@ -874,7 +880,7 @@ static struct pil_q6v4_pdata msm_8960_q6_mss_fw_data = {
 	.strap_ahb_lower = 0x00000080,
 	.aclk_reg = SFAB_MSS_Q6_FW_ACLK_CTL,
 	.jtag_clk_reg = MSS_Q6FW_JTAG_CLK_CTL,
-	.xo_id = MSM_XO_TCXO_D0,
+	.xo_id = MSM_XO_CXO,
 	.name = "modem_fw",
 	.depends = "q6",
 	.pas_id = PAS_MODEM_FW,
@@ -912,7 +918,7 @@ static struct pil_q6v4_pdata msm_8960_q6_mss_sw_data = {
 	.strap_ahb_lower = 0x00000080,
 	.aclk_reg = SFAB_MSS_Q6_SW_ACLK_CTL,
 	.jtag_clk_reg = MSS_Q6SW_JTAG_CLK_CTL,
-	.xo_id = MSM_XO_TCXO_D0,
+	.xo_id = MSM_XO_CXO,
 	.name = "modem",
 	.depends = "modem_fw",
 	.pas_id = PAS_MODEM_SW,
@@ -925,6 +931,26 @@ struct platform_device msm_8960_q6_mss_sw = {
 	.num_resources  = ARRAY_SIZE(msm_8960_q6_mss_sw_resources),
 	.resource       = msm_8960_q6_mss_sw_resources,
 	.dev.platform_data = &msm_8960_q6_mss_sw_data,
+};
+
+static struct resource msm_8960_riva_resources[] = {
+	{
+		.start  = 0x03204000,
+		.end    = 0x03204000 + SZ_256 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm_8960_riva = {
+	.name = "pil_riva",
+	.id = -1,
+	.num_resources  = ARRAY_SIZE(msm_8960_riva_resources),
+	.resource       = msm_8960_riva_resources,
+};
+
+struct platform_device msm_pil_tzapps = {
+	.name = "pil_tzapps",
+	.id = -1,
 };
 
 struct platform_device msm_device_smd = {
@@ -1418,6 +1444,21 @@ struct platform_device msm_cpudai_fm_tx = {
 	.id     = 0x3005,
 };
 
+struct platform_device msm_cpudai_incall_music_rx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x8005,
+};
+
+struct platform_device msm_cpudai_incall_record_rx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x8004,
+};
+
+struct platform_device msm_cpudai_incall_record_tx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x8003,
+};
+
 /*
  * Machine specific data for AUX PCM Interface
  * which the driver will  be unware of.
@@ -1507,7 +1548,6 @@ struct platform_device msm_pcm_afe = {
 };
 
 struct platform_device *msm_footswitch_devices[] = {
-	FS_8X60(FS_MDP,    "fs_mdp"),
 	FS_8X60(FS_ROT,    "fs_rot"),
 	FS_8X60(FS_IJPEG,  "fs_ijpeg"),
 	FS_8X60(FS_VFE,    "fs_vfe"),
@@ -2103,7 +2143,7 @@ static struct msm_bus_vectors grp2d0_init_vectors[] = {
 	},
 };
 
-static struct msm_bus_vectors grp2d0_max_vectors[] = {
+static struct msm_bus_vectors grp2d0_nominal_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
@@ -2112,10 +2152,23 @@ static struct msm_bus_vectors grp2d0_max_vectors[] = {
 	},
 };
 
+static struct msm_bus_vectors grp2d0_max_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(2048),
+	},
+};
+
 static struct msm_bus_paths grp2d0_bus_scale_usecases[] = {
 	{
 		ARRAY_SIZE(grp2d0_init_vectors),
 		grp2d0_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d0_nominal_vectors),
+		grp2d0_nominal_vectors,
 	},
 	{
 		ARRAY_SIZE(grp2d0_max_vectors),
@@ -2138,7 +2191,7 @@ static struct msm_bus_vectors grp2d1_init_vectors[] = {
 	},
 };
 
-static struct msm_bus_vectors grp2d1_max_vectors[] = {
+static struct msm_bus_vectors grp2d1_nominal_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
@@ -2147,10 +2200,23 @@ static struct msm_bus_vectors grp2d1_max_vectors[] = {
 	},
 };
 
+static struct msm_bus_vectors grp2d1_max_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(2048),
+	},
+};
+
 static struct msm_bus_paths grp2d1_bus_scale_usecases[] = {
 	{
 		ARRAY_SIZE(grp2d1_init_vectors),
 		grp2d1_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d1_nominal_vectors),
+		grp2d1_nominal_vectors,
 	},
 	{
 		ARRAY_SIZE(grp2d1_max_vectors),
@@ -2249,17 +2315,21 @@ static struct kgsl_device_platform_data kgsl_2d0_pdata = {
 	.pwrlevel = {
 		{
 			.gpu_freq = 200000000,
+			.bus_freq = 2,
+		},
+		{
+			.gpu_freq = 96000000,
 			.bus_freq = 1,
 		},
 		{
-			.gpu_freq = 200000000,
+			.gpu_freq = 27000000,
 			.bus_freq = 0,
 		},
 	},
 	.init_level = 0,
-	.num_levels = 2,
+	.num_levels = 3,
 	.set_grp_async = NULL,
-	.idle_timeout = HZ/10,
+	.idle_timeout = HZ/5,
 	.nap_allowed = true,
 	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -2298,17 +2368,21 @@ static struct kgsl_device_platform_data kgsl_2d1_pdata = {
 	.pwrlevel = {
 		{
 			.gpu_freq = 200000000,
+			.bus_freq = 2,
+		},
+		{
+			.gpu_freq = 96000000,
 			.bus_freq = 1,
 		},
 		{
-			.gpu_freq = 200000000,
+			.gpu_freq = 27000000,
 			.bus_freq = 0,
 		},
 	},
 	.init_level = 0,
-	.num_levels = 2,
+	.num_levels = 3,
 	.set_grp_async = NULL,
-	.idle_timeout = HZ/10,
+	.idle_timeout = HZ/5,
 	.nap_allowed = true,
 	.clk_map = KGSL_CLK_CORE | KGSL_CLK_IFACE,
 #ifdef CONFIG_MSM_BUS_SCALING

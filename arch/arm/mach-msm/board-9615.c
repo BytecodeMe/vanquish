@@ -15,19 +15,19 @@
 #include <linux/i2c.h>
 #include <linux/msm_ssbi.h>
 #include <linux/memblock.h>
-#include <asm/mach-types.h>
-#include <asm/mach/arch.h>
-#include <asm/mach/mmc.h>
-#include <mach/board.h>
-#include <mach/msm_iomap.h>
-#include <mach/gpio.h>
-#include <mach/gpiomux.h>
-#include <mach/msm_spi.h>
 #include <linux/usb/android.h>
 #include <linux/usb/msm_hsusb.h>
 #include <linux/mfd/pm8xxx/pm8xxx-adc.h>
 #include <linux/leds.h>
 #include <linux/leds-pm8xxx.h>
+#include <linux/power/ltc4088-charger.h>
+#include <asm/mach-types.h>
+#include <asm/mach/arch.h>
+#include <asm/hardware/gic.h>
+#include <mach/board.h>
+#include <mach/msm_iomap.h>
+#include <mach/gpio.h>
+#include <mach/msm_spi.h>
 #include <mach/msm_bus_board.h>
 #include "timer.h"
 #include "devices.h"
@@ -35,7 +35,6 @@
 #include "cpuidle.h"
 #include "pm.h"
 #include "acpuclock.h"
-#include <linux/power/ltc4088-charger.h>
 #include "pm-boot.h"
 
 static struct pm8xxx_adc_amux pm8018_adc_channels_data[] = {
@@ -181,423 +180,6 @@ static struct platform_device msm9615_device_ext_2p95v_vreg = {
 	},
 };
 
-static struct gpiomux_setting ps_hold = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi4 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi5 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi3 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi3_cs1_config = {
-	.func = GPIOMUX_FUNC_4,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-#ifdef CONFIG_LTC4088_CHARGER
-static struct gpiomux_setting ltc4088_chg_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-#endif
-
-struct msm_gpiomux_config msm9615_ps_hold_config[] __initdata = {
-	{
-		.gpio = 83,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ps_hold,
-		},
-	},
-};
-
-#ifdef CONFIG_LTC4088_CHARGER
-static struct msm_gpiomux_config
-	msm9615_ltc4088_charger_config[] __initdata = {
-	{
-		.gpio = 4,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ltc4088_chg_cfg,
-		},
-	},
-	{
-		.gpio = 6,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ltc4088_chg_cfg,
-		},
-	},
-	{
-		.gpio = 7,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ltc4088_chg_cfg,
-		},
-	},
-};
-#endif
-
-struct msm_gpiomux_config msm9615_gsbi_configs[] __initdata = {
-	{
-		.gpio      = 8,		/* GSBI3 QUP SPI_CLK */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
-		},
-	},
-	{
-		.gpio      = 9,		/* GSBI3 QUP SPI_CS_N */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
-		},
-	},
-	{
-		.gpio      = 10,	/* GSBI3 QUP SPI_DATA_MISO */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
-		},
-	},
-	{
-		.gpio      = 11,	/* GSBI3 QUP SPI_DATA_MOSI */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
-		},
-	},
-	{
-		.gpio      = 12,	/* GSBI4 UART */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
-		},
-	},
-	{
-		.gpio      = 13,	/* GSBI4 UART */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
-		},
-	},
-	{
-		.gpio      = 14,	/* GSBI4 UART */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
-		},
-	},
-	{
-		.gpio      = 15,	/* GSBI4 UART */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
-		},
-	},
-	{
-		.gpio      = 16,	/* GSBI5 I2C QUP SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		.gpio      = 17,	/* GSBI5 I2C QUP SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi5,
-		},
-	},
-	{
-		/* GPIO 19 can be used for I2C/UART on GSBI5 */
-		.gpio      = 19,	/* GSBI3 QUP SPI_CS_1 */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3_cs1_config,
-		},
-	},
-};
-
-#if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
-	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT))
-
-#define GPIO_SDC1_HW_DET	80
-#define GPIO_SDC2_DAT1_WAKEUP	26
-
-/* MDM9x15 has 2 SDCC controllers */
-enum sdcc_controllers {
-	SDCC1,
-	SDCC2,
-	MAX_SDCC_CONTROLLER
-};
-
-#ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-/* All SDCC controllers requires VDD/VCC voltage */
-static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
-	/* SDCC1 : External card slot connected */
-	[SDCC1] = {
-		.name = "sdc_vdd",
-		/*
-		 * This is a gpio-regulator and does not support
-		 * regulator_set_voltage and regulator_set_optimum_mode
-		 */
-		.high_vol_level = 2950000,
-		.low_vol_level = 2950000,
-		.hpm_uA = 600000, /* 600mA */
-	}
-};
-
-/* All SDCC controllers may require voting for VDD PAD voltage */
-static struct msm_mmc_reg_data mmc_vddp_reg_data[MAX_SDCC_CONTROLLER] = {
-	/* SDCC1 : External card slot connected */
-	[SDCC1] = {
-		.name = "sdc_vddp",
-		.high_vol_level = 2950000,
-		.low_vol_level = 1850000,
-		.always_on = true,
-		.lpm_sup = true,
-		/* Max. Active current required is 16 mA */
-		.hpm_uA = 16000,
-		/*
-		 * Sleep current required is ~300 uA. But min. vote can be
-		 * in terms of mA (min. 1 mA). So let's vote for 2 mA
-		 * during sleep.
-		 */
-		.lpm_uA = 2000,
-	}
-};
-
-static struct msm_mmc_slot_reg_data mmc_slot_vreg_data[MAX_SDCC_CONTROLLER] = {
-	/* SDCC1 : External card slot connected */
-	[SDCC1] = {
-		.vdd_data = &mmc_vdd_reg_data[SDCC1],
-		.vddp_data = &mmc_vddp_reg_data[SDCC1],
-	}
-};
-
-/* SDC1 pad data */
-static struct msm_mmc_pad_drv sdc1_pad_drv_on_cfg[] = {
-	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA},
-	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_10MA},
-	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_10MA}
-};
-
-static struct msm_mmc_pad_drv sdc1_pad_drv_off_cfg[] = {
-	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_2MA},
-	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_2MA},
-	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_2MA}
-};
-
-static struct msm_mmc_pad_pull sdc1_pad_pull_on_cfg[] = {
-	{TLMM_PULL_SDC1_CLK, GPIO_CFG_NO_PULL},
-	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_UP},
-	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_UP}
-};
-
-static struct msm_mmc_pad_pull sdc1_pad_pull_off_cfg[] = {
-	{TLMM_PULL_SDC1_CLK, GPIO_CFG_NO_PULL},
-	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_DOWN},
-	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_DOWN}
-};
-
-static struct msm_mmc_pad_pull_data mmc_pad_pull_data[MAX_SDCC_CONTROLLER] = {
-	[SDCC1] = {
-		.on = sdc1_pad_pull_on_cfg,
-		.off = sdc1_pad_pull_off_cfg,
-		.size = ARRAY_SIZE(sdc1_pad_pull_on_cfg)
-	},
-};
-
-static struct msm_mmc_pad_drv_data mmc_pad_drv_data[MAX_SDCC_CONTROLLER] = {
-	[SDCC1] = {
-		.on = sdc1_pad_drv_on_cfg,
-		.off = sdc1_pad_drv_off_cfg,
-		.size = ARRAY_SIZE(sdc1_pad_drv_on_cfg)
-	},
-};
-
-static struct msm_mmc_pad_data mmc_pad_data[MAX_SDCC_CONTROLLER] = {
-	[SDCC1] = {
-		.pull = &mmc_pad_pull_data[SDCC1],
-		.drv = &mmc_pad_drv_data[SDCC1]
-	},
-};
-#endif
-
-#ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-static struct gpiomux_setting sdcc2_clk_actv_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_16MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting sdcc2_cmd_data_0_3_actv_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting sdcc2_suspend_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct msm_gpiomux_config msm9615_sdcc2_configs[] __initdata = {
-	{
-		/* SDC2_DATA_0 */
-		.gpio      = 25,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
-		},
-	},
-	{
-		/* SDC2_DATA_1 */
-		.gpio      = 26,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_cmd_data_0_3_actv_cfg,
-		},
-	},
-	{
-		/* SDC2_DATA_2 */
-		.gpio      = 27,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
-		},
-	},
-	{
-		/* SDC2_DATA_3 */
-		.gpio      = 28,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
-		},
-	},
-	{
-		/* SDC2_CMD */
-		.gpio      = 29,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_cmd_data_0_3_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
-		},
-	},
-	{
-		/* SDC2_CLK */
-		.gpio      = 30,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &sdcc2_clk_actv_cfg,
-			[GPIOMUX_SUSPENDED] = &sdcc2_suspend_cfg,
-		},
-	},
-};
-
-static struct msm_mmc_gpio sdc2_gpio_cfg[] = {
-	{25, "sdc2_dat_0"},
-	{26, "sdc2_dat_1"},
-	{27, "sdc2_dat_2"},
-	{28, "sdc2_dat_3"},
-	{29, "sdc2_cmd"},
-	{30, "sdc2_clk"},
-};
-
-static struct msm_mmc_gpio_data mmc_gpio_data[MAX_SDCC_CONTROLLER] = {
-	[SDCC2] = {
-		.gpio = sdc2_gpio_cfg,
-		.size = ARRAY_SIZE(sdc2_gpio_cfg),
-	},
-};
-#else
-static struct msm_gpiomux_config msm9615_sdcc2_configs[0];
-#endif
-
-static struct msm_mmc_pin_data mmc_slot_pin_data[MAX_SDCC_CONTROLLER] = {
-#ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-	[SDCC1] = {
-		.is_gpio = 0,
-		.pad_data = &mmc_pad_data[SDCC1],
-	},
-#endif
-#ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-	[SDCC2] = {
-		.is_gpio = 1,
-		.gpio_data = &mmc_gpio_data[SDCC2],
-	},
-#endif
-};
-
-#ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-static unsigned int sdc1_sup_clk_rates[] = {
-	400000, 24000000, 48000000
-};
-
-static struct mmc_platform_data sdc1_data = {
-	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
-	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
-	.sup_clk_table	= sdc1_sup_clk_rates,
-	.sup_clk_cnt	= ARRAY_SIZE(sdc1_sup_clk_rates),
-	.pclk_src_dfab	= true,
-	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
-	.pin_data	= &mmc_slot_pin_data[SDCC1],
-#ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
-	.status_gpio	= GPIO_SDC1_HW_DET,
-	.status_irq	= MSM_GPIO_TO_INT(GPIO_SDC1_HW_DET),
-	.irq_flags	= IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-#endif
-	.xpc_cap	= 1,
-	.uhs_caps	= (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
-			   MMC_CAP_MAX_CURRENT_400)
-};
-static struct mmc_platform_data *msm9615_sdc1_pdata = &sdc1_data;
-#else
-static struct mmc_platform_data *msm9615_sdc1_pdata;
-#endif
-
-#ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-static unsigned int sdc2_sup_clk_rates[] = {
-	400000, 24000000, 48000000
-};
-
-static struct mmc_platform_data sdc2_data = {
-	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
-	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
-	.sup_clk_table	= sdc2_sup_clk_rates,
-	.sup_clk_cnt	= ARRAY_SIZE(sdc2_sup_clk_rates),
-	.pclk_src_dfab	= 1,
-	.pin_data	= &mmc_slot_pin_data[SDCC2],
-#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
-	.sdiowakeup_irq = MSM_GPIO_TO_INT(GPIO_SDC2_DAT1_WAKEUP),
-#endif
-};
-static struct mmc_platform_data *msm9615_sdc2_pdata = &sdc2_data;
-#else
-static struct mmc_platform_data *msm9615_sdc2_pdata;
-#endif
-
-static void __init msm9615_init_mmc(void)
-{
-	if (msm9615_sdc1_pdata) {
-		/* SDC1: External card slot for SD/MMC cards */
-		msm_add_sdcc(1, msm9615_sdc1_pdata);
-	}
-
-	if (msm9615_sdc2_pdata) {
-		msm_gpiomux_install(msm9615_sdcc2_configs,
-			ARRAY_SIZE(msm9615_sdcc2_configs));
-
-		/* SDC2: External card slot used for WLAN */
-		msm_add_sdcc(2, msm9615_sdc2_pdata);
-	}
-}
-#else
-static void __init msm9615_init_mmc(void) { }
-#endif
 static  struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{0, 0, "C0", "WFI",
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
@@ -633,27 +215,6 @@ static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
 	.mode = MSM_PM_BOOT_CONFIG_REMAP_BOOT_ADDR,
 	.v_addr = MSM_APCS_GLB_BASE +  0x24,
 };
-
-static int __init gpiomux_init(void)
-{
-	int rc;
-
-	rc = msm_gpiomux_init(NR_GPIO_IRQS);
-	if (rc) {
-		pr_err(KERN_ERR "msm_gpiomux_init failed %d\n", rc);
-		return rc;
-	}
-	msm_gpiomux_install(msm9615_gsbi_configs,
-			ARRAY_SIZE(msm9615_gsbi_configs));
-
-	msm_gpiomux_install(msm9615_ps_hold_config,
-			ARRAY_SIZE(msm9615_ps_hold_config));
-#ifdef CONFIG_LTC4088_CHARGER
-	msm_gpiomux_install(msm9615_ltc4088_charger_config,
-			ARRAY_SIZE(msm9615_ltc4088_charger_config));
-#endif
-	return 0;
-}
 
 static void __init msm9615_init_buses(void)
 {
@@ -865,7 +426,7 @@ static void __init msm9615_reserve(void)
 static void __init msm9615_common_init(void)
 {
 	msm9615_device_init();
-	gpiomux_init();
+	msm9615_init_gpiomux();
 	msm9615_i2c_init();
 	regulator_suppress_info_printing();
 	platform_device_register(&msm9615_device_rpm_regulator);
@@ -908,6 +469,7 @@ static void __init msm9615_mtp_init(void)
 MACHINE_START(MSM9615_CDP, "QCT MSM9615 CDP")
 	.map_io = msm9615_map_io,
 	.init_irq = msm9615_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm9615_cdp_init,
 	.reserve = msm9615_reserve,
@@ -916,6 +478,7 @@ MACHINE_END
 MACHINE_START(MSM9615_MTP, "QCT MSM9615 MTP")
 	.map_io = msm9615_map_io,
 	.init_irq = msm9615_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm9615_mtp_init,
 	.reserve = msm9615_reserve,

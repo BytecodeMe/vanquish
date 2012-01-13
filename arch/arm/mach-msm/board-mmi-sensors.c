@@ -163,10 +163,10 @@ struct lm3532_backlight_platform_data mp_lm3532_pdata = {
 	.reset_release = lm3532_reset_release,
 
 	.led1_controller = LM3532_CNTRL_A,
-	.led2_controller = LM3532_CNTRL_B,
+	.led2_controller = LM3532_CNTRL_A,
 	.led3_controller = LM3532_CNTRL_C,
 
-	.ctrl_a_name = "lm3532_bl",
+	.ctrl_a_name = "lcd-backlight",
 	.ctrl_b_name = "lm3532_led1",
 	.ctrl_c_name = "lm3532_led2",
 

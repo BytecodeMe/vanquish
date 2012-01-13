@@ -75,9 +75,9 @@ config ARCH_MSM8X60
 	select ARCH_REQUIRE_GPIOLIB
 	select MSM_ADM3
 	select REGULATOR
+	select MSM_RPM_REGULATOR
 	select MSM_V2_TLMM
 	select MSM_PIL
-	select MSM_SCM
 	select ARCH_HAS_CPU_IDLE_WAIT
 	select MSM_DIRECT_SCLK_ACCESS
 	select MSM_RPM
@@ -117,6 +117,8 @@ config ARCH_MSM8X60
 	select ARCH_INLINE_WRITE_UNLOCK_IRQRESTORE
 	select CPU_HAS_L2_PMU
 	select MSM_SPM_V1
+	select MSM_SCM if SMP
+	select MULTI_IRQ_HANDLER
 
 config ARCH_MSM8960
 	bool "MSM8960"
@@ -128,6 +130,7 @@ config ARCH_MSM8960
 	select MSM_SCM if SMP
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
+	select MSM_RPM_REGULATOR
 	select MSM_RPM
 	select MSM_XO
 	select MSM_QDSP6_APR
@@ -153,6 +156,8 @@ config ARCH_MSM8960
 	select FIX_MOVABLE_ZONE
 	select CLEANCACHE
 	select QCACHE
+	select MSM_MULTIMEDIA_USE_ION
+	select MULTI_IRQ_HANDLER
 
 config ARCH_MSM8930
 	bool "MSM8930"
@@ -187,6 +192,7 @@ config ARCH_MSM8930
 	select ARCH_MEMORY_REMOVE
 	select FIX_MOVABLE_ZONE
 	select MSM_ULTRASOUND
+	select MULTI_IRQ_HANDLER
 
 config ARCH_APQ8064
 	bool "APQ8064"
@@ -201,6 +207,7 @@ config ARCH_APQ8064
 	select MSM_PIL
 	select MSM_QDSP6_APR
 	select MSM_AUDIO_QDSP6 if SND_SOC
+	select MULTI_IRQ_HANDLER
 
 config ARCH_MSMCOPPER
 	bool "MSM Copper"
@@ -210,6 +217,7 @@ config ARCH_MSMCOPPER
 	select CPU_V7
 	select MSM_SCM if SMP
 	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
 
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
@@ -218,6 +226,7 @@ config ARCH_FSM9XXX
 	select CPU_V7
 	select MSM_REMOTE_SPINLOCK_LDREX
 	select FSM9XXX_TLMM
+	select MULTI_IRQ_HANDLER
 
 config ARCH_MSM9615
 	bool "MSM9615"
@@ -229,6 +238,10 @@ config ARCH_MSM9615
 	select MSM_RPM
 	select MSM_SPM_V2
 	select MSM_NATIVE_RESTART
+	select REGULATOR
+	select MSM_RPM_REGULATOR
+	select MULTI_IRQ_HANDLER
+
 endmenu
 
 choice
@@ -1579,6 +1592,14 @@ config MSM_IDLE_WAIT_ON_MODEM
 	  for idle power collapse, wait the number of microseconds in case
 	  Modem becomes ready soon.
 
+config MSM_RPM_REGULATOR
+	bool "RPM regulator driver"
+	depends on RPM && REGULATOR
+	help
+	  Compile in support for the RPM regulator driver, used for setting
+	  voltages and other parameters of the various power rails supplied
+	  by some Qualcomm PMICs.
+
 config MSM_PIL
 	bool "Peripheral image loading"
 	select FW_LOADER
@@ -1589,6 +1610,12 @@ config MSM_PIL
 	  brought out of reset.
 
 	  Say yes to support these devices.
+
+config MSM_PIL_MODEM
+	tristate "Modem (ARM11) Boot Support"
+	depends on MSM_PIL
+	help
+	  Support for booting and shutting down ARM11 Modem processors.
 
 config MSM_PIL_QDSP6V3
 	tristate "QDSP6v3 (Hexagon) Boot Support"
@@ -1604,6 +1631,24 @@ config MSM_PIL_QDSP6V4
 	  Support for booting and shutting down QDSP6v4 processors (hexagon).
 	  The QDSP6 is a low power DSP used in audio, modem firmware, and modem
 	  software applications.
+
+config MSM_PIL_RIVA
+	tristate "RIVA (WCNSS) Boot Support"
+	depends on MSM_PIL
+	help
+	  Support for booting and shutting down the RIVA processor (WCNSS).
+	  Riva is the wireless subsystem processor used in bluetooth, wireless
+	  LAN, and FM software applications.
+
+config MSM_PIL_TZAPPS
+	tristate "TZApps Boot Support"
+	depends on MSM_PIL
+	help
+	  Support for booting and shutting down TZApps.
+
+	  TZApps is an image that runs in the secure processor state. It is
+	  used to decrypt data and perform secure operations on the behalf of
+	  the kernel.
 
 config MSM_SCM
 	bool "Secure Channel Manager (SCM) support"
@@ -1841,7 +1886,8 @@ config MSM_SHARED_GPIO_FOR_UART2DM
 
 config MSM_SHOW_RESUME_IRQ
 	bool "Enable logging of interrupts that could have caused resume"
-	depends on (ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_MSMCOPPER)
+	depends on (ARM_GIC || PMIC8058)
+	default y if PMIC8058
 	default n
 	help
 		This option logs wake up interrupts that have triggered just before

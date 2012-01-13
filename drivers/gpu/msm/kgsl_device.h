@@ -175,6 +175,7 @@ struct kgsl_device {
 	struct kobject pwrscale_kobj;
 	struct work_struct ts_expired_ws;
 	struct list_head events;
+	s64 on_time;
 };
 
 struct kgsl_context {
@@ -316,5 +317,7 @@ int kgsl_unregister_ts_notifier(struct kgsl_device *device,
 int kgsl_device_platform_probe(struct kgsl_device *device,
 		irqreturn_t (*dev_isr) (int, void*));
 void kgsl_device_platform_remove(struct kgsl_device *device);
+
+const char *kgsl_pwrstate_to_str(unsigned int state);
 
 #endif  /* __KGSL_DEVICE_H */

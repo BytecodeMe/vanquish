@@ -117,7 +117,7 @@ struct sx150x_platform_data msm8930_sx150x_data[] = {
 #endif
 
 #define MSM_PMEM_ADSP_SIZE         0x3800000
-#define MSM_PMEM_AUDIO_SIZE        0x28B000
+#define MSM_PMEM_AUDIO_SIZE        0x2B4000
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 #define MSM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 #else
@@ -326,11 +326,18 @@ static void reserve_ion_memory(void)
 	msm8930_reserve_table[MEMTYPE_EBI1].size += MSM_ION_ADSP_SIZE;
 #endif
 }
+
+static void __init reserve_mdp_memory(void)
+{
+	msm8930_mdp_writeback(msm8930_reserve_table);
+}
+
 static void __init msm8930_calculate_reserve_sizes(void)
 {
 	size_pmem_devices();
 	reserve_pmem_memory();
 	reserve_ion_memory();
+	reserve_mdp_memory();
 }
 
 static struct reserve_info msm8930_reserve_info __initdata = {
@@ -731,8 +738,6 @@ static void __init msm8930_map_io(void)
 
 static void __init msm8930_init_irq(void)
 {
-	unsigned int i;
-
 	msm_mpm_irq_extn_init();
 	gic_init(0, GIC_PPI_START, MSM_QGIC_DIST_BASE,
 						(void *)MSM_QGIC_CPU_BASE);
@@ -742,15 +747,6 @@ static void __init msm8930_init_irq(void)
 
 	writel_relaxed(0x0000FFFF, MSM_QGIC_DIST_BASE + GIC_DIST_ENABLE_SET);
 	mb();
-
-	/* FIXME: Not installing AVS_SVICINT and AVS_SVICINTSWDONE yet
-	 * as they are configured as level, which does not play nice with
-	 * handle_percpu_irq.
-	 */
-	for (i = GIC_PPI_START; i < GIC_SPI_START; i++) {
-		if (i != AVS_SVICINT && i != AVS_SVICINTSWDONE)
-			irq_set_handler(i, handle_percpu_irq);
-	}
 }
 
 static void __init msm8930_init_buses(void)
@@ -776,10 +772,8 @@ static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
-#define USB_5V_EN		42
 static void msm_hsusb_vbus_power(bool on)
 {
-	int rc;
 	static bool vbus_is_on;
 	static struct regulator *mvs_otg_switch;
 
@@ -793,42 +787,16 @@ static void msm_hsusb_vbus_power(bool on)
 			pr_err("Unable to get mvs_otg_switch\n");
 			return;
 		}
-		/* TODO: Replace this with appropriate PM8038 alternative */
-#ifndef MSM8930_PHASE_2
-		rc = gpio_request(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
-						"usb_5v_en");
-#endif
-		if (rc < 0) {
-			pr_err("failed to request usb_5v_en gpio\n");
-			goto put_mvs_otg;
-		}
 
-		/* TODO: Replace this with appropriate PM8038 alternative */
-#ifndef MSM8930_PHASE_2
-		rc = gpio_direction_output(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 1);
-		if (rc) {
-			pr_err("%s: unable to set_direction for gpio [%d]\n",
-				__func__, PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
-			goto free_usb_5v_en;
-		}
-#endif
 		if (regulator_enable(mvs_otg_switch)) {
 			pr_err("unable to enable mvs_otg_switch\n");
-			goto err_ldo_gpio_set_dir;
+			goto put_mvs_otg;
 		}
 
 		vbus_is_on = true;
 		return;
 	}
 	regulator_disable(mvs_otg_switch);
-
-/* TODO: Replace this with appropriate PM8038 alternative */
-#ifndef MSM8930_PHASE_2
-err_ldo_gpio_set_dir:
-	gpio_set_value(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 0);
-free_usb_5v_en:
-	gpio_free(PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
-#endif
 put_mvs_otg:
 	regulator_put(mvs_otg_switch);
 	vbus_is_on = false;
@@ -1294,98 +1262,136 @@ static struct i2c_board_info cyttsp_info[] __initdata = {
 	},
 };
 
-/* configuration data */
-static const u8 mxt_config_data[] = {
+#define MXT_TS_GPIO_IRQ			11
+#define MXT_TS_RESET_GPIO		52
+
+static const u8 mxt_config_data_8930[] = {
 	/* T6 Object */
-	0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0,
 	/* T38 Object */
-	11, 2, 0, 11, 11, 11, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0,
+	 15, 1, 0, 15, 12, 11, 0, 0,
 	/* T7 Object */
-	100, 16, 50,
+	 48, 255, 25,
 	/* T8 Object */
-	8, 0, 0, 0, 0, 0, 8, 14, 50, 215,
+	 27, 0, 5, 1, 0, 0, 8, 8, 0, 0,
 	/* T9 Object */
-	131, 0, 0, 26, 42, 0, 32, 63, 3, 5,
-	0, 2, 1, 113, 10, 10, 8, 10, 255, 2,
-	85, 5, 0, 0, 20, 20, 75, 25, 202, 29,
-	10, 10, 45, 46,
+	 131, 0, 0, 19, 11, 0, 16, 35, 1, 3,
+	 10, 15, 1, 11, 4, 5, 40, 10, 54, 2,
+	 43, 4, 0, 0, 0, 0, 143, 40, 143, 80,
+	 18, 15, 50, 50, 2,
 	/* T15 Object */
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0,
-	/* T22 Object */
-	5, 0, 0, 0, 0, 0, 0, 0, 30, 0,
-	0, 0, 5, 8, 10, 13, 0,
-	/* T24 Object */
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0,
+	/* T18 Object */
+	 0, 0,
+	/* T19 Object */
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0,
+	/* T23 Object */
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0,
 	/* T25 Object */
-	3, 0, 188, 52, 52, 33, 0, 0, 0, 0,
-	0, 0, 0, 0,
-	/* T27 Object */
-	0, 0, 0, 0, 0, 0, 0,
-	/* T28 Object */
-	0, 0, 0, 8, 12, 60,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0,
 	/* T40 Object */
-	0, 0, 0, 0, 0,
-	/* T41 Object */
-	0, 0, 0, 0, 0, 0,
-	/* T43 Object */
-	0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0,
+	/* T42 Object */
+	 0, 0, 0, 0, 0, 0, 0, 0,
+	/* T46 Object */
+	 0, 3, 16, 48, 0, 0, 1, 0, 0,
+	/* T47 Object */
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	/* T48 Object */
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	 0, 0, 0, 0,
 };
 
-#define MXT_TS_GPIO_IRQ		11
-#define MXT_TS_LDO_EN_GPIO	50
-#define MXT_TS_RESET_GPIO	52
+static ssize_t mxt224e_vkeys_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, 200,
+	__stringify(EV_KEY) ":" __stringify(KEY_BACK) ":65:938:90:90"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_MENU) ":208:938:90:90"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_HOME) ":348:938:90:90"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":490:938:90:90"
+	"\n");
+}
 
-static struct mxt_platform_data mxt_platform_data = {
-	.config			= mxt_config_data,
-	.config_length		= ARRAY_SIZE(mxt_config_data),
-	.x_size			= 1365,
-	.y_size			= 767,
+static struct kobj_attribute mxt224e_vkeys_attr = {
+	.attr = {
+		.mode = S_IRUGO,
+	},
+	.show = &mxt224e_vkeys_show,
+};
+
+static struct attribute *mxt224e_properties_attrs[] = {
+	&mxt224e_vkeys_attr.attr,
+	NULL
+};
+
+static struct attribute_group mxt224e_properties_attr_group = {
+	.attrs = mxt224e_properties_attrs,
+};
+
+static void mxt_init_vkeys_8930(void)
+{
+	int rc;
+	static struct kobject *mxt224e_properties_kobj;
+
+	mxt224e_vkeys_attr.attr.name = "virtualkeys.atmel_mxt_ts";
+	mxt224e_properties_kobj = kobject_create_and_add("board_properties",
+								NULL);
+	if (mxt224e_properties_kobj)
+		rc = sysfs_create_group(mxt224e_properties_kobj,
+					&mxt224e_properties_attr_group);
+	if (!mxt224e_properties_kobj || rc)
+		pr_err("%s: failed to create board_properties\n",
+				__func__);
+
+	return;
+}
+
+static struct mxt_platform_data mxt_platform_data_8930 = {
+	.config			= mxt_config_data_8930,
+	.config_length		= ARRAY_SIZE(mxt_config_data_8930),
+	.x_size			= 1067,
+	.y_size			= 566,
 	.irqflags		= IRQF_TRIGGER_FALLING,
 	.i2c_pull_up		= true,
+	.reset_gpio		= MXT_TS_RESET_GPIO,
+	.irq_gpio		= MXT_TS_GPIO_IRQ,
 };
 
-static struct i2c_board_info mxt_device_info[] __initdata = {
+static struct i2c_board_info mxt_device_info_8930[] __initdata = {
 	{
-		I2C_BOARD_INFO("atmel_mxt_ts", 0x5b),
-		.platform_data = &mxt_platform_data,
+		I2C_BOARD_INFO("atmel_mxt_ts", 0x4a),
+		.platform_data = &mxt_platform_data_8930,
 		.irq = MSM_GPIO_TO_INT(MXT_TS_GPIO_IRQ),
 	},
 };
 
-static void gsbi_qup_i2c_gpio_config(int adap_id, int config_type)
-{
-}
-
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi4_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
-	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi3_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
-	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
-	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
-	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
 static struct msm_rpm_platform_data msm_rpm_data = {
@@ -1478,21 +1484,14 @@ static struct platform_device fish_battery_device = {
 };
 #endif
 
+#ifndef MSM8930_PHASE_2
+
+/* 8930 Phase 1 */
 static struct platform_device msm8930_device_ext_5v_vreg __devinitdata = {
 	.name	= GPIO_REGULATOR_DEV_NAME,
-/* TODO: Replace this with right MPP for 8038 */
-#ifndef MSM8930_PHASE_2
 	.id	= PM8921_MPP_PM_TO_SYS(7),
-#endif
 	.dev	= {
-	/*
-	 * TODO: When physical 8930/PM8038 hardware becomes
-	 * available, replace msm_gpio_regulator_pdata
-	 * with 8930 gpio regulator object.
-	 */
-#if     !defined(MSM8930_PHASE_2)
 		.platform_data = &msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_5V],
-#endif
 	},
 };
 
@@ -1500,16 +1499,32 @@ static struct platform_device msm8930_device_ext_l2_vreg __devinitdata = {
 	.name	= GPIO_REGULATOR_DEV_NAME,
 	.id	= 91,
 	.dev	= {
-	 /*
-	 * TODO: When physical 8930/PM8038 hardware becomes
-	 * available, replace msm_gpio_regulator_pdata
-	 * with 8930 gpio regulator object.
-	 */
-#if     !defined(MSM8930_PHASE_2)
 		.platform_data = &msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_L2],
-#endif
 	},
 };
+
+#else
+
+/* 8930 Phase 2 */
+static struct platform_device msm8930_device_ext_5v_vreg __devinitdata = {
+	.name	= GPIO_REGULATOR_DEV_NAME,
+	.id	= 63,
+	.dev	= {
+		.platform_data =
+		     &msm8930_gpio_regulator_pdata[MSM8930_GPIO_VREG_ID_EXT_5V],
+	},
+};
+
+static struct platform_device msm8930_device_ext_otg_sw_vreg __devinitdata = {
+	.name	= GPIO_REGULATOR_DEV_NAME,
+	.id	= 97,
+	.dev	= {
+		.platform_data =
+		 &msm8930_gpio_regulator_pdata[MSM8930_GPIO_VREG_ID_EXT_OTG_SW],
+	},
+};
+
+#endif
 
 static struct platform_device msm8930_device_rpm_regulator __devinitdata = {
 	.name	= "rpm-regulator",
@@ -1554,8 +1569,18 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_device_saw_core0,
 	&msm_device_saw_core1,
 	&msm8930_device_ext_5v_vreg,
+#ifndef MSM8930_PHASE_2
 	&msm8930_device_ext_l2_vreg,
+#endif
 	&msm8960_device_ssbi_pmic,
+#ifdef MSM8930_PHASE_2
+	&msm8930_device_ext_otg_sw_vreg,
+#endif
+	&msm_8960_q6_lpass,
+	&msm_8960_q6_mss_fw,
+	&msm_8960_q6_mss_sw,
+	&msm_8960_riva,
+	&msm_pil_tzapps,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
@@ -1646,6 +1671,10 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_cpudai_afe_02_rx,
 	&msm_cpudai_afe_02_tx,
 	&msm_pcm_afe,
+	&msm_compr_dsp,
+	&msm_cpudai_incall_music_rx,
+	&msm_cpudai_incall_record_rx,
+	&msm_cpudai_incall_record_tx,
 	&msm_pcm_hostless,
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
@@ -1825,26 +1854,6 @@ struct i2c_registry {
 	int                    len;
 };
 
-#ifdef CONFIG_MSM_CAMERA
-static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
-#ifdef CONFIG_IMX074
-	{
-	I2C_BOARD_INFO("imx074", 0x1A),
-	},
-#endif
-#ifdef CONFIG_OV2720
-	{
-	I2C_BOARD_INFO("ov2720", 0x6C),
-	},
-#endif
-#ifdef CONFIG_MSM_CAMERA_FLASH_SC628A
-	{
-	I2C_BOARD_INFO("sc628a", 0x6E),
-	},
-#endif
-};
-#endif
-
 static void __init msm8930_init_hsic(void)
 {
 #ifdef CONFIG_USB_EHCI_MSM_HSIC
@@ -1884,14 +1893,6 @@ static struct i2c_board_info isl_charger_i2c_info[] __initdata = {
 #endif /* CONFIG_ISL9519_CHARGER */
 
 static struct i2c_registry msm8960_i2c_devices[] __initdata = {
-#ifdef CONFIG_MSM_CAMERA
-	{
-		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_LIQUID | I2C_RUMI,
-		MSM_8930_GSBI4_QUP_I2C_BUS_ID,
-		msm_camera_boardinfo,
-		ARRAY_SIZE(msm_camera_boardinfo),
-	},
-#endif
 #ifdef CONFIG_ISL9519_CHARGER
 	{
 		I2C_LIQUID,
@@ -1908,15 +1909,15 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 	},
 	{
 		I2C_LIQUID,
-		MSM_8930_GSBI3_QUP_I2C_BUS_ID,
-		mxt_device_info,
-		ARRAY_SIZE(mxt_device_info),
-	},
-	{
-		I2C_LIQUID,
 		MSM_8930_GSBI10_QUP_I2C_BUS_ID,
 		msm_isa1200_board_info,
 		ARRAY_SIZE(msm_isa1200_board_info),
+	},
+	{
+		I2C_SURF,
+		MSM_8930_GSBI3_QUP_I2C_BUS_ID,
+		mxt_device_info_8930,
+		ARRAY_SIZE(mxt_device_info_8930),
 	},
 };
 #endif /* CONFIG_I2C */
@@ -1926,6 +1927,14 @@ static void __init register_i2c_devices(void)
 #ifdef CONFIG_I2C
 	u8 mach_mask = 0;
 	int i;
+#ifdef CONFIG_MSM_CAMERA
+	struct i2c_registry msm8930_camera_i2c_devices = {
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_LIQUID | I2C_RUMI,
+		MSM_8930_GSBI4_QUP_I2C_BUS_ID,
+		msm8930_camera_board_info.board_info,
+		msm8930_camera_board_info.num_i2c_board_info,
+	};
+#endif
 
 	/* Build the matching 'supported_machs' bitmask */
 	if (machine_is_msm8930_cdp() || machine_is_msm8627_cdp())
@@ -1944,6 +1953,12 @@ static void __init register_i2c_devices(void)
 						msm8960_i2c_devices[i].info,
 						msm8960_i2c_devices[i].len);
 	}
+#ifdef CONFIG_MSM_CAMERA
+	if (msm8930_camera_i2c_devices.machs & mach_mask)
+		i2c_register_board_info(msm8930_camera_i2c_devices.bus,
+			msm8930_camera_i2c_devices.info,
+			msm8930_camera_i2c_devices.len);
+#endif
 #endif
 }
 
@@ -2001,6 +2016,8 @@ static void __init msm8930_cdp_init(void)
 	msm8930_init_cam();
 	msm8930_init_mmc();
 	acpuclk_init(&acpuclk_8930_soc_data);
+	if (machine_is_msm8930_cdp() || machine_is_msm8627_cdp())
+		mxt_init_vkeys_8930();
 	register_i2c_devices();
 	msm8930_init_fb();
 	slim_register_board_info(msm_slim_devices,
@@ -2020,6 +2037,7 @@ MACHINE_START(MSM8930_CDP, "QCT MSM8930 CDP")
 	.map_io = msm8930_map_io,
 	.reserve = msm8930_reserve,
 	.init_irq = msm8930_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8930_cdp_init,
 	.init_early = msm8930_allocate_memory_regions,
@@ -2030,6 +2048,7 @@ MACHINE_START(MSM8930_MTP, "QCT MSM8930 MTP")
 	.map_io = msm8930_map_io,
 	.reserve = msm8930_reserve,
 	.init_irq = msm8930_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8930_cdp_init,
 	.init_early = msm8930_allocate_memory_regions,
@@ -2040,6 +2059,7 @@ MACHINE_START(MSM8930_FLUID, "QCT MSM8930 FLUID")
 	.map_io = msm8930_map_io,
 	.reserve = msm8930_reserve,
 	.init_irq = msm8930_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8930_cdp_init,
 	.init_early = msm8930_allocate_memory_regions,
@@ -2050,6 +2070,7 @@ MACHINE_START(MSM8627_CDP, "QCT MSM8627 CDP")
 	.map_io = msm8930_map_io,
 	.reserve = msm8930_reserve,
 	.init_irq = msm8930_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8930_cdp_init,
 	.init_early = msm8930_allocate_memory_regions,
@@ -2060,6 +2081,7 @@ MACHINE_START(MSM8627_MTP, "QCT MSM8627 MTP")
 	.map_io = msm8930_map_io,
 	.reserve = msm8930_reserve,
 	.init_irq = msm8930_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8930_cdp_init,
 	.init_early = msm8930_allocate_memory_regions,

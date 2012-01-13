@@ -211,7 +211,7 @@ static unsigned int sdc1_sup_clk_rates[] = {
 };
 
 static unsigned int sdc3_sup_clk_rates[] = {
-	400000, 24000000, 48000000, 96000000
+	400000, 24000000, 48000000, 96000000, 192000000
 };
 
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
@@ -247,11 +247,12 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 	.status_gpio	= PM8921_GPIO_PM_TO_SYS(26),
 	.status_irq	= PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 26),
 	.irq_flags	= IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+	.is_status_gpio_active_low = true,
 #endif
 	.xpc_cap	= 1,
 	.uhs_caps	= (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
 			MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50 |
-			MMC_CAP_MAX_CURRENT_600)
+			MMC_CAP_UHS_SDR104 | MMC_CAP_MAX_CURRENT_600),
 };
 #endif
 

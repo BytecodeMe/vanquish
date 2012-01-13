@@ -209,6 +209,8 @@ static int keypad_mode = MMI_KEYPAD_RESET;
 /* Ulpi register setting  to increase eye digram strength for qinara HW */
 static int phy_settings[] = {0x34, 0x82, 0x3f, 0x81, -1};
 
+bool camera_single_mclk;
+
 #define BOOT_MODE_MAX_LEN 64
 static char boot_mode[BOOT_MODE_MAX_LEN + 1];
 int __init board_boot_mode_init(char *s)
@@ -516,57 +518,6 @@ static __init void mot_init_emu_detection(
 	}
 }
 
-#else /* msm_otg driver still needs this */
-
-#define USB_5V_EN	42
-static void msm_hsusb_vbus_power(bool on)
-{
-	int rc;
-	static bool vbus_is_on;
-	static struct regulator *mvs_otg_switch;
-
-	if (vbus_is_on == on)
-		return;
-
-	if (on) {
-		mvs_otg_switch = regulator_get(&msm8960_device_otg.dev,
-					       "vbus_otg");
-		if (IS_ERR(mvs_otg_switch)) {
-			pr_err("Unable to get mvs_otg_switch\n");
-			return;
-		}
-
-		rc = gpio_request(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
-						"usb_5v_en");
-		if (rc < 0) {
-			pr_err("failed to request usb_5v_en gpio\n");
-			goto put_mvs_otg;
-		}
-
-		rc = gpio_direction_output(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 1);
-		if (rc) {
-			pr_err("%s: unable to set_direction for gpio [%d]\n",
-				__func__, PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
-			goto free_usb_5v_en;
-		}
-
-		if (regulator_enable(mvs_otg_switch)) {
-			pr_err("unable to enable mvs_otg_switch\n");
-			goto err_ldo_gpio_set_dir;
-		}
-
-		vbus_is_on = true;
-		return;
-	}
-	regulator_disable(mvs_otg_switch);
-err_ldo_gpio_set_dir:
-	gpio_set_value(PM8921_GPIO_PM_TO_SYS(USB_5V_EN), 0);
-free_usb_5v_en:
-	gpio_free(PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
-put_mvs_otg:
-	regulator_put(mvs_otg_switch);
-	vbus_is_on = false;
-}
 #endif
 
 /* defaulting to qinara, atag parser will override */
@@ -1184,24 +1135,6 @@ static struct i2c_board_info msm_camera_flash_boardinfo[] __initdata = {
 
 #ifdef CONFIG_MSM_CAMERA
 
-static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
-#ifdef CONFIG_MOTSOC1
-	{
-	I2C_BOARD_INFO("motsoc1", 0x1F),
-	},
-#endif
-#ifdef CONFIG_MT9M114
-	{
-	I2C_BOARD_INFO("mt9m114", 0x48),
-	},
-#endif
-#ifdef CONFIG_OV8820
-	{
-	I2C_BOARD_INFO("ov8820", 0x6C >> 2),
-	},
-#endif
-};
-
 #ifdef CONFIG_MOTSOC1
 static struct msm_camera_sensor_flash_data flash_motsoc1 = {
 	.flash_type = MSM_CAMERA_FLASH_NONE,
@@ -1220,17 +1153,11 @@ static struct msm_camera_sensor_info msm_camera_sensor_motsoc1_data = {
 	.pdata                = &msm_camera_csi_device_data[0],
 	.flash_data           = &flash_motsoc1,
 	.sensor_platform_info = &sensor_board_info_motsoc1,
-	.gpio_conf            = &msm_camif_gpio_conf,
+	.gpio_conf            = &msm_camif_gpio_conf_mclk0,
 	.csi_if               = 1,
 	.camera_type          = BACK_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_motsoc1 = {
-	.name    = "msm_camera_motsoc1",
-	.dev     = {
-		.platform_data = &msm_camera_sensor_motsoc1_data,
-	},
-};
 #endif
 #ifdef CONFIG_MT9M114
 static struct msm_camera_sensor_flash_data flash_mt9m114 = {
@@ -1250,17 +1177,11 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
 	.pdata                = &msm_camera_csi_device_data[1],
 	.flash_data           = &flash_mt9m114,
 	.sensor_platform_info = &sensor_board_info_mt9m114,
-	.gpio_conf            = &msm_camif_gpio_conf,
+	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
 	.csi_if               = 1,
 	.camera_type          = FRONT_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_mt9m114 = {
-	.name    = "msm_camera_mt9m114",
-	.dev     = {
-		.platform_data = &msm_camera_sensor_mt9m114_data,
-	},
-};
 #endif
 
 #ifdef CONFIG_OV8820
@@ -1281,38 +1202,63 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov8820_data = {
 	.pdata	= &msm_camera_csi_device_data[0],
 	.flash_data	= &flash_ov8820,
 	.sensor_platform_info = &sensor_board_info_ov8820,
-	.gpio_conf = &msm_camif_gpio_conf,
+	.gpio_conf = &msm_camif_gpio_conf_mclk0,
 	.csi_if	= 1,
 	.camera_type = BACK_CAMERA_2D,
 };
 
-struct platform_device msm8960_camera_sensor_ov8820 = {
-	.name	= "msm_camera_ov8820",
-	.dev	= {
-		.platform_data = &msm_camera_sensor_ov8820_data,
-	},
-};
 #endif
+
+static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
+#ifdef CONFIG_MOTSOC1
+	{
+	I2C_BOARD_INFO("motsoc1", 0x1F),
+	.platform_data = &msm_camera_sensor_motsoc1_data,
+	},
+#endif
+#ifdef CONFIG_MT9M114
+	{
+	I2C_BOARD_INFO("mt9m114", 0x48),
+	.platform_data = &msm_camera_sensor_mt9m114_data,
+	},
+#endif
+#ifdef CONFIG_OV8820
+	{
+	I2C_BOARD_INFO("ov8820", 0x36),
+	.platform_data = &msm_camera_sensor_ov8820_data,
+	},
+#endif
+};
+
 void __init msm8960_init_cam(void)
 {
 	int i;
-	struct platform_device *cam_dev[] = {
+	struct msm_camera_sensor_info *cam_data[] = {
 #ifdef CONFIG_MOTSOC1
-		&msm8960_camera_sensor_motsoc1,
+		&msm_camera_sensor_motsoc1_data,
 #endif
 #ifdef CONFIG_MT9M114
-		&msm8960_camera_sensor_mt9m114,
+		&msm_camera_sensor_mt9m114_data,
 #endif
 #ifdef CONFIG_OV8820
-		&msm8960_camera_sensor_ov8820,
+		&msm_camera_sensor_ov8820_data,
 #endif
 	};
 
-	for (i = 0; i < ARRAY_SIZE(cam_dev); i++) {
+	for (i = 0; i < ARRAY_SIZE(cam_data); i++) {
 		struct msm_camera_sensor_info *s_info;
-		s_info = cam_dev[i]->dev.platform_data;
-		msm_get_cam_resources(s_info);
-		platform_device_register(cam_dev[i]);
+		s_info = cam_data[i];
+		if (camera_single_mclk &&
+				s_info->camera_type == FRONT_CAMERA_2D) {
+			if (s_info->gpio_conf->cam_gpio_tbl_size != 1)
+				pr_err("unexpected camera gpio "
+						"configuration\n");
+			else {
+				pr_info("%s using gpio 5\n",
+						s_info->sensor_name);
+				s_info->gpio_conf->cam_gpio_tbl[0] = 5;
+			}
+		}
 	}
 
 	platform_device_register(&msm8960_device_csiphy0);
@@ -1458,6 +1404,8 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&msm_8960_q6_lpass,
 	&msm_8960_q6_mss_fw,
 	&msm_8960_q6_mss_sw,
+	&msm_8960_riva,
+	&msm_pil_tzapps,
 	&msm8960_device_otg,
 	&msm8960_device_gadget_peripheral,
 	&msm_device_hsusb_host,
@@ -1495,6 +1443,9 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&hdmi_msm_device,
 #endif
 	&msm_compr_dsp,
+	&msm_cpudai_incall_music_rx,
+	&msm_cpudai_incall_record_rx,
+	&msm_cpudai_incall_record_tx,
 	&msm_pcm_hostless,
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
@@ -1671,9 +1622,96 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 #endif /* CONFIG_PN544 */
 };
 
-#define ENABLE_I2C_DEVICE(device)	{ msm8960_i2c_devices[device].enabled = 1; }
+#define ENABLE_I2C_DEVICE(device)                        \
+	do {                                             \
+		msm8960_i2c_devices[device].enabled = 1; \
+	} while (0)
 
 #endif /* CONFIG_I2C */
+
+static __init void register_i2c_devices_from_dt(int bus)
+{
+	char path[18];
+	struct device_node *parent, *child;
+
+	snprintf(path, sizeof(path), "/System@0/I2C@%d", bus);
+
+	parent = of_find_node_by_path(path);
+	if (!parent)
+		goto out;
+
+	for_each_child_of_node(parent, child) {
+		struct i2c_board_info info;
+		int len = 0;
+		const void *prop;
+
+		memset(&info, 0, sizeof(struct i2c_board_info));
+
+		prop = of_get_property(child, "i2c,type", &len);
+		if (prop)
+			strncpy(info.type, (const char *)prop,
+					len > I2C_NAME_SIZE ? I2C_NAME_SIZE :
+					len);
+
+		prop = of_get_property(child, "i2c,address", &len);
+		if (prop && (len == sizeof(u32)))
+			info.addr = *(u32 *)prop;
+
+		prop = of_get_property(child, "irq,gpio", &len);
+		if (prop && (len == sizeof(u8)))
+			info.irq = MSM_GPIO_TO_INT(*(u8 *)prop);
+
+		prop = of_get_property(child, "type", &len);
+		if (prop && (len == sizeof(u32))) {
+			/* must match type identifiers defined in DT schema */
+			switch (*(u32 *)prop) {
+			case 0x00040002: /* Cypress_CYTTSP3 */
+				info.platform_data = &ts_platform_data_cyttsp3;
+				mot_setup_touch_cyttsp3();
+				break;
+
+			case 0x000B0003: /* National_LM3559 */
+				info.platform_data = &camera_flash_3559;
+				break;
+
+			case 0x000B0004: /* National_LM3532 */
+				info.platform_data = &mp_lm3532_pdata;
+				break;
+
+			case 0x000B0006: /* National_LM3556 */
+				info.platform_data = &camera_flash_3556;
+				break;
+
+			case 0x00190001: /* NXP_PN544 */
+#ifdef CONFIG_PN544
+				info.platform_data = &pn544_pdata;
+#endif
+				break;
+
+			case 0x00250001: /* TAOS_CT406 */
+				info.platform_data = &mp_ct406_pdata;
+				break;
+
+			case 0x00260001: /* Atmel_MXT */
+				info.platform_data = &ts_platform_data_atmxt;
+				mot_setup_touch_atmxt();
+				break;
+
+			case 0x000270000: /* Melfas_MMS100 */
+				info.platform_data = &touch_pdata;
+				melfas_ts_platform_init();
+				break;
+			}
+		}
+
+		i2c_register_board_info(bus, &info, 1);
+	}
+
+	of_node_put(parent);
+
+out:
+	return;
+}
 
 static void __init register_i2c_devices(void)
 {
@@ -1688,6 +1726,10 @@ static void __init register_i2c_devices(void)
 						msm8960_i2c_devices[i].len);
 	}
 #endif
+
+	register_i2c_devices_from_dt(MSM_8960_GSBI3_QUP_I2C_BUS_ID);
+	register_i2c_devices_from_dt(MSM_8960_GSBI4_QUP_I2C_BUS_ID);
+	register_i2c_devices_from_dt(MSM_8960_GSBI10_QUP_I2C_BUS_ID);
 }
 
 static unsigned sdc_detect_gpio = 20;
@@ -1999,10 +2041,10 @@ static void __init msm8960_mmi_init(void)
 	pm8921_gpio_mpp_init(pm8921_gpios, pm8921_gpios_size,
 							pm8921_mpps, ARRAY_SIZE(pm8921_mpps));
 #ifdef CONFIG_EMU_DETECTION
-	msm8960_init_usb(NULL);
+	msm8960_init_usb();
 	mot_init_emu_detection(otg_control_data);
 #else
-	msm8960_init_usb(msm_hsusb_vbus_power);
+	msm8960_init_usb();
 #endif
 
 	platform_add_devices(mmi_devices, ARRAY_SIZE(mmi_devices));
@@ -2137,6 +2179,8 @@ static __init void teufel_init(void)
 	/* Setup correct button backlight LED name */
 	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
+	camera_single_mclk = true;
+
 	msm8960_mmi_init();
 }
 
@@ -2144,6 +2188,7 @@ MACHINE_START(TEUFEL, "Teufel")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = teufel_init,
 	.init_early = mmi_init_early,
@@ -2173,6 +2218,9 @@ static __init void qinara_init(void)
 	/* Setup correct button backlight LED name */
 	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
+	if (system_rev < HWREV_P2)
+		camera_single_mclk = true;
+
 	msm8960_mmi_init();
 }
 
@@ -2180,6 +2228,7 @@ MACHINE_START(QINARA, "Qinara")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = qinara_init,
 	.init_early = mmi_init_early,
@@ -2210,6 +2259,7 @@ MACHINE_START(VANQUISH, "Vanquish")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = vanquish_init,
 	.init_early = mmi_init_early,
@@ -2233,6 +2283,7 @@ MACHINE_START(VOLTA, "Volta")
     .map_io = msm8960_map_io,
     .reserve = msm8960_reserve,
     .init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
     .timer = &msm_timer,
     .init_machine = volta_init,
 	.init_early = mmi_init_early,
@@ -2259,6 +2310,7 @@ MACHINE_START(BECKER, "Becker")
     .map_io = msm8960_map_io,
     .reserve = msm8960_reserve,
     .init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
     .timer = &msm_timer,
     .init_machine = becker_init,
 	.init_early = mmi_init_early,
@@ -2281,6 +2333,7 @@ static __init void asanti_init(void)
 	/* Enable keyboard backlight */
 	strncpy((char *)&mp_lm3532_pdata.ctrl_b_name, "keyboard-backlight",
 		sizeof(mp_lm3532_pdata.ctrl_b_name)-1);
+	mp_lm3532_pdata.led2_controller = LM3532_CNTRL_B;
 	mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE;
 
 	/* Setup correct shift key light LED name */
@@ -2293,6 +2346,7 @@ MACHINE_START(ASANTI, "Asanti")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = asanti_init,
 	.init_early = mmi_init_early,
