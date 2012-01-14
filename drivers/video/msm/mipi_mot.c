@@ -87,9 +87,15 @@ end:
         return controller_drv_ver;
 }
 
-static int valid_mfd_info(struct msm_fb_data_type *mfd)
+static int mipi_mot_lcd_on(struct platform_device *pdev)
 {
+	struct msm_fb_data_type *mfd;
 	int ret = 0;
+
+	pr_info("%s is called\n", __func__);
+
+	mfd = platform_get_drvdata(pdev);
+
 
 	if (!mfd) {
 		pr_err("%s: invalid mfd\n", __func__);
@@ -103,24 +109,6 @@ static int valid_mfd_info(struct msm_fb_data_type *mfd)
 		goto err;
 	}
 
-	return 0;
-err:
-	return ret;
-
-}
-
-static int panel_enable(struct platform_device *pdev)
-{
-	struct msm_fb_data_type *mfd;
-	int ret = 0;
-
-	pr_info("%s is called\n", __func__);
-
-	mfd = platform_get_drvdata(pdev);
-
-	ret = valid_mfd_info(mfd);
-	if (ret != 0)
-		goto err;
 
 	get_manufacture_id(mfd);
 	get_controller_ver(mfd);
@@ -134,8 +122,6 @@ static int panel_enable(struct platform_device *pdev)
 		goto err;
 	}
 
-	mipi_mode_get_pwr_mode(mfd);
-
 	pr_info("%s completed\n", __func__);
 
 	return 0;
@@ -143,7 +129,7 @@ err:
 	return ret;
 }
 
-static int panel_disable(struct platform_device *pdev)
+static int mipi_mot_lcd_off(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd;
 	int ret = 0;
@@ -152,9 +138,16 @@ static int panel_disable(struct platform_device *pdev)
 
 	mfd = platform_get_drvdata(pdev);
 
-	ret = valid_mfd_info(mfd);
-	if (ret != 0)
+	if (!mfd) {
+		pr_err("%s: invalid mfd\n", __func__);
+		ret = -ENODEV;
 		goto err;
+	}
+	if (mfd->key != MFD_KEY) {
+		pr_err("%s: Invalid key\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
 
 	if (mot_panel.panel_disable)
 		mot_panel.panel_disable(mfd);
@@ -168,31 +161,6 @@ static int panel_disable(struct platform_device *pdev)
 
 	return 0;
 
-err:
-	return ret;
-}
-
-static int panel_on(struct platform_device *pdev)
-{
-	struct msm_fb_data_type *mfd;
-	int ret = 0;
-
-	mfd = platform_get_drvdata(pdev);
-
-	ret = valid_mfd_info(mfd);
-	if (ret != 0)
-		goto err;
-
-	if (mot_panel.panel_on) {
-		mot_panel.panel_on(mfd);
-		pr_info("MIPI MOT Panel is ON\n");
-	} else {
-		pr_err("%s: no panel support\n", __func__);
-		ret = -ENODEV;
-		goto err;
-	}
-
-	return 0;
 err:
 	return ret;
 }
@@ -219,9 +187,8 @@ static struct platform_driver this_driver = {
 };
 
 static struct msm_fb_panel_data mot_panel_data = {
-	.on		= panel_enable,
-	.off		= panel_disable,
-	.panel_on	= panel_on,
+	.on		= mipi_mot_lcd_on,
+	.off		= mipi_mot_lcd_off,
 };
 
 
@@ -285,8 +252,6 @@ static int __init mipi_mot_lcd_init(void)
 	mot_panel.get_manufacture_id = mipi_mot_get_manufacture_id;
 	mot_panel.get_controller_ver = mipi_mot_get_controller_ver;
 	mot_panel.get_controller_drv_ver = mipi_mot_get_controller_drv_ver;
-
-	mot_panel.panel_on = mipi_mot_panel_on;
 
 	return platform_driver_register(&this_driver);
 }
