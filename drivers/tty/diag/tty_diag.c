@@ -28,6 +28,17 @@ struct diag_tty_data {
 static struct diag_tty_data diag_tty[DIAG_TTY_MINOR_COUNT];
 static int diag_packet_incomplete;
 
+static int ttydiag1_cmd_code, ttydiag1_subsys_id;
+
+/* 1 - would add channel dispatch checking logic
+ *
+ *	by default, this is off (0)
+ *
+ *
+ *	try `echo "1">/sys/class/diag/diag/dbg_ftm' to turn it on.
+ */
+static int dbg_ftm_flag;
+
 static int diag_tty_open(struct tty_struct *tty, struct file *f)
 {
 	int n = tty->index;
@@ -208,6 +219,22 @@ EXPORT_SYMBOL(tty_diag_channel_close);
 int tty_diag_channel_read(struct legacy_diag_ch *diag_ch,
 				struct diag_request *d_req)
 {
+	struct diag_tty_data *tty_data = diag_ch->priv_channel;
+
+	if (dbg_ftm_flag == 1) {
+
+		if (tty_data != NULL) {
+			if (!strncmp(tty_data->tty->name, "ttydiag1",
+						strlen("ttydiag1"))) {
+				mutex_lock(&diag_tty_lock);
+				ttydiag1_cmd_code = (int)(*(char *)d_req->buf);
+				ttydiag1_subsys_id =
+					(int)(*(char *)(d_req->buf+1));
+				mutex_unlock(&diag_tty_lock);
+			}
+		}
+	}
+
 	d_req_ptr = d_req;
 
 	return 0;
@@ -221,16 +248,34 @@ int tty_diag_channel_write(struct legacy_diag_ch *diag_ch,
 	struct diag_tty_data *tty_data = diag_ch->priv_channel;
 	unsigned char *tty_buf;
 	int tty_allocated;
+	int cmd_code, subsys_id;
 
 	/* If diag packet is not 1:1 response (perhaps logging packet?),
 	   try primary channel */
 	if (tty_data == NULL)
 		tty_data = &(diag_tty[0]);
 
+	mutex_lock(&diag_tty_lock);
+
+	if (dbg_ftm_flag == 1) {
+		cmd_code = (int)(*(char *)d_req->buf);
+		subsys_id = (int)(*(char *)(d_req->buf+1));
+
+		if (cmd_code == ttydiag1_cmd_code &&
+				subsys_id == ttydiag1_subsys_id) {
+			/* response to ttydiag1 */
+			ttydiag1_cmd_code = 0;
+			ttydiag1_subsys_id = 0;
+			tty_data = &(diag_tty[1]);
+		} else {
+			tty_data = &(diag_tty[0]);
+		}
+	}
+
 	if (tty_data->tty == NULL)
 		return -EIO;
 
-	mutex_lock(&diag_tty_lock);
+
 
 	tty_allocated = tty_prepare_flip_string(tty_data->tty,
 						&tty_buf, d_req->length);
@@ -261,6 +306,19 @@ void tty_diag_channel_abandon_request()
 	mutex_unlock(&diag_tty_lock);
 }
 EXPORT_SYMBOL(tty_diag_channel_abandon_request);
+
+int tty_diag_get_dbg_ftm_flag_value()
+{
+	return dbg_ftm_flag;
+}
+EXPORT_SYMBOL(tty_diag_get_dbg_ftm_flag_value);
+
+int tty_diag_set_dbg_ftm_flag_value(int val)
+{
+	dbg_ftm_flag = val;
+	return 0;
+}
+EXPORT_SYMBOL(tty_diag_set_dbg_ftm_flag_value);
 
 static int __init diag_tty_init(void)
 {

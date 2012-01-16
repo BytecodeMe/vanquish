@@ -996,8 +996,39 @@ static ssize_t diag_logging_mode_store(struct device *dev,
 	return size;
 }
 
+static ssize_t diag_dbg_ftm_show(struct device *dev,
+		struct device_attribute *attr, char *buff)
+{
+	/* print current dbg_ftm flag value */
+	return snprintf(buff, PAGE_SIZE, "%d",
+			tty_diag_get_dbg_ftm_flag_value());
+}
+
+static ssize_t diag_dbg_ftm_store(struct device *dev,
+		struct device_attribute *attr, const char *buff, size_t size)
+{
+	char buf[256], *b;
+
+	strlcpy(buf, buff, sizeof(buf));
+	b = strim(buf);
+
+	if (strnlen(b, 1)) {
+		if (!strncmp(b, "0", 1)) {
+			tty_diag_set_dbg_ftm_flag_value(0);
+		} else {
+			/* we consider other non-ZERO value as "1" here */
+			tty_diag_set_dbg_ftm_flag_value(1);
+		}
+	}
+
+	return size;
+}
+
 static DEVICE_ATTR(logging_mode, S_IRUGO | S_IWUSR, diag_logging_mode_show,
 						 diag_logging_mode_store);
+
+static DEVICE_ATTR(dbg_ftm, S_IRUGO | S_IWUSR, diag_dbg_ftm_show,
+						diag_dbg_ftm_store);
 
 static int diagchar_setup_cdev(dev_t devno)
 {
@@ -1034,8 +1065,15 @@ static int diagchar_setup_cdev(dev_t devno)
 		return -1;
 	}
 
-	return 0;
+	if (dev)
+		err = device_create_file(dev, &dev_attr_dbg_ftm);
 
+	if (!dev || err) {
+		printk(KERN_ERR "Error creating diag sysfs on dbg_ftm_mode\n");
+		return -ENXIO;
+	}
+
+	return 0;
 }
 
 static int diagchar_cleanup(void)
