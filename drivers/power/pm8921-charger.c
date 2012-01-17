@@ -33,6 +33,11 @@
 #include <mach/msm_xo.h>
 #include <mach/msm_hsusb.h>
 
+#ifdef CONFIG_EMU_DETECTION
+#include <mach/mmi_emu_det.h>
+#include <linux/emu-accy.h>
+#endif
+
 #define CHG_BUCK_CLOCK_CTRL	0x14
 
 #define PBL_ACCESS1		0x04
@@ -275,6 +280,10 @@ struct pm8921_chg_chip {
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);
 #endif
+#ifdef CONFIG_EMU_DETECTION
+	enum emu_accy			emu_accessory;
+	struct power_supply		ac_psy;
+#endif
 };
 
 static int charging_disabled;
@@ -288,7 +297,13 @@ static struct notifier_block alarm_notifier = {
 	.notifier_call = pm8921_battery_gauge_alarm_notify,
 };
 #endif
-
+#ifdef CONFIG_EMU_DETECTION
+static int pm8921_chg_accy_notify(struct notifier_block *,
+				  unsigned long, void *);
+static struct notifier_block accy_notifier = {
+	.notifier_call = pm8921_chg_accy_notify,
+};
+#endif
 static struct pm8921_chg_chip *the_chip;
 
 static struct pm8xxx_adc_arb_btm_param btm_config;
@@ -1101,7 +1116,21 @@ static int pm_power_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 	case POWER_SUPPLY_PROP_ONLINE:
+#ifdef CONFIG_EMU_DETECTION
+		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
+			chip = container_of(psy, struct pm8921_chg_chip,
+							ac_psy);
+
+			if (chip->emu_accessory == EMU_ACCY_CHARGER)
+				val->intval = 1;
+			else
+				val->intval = 0;
+		}
+
+		else if (psy->type == POWER_SUPPLY_TYPE_USB ||
+#else
 		if (psy->type == POWER_SUPPLY_TYPE_USB ||
+#endif
 			psy->type == POWER_SUPPLY_TYPE_USB_DCP ||
 			psy->type == POWER_SUPPLY_TYPE_USB_CDP ||
 			psy->type == POWER_SUPPLY_TYPE_USB_ACA) {
@@ -1111,6 +1140,15 @@ static int pm_power_get_property(struct power_supply *psy,
 				val->intval = 0;
 			else
 				val->intval = is_usb_chg_plugged_in(chip);
+#ifdef CONFIG_EMU_DETECTION
+			if (pm_is_chg_charge_dis_bit_set(chip))
+				val->intval = 0;
+			else if ((chip->emu_accessory == EMU_ACCY_USB) ||
+				 (chip->emu_accessory == EMU_ACCY_FACTORY))
+				val->intval = 1;
+			else if (chip->emu_accessory != EMU_ACCY_UNKNOWN)
+				val->intval = 0;
+#endif
 		}
 		break;
 	default:
@@ -3129,6 +3167,30 @@ static int pm8921_charging_reboot(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+#ifdef CONFIG_EMU_DETECTION
+static int pm8921_chg_accy_notify(struct notifier_block *nb,
+		unsigned long status, void *unused)
+{
+	if ((enum emu_accy) status == EMU_ACCY_FACTORY) {
+		__pm8921_charger_vbus_draw(1500);
+		pm_chg_auto_enable(the_chip, 0);
+		the_chip->factory_mode = 1;
+	} else if (((enum emu_accy) status == EMU_ACCY_NONE) &&
+		   (the_chip->emu_accessory == EMU_ACCY_FACTORY)) {
+		the_chip->factory_mode = 0;
+		__pm8921_charger_vbus_draw(100);
+		pm_chg_auto_enable(the_chip, 1);
+	}
+
+	the_chip->emu_accessory = (enum emu_accy) status;
+	pr_info("%s: accy_state: %d\n", __func__, the_chip->emu_accessory);
+	power_supply_changed(&the_chip->batt_psy);
+	power_supply_changed(&the_chip->usb_psy);
+	power_supply_changed(&the_chip->ac_psy);
+
+	return 0;
+}
+#endif
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 		unsigned long status, void *unused)
@@ -3564,6 +3626,16 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->usb_psy.num_properties = ARRAY_SIZE(pm_power_props),
 	chip->usb_psy.get_property = pm_power_get_property,
 
+#ifdef CONFIG_EMU_DETECTION
+	chip->ac_psy.name = "ac",
+	chip->ac_psy.type = POWER_SUPPLY_TYPE_MAINS,
+	chip->ac_psy.supplied_to = pm_power_supplied_to,
+	chip->ac_psy.num_supplicants = ARRAY_SIZE(pm_power_supplied_to),
+	chip->ac_psy.properties = pm_power_props,
+	chip->ac_psy.num_properties = ARRAY_SIZE(pm_power_props),
+	chip->ac_psy.get_property = pm_power_get_property,
+#endif
+
 	chip->batt_psy.name = "battery",
 	chip->batt_psy.type = POWER_SUPPLY_TYPE_BATTERY,
 	chip->batt_psy.properties = msm_batt_power_props,
@@ -3576,11 +3648,25 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 		goto free_chip;
 	}
 
+#ifdef CONFIG_EMU_DETECTION
+	rc = power_supply_register(chip->dev, &chip->ac_psy);
+	if (rc < 0) {
+		pr_err("power_supply_register ac failed rc = %d\n", rc);
+		goto unregister_usb;
+	}
+#endif
 	rc = power_supply_register(chip->dev, &chip->batt_psy);
 	if (rc < 0) {
 		pr_err("power_supply_register batt failed rc = %d\n", rc);
+#ifdef CONFIG_EMU_DETECTION
+		goto unregister_ac;
+#else
 		goto unregister_usb;
+#endif
 	}
+
+	platform_set_drvdata(pdev, chip);
+	the_chip = chip;
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	chip->force_shutdown = 0;
@@ -3639,9 +3725,10 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 		}
 	}
 #endif
-
-	platform_set_drvdata(pdev, chip);
-	the_chip = chip;
+#ifdef CONFIG_EMU_DETECTION
+	chip->emu_accessory = EMU_ACCY_UNKNOWN;
+	emu_det_register_notify(&accy_notifier);
+#endif
 
 	wake_lock_init(&chip->eoc_wake_lock, WAKE_LOCK_SUSPEND, "pm8921_eoc");
 	wake_lock_init(&chip->unplug_wrkarnd_restore_wake_lock,
@@ -3699,6 +3786,10 @@ free_irq:
 	free_irqs(chip);
 unregister_batt:
 	power_supply_unregister(&chip->batt_psy);
+#ifdef CONFIG_EMU_DETECTION
+unregister_ac:
+	power_supply_unregister(&chip->ac_psy);
+#endif
 unregister_usb:
 	power_supply_unregister(&chip->usb_psy);
 free_chip:
