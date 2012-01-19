@@ -30,6 +30,7 @@
 #endif
 /* Size of the USB buffers used for read and write*/
 #define MAX_OUT_BUF 4096
+#define USB_MAX_OUT_BUF	MAX_OUT_BUF
 #define IN_BUF_SIZE		16384
 #define MAX_IN_BUF_SIZE	32768
 #define MAX_SYNC_OBJ_NAME_SIZE	32
@@ -240,7 +241,7 @@ struct diagchar_dev {
 	int in_busy_hsic_write;
 	int in_busy_hsic_read;
 	int usb_mdm_connected;
-	struct usb_diag_ch *mdm_ch;
+	struct legacy_diag_ch *mdm_ch;
 	struct workqueue_struct *diag_hsic_wq;
 	struct work_struct diag_read_mdm_work;
 	struct work_struct diag_read_hsic_work;
