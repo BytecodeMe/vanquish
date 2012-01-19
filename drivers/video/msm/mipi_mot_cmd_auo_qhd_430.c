@@ -37,7 +37,6 @@ static char sw_reset[2] = {DCS_CMD_SOFT_RESET, 0x00};
 static char enter_sleep[2] = {DCS_CMD_ENTER_SLEEP_MODE, 0x00};
 static char exit_sleep[2] = {DCS_CMD_EXIT_SLEEP_MODE, 0x00};
 static char display_off[2] = {DCS_CMD_SET_DISPLAY_OFF, 0x00};
-static char display_on[2] = {DCS_CMD_SET_DISPLAY_ON, 0x00};
 
 static char led_pwm1[2] = {DCS_CMD_SET_BRIGHTNESS, 0xFF};
 static char led_pwm2[2] = {DCS_CMD_SET_CTRL_DISP, 0x2C};
@@ -48,7 +47,6 @@ static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(exit_sleep), exit_sleep},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1), led_pwm1},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm2), led_pwm2},
-	{DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on},
 };
 
 static struct dsi_cmd_desc mot_display_off_cmds[] = {

@@ -87,5 +87,7 @@ struct mipi_mot_panel *mipi_mot_get_mot_panel(void);
 u16 mipi_mot_get_manufacture_id(struct msm_fb_data_type *mfd);
 u16 mipi_mot_get_controller_ver(struct msm_fb_data_type *mfd);
 u16 mipi_mot_get_controller_drv_ver(struct msm_fb_data_type *mfd);
+int mipi_mot_panel_on(struct msm_fb_data_type *mfd);
+u8 mipi_mode_get_pwr_mode(struct msm_fb_data_type *mfd);
 
 #endif /* MIPI_MOT_PANEL_H */

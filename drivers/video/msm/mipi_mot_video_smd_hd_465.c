@@ -470,6 +470,7 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
 	mot_panel->set_backlight = panel_set_backlight;
+	mot_panel->panel_on = NULL;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM, MIPI_DSI_PANEL_HD);
 	if (ret)
