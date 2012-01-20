@@ -2,6 +2,7 @@
  * drivers/gpu/ion/ion.c
  *
  * Copyright (C) 2011 Google, Inc.
+ * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -363,6 +364,7 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 	struct ion_handle *handle;
 	struct ion_device *dev = client->dev;
 	struct ion_buffer *buffer = NULL;
+	unsigned long secure_allocation = flags & ION_SECURE;
 
 	/*
 	 * traverse the list of heaps available in this system in priority
@@ -378,6 +380,9 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 			continue;
 		/* if the caller didn't specify this heap type */
 		if (!((1 << heap->id) & flags))
+			continue;
+		/* Do not allow un-secure heap if secure is specified */
+		if (secure_allocation && (heap->type != ION_HEAP_TYPE_CP))
 			continue;
 		buffer = ion_buffer_create(heap, dev, len, align, flags);
 		if (!IS_ERR_OR_NULL(buffer))
@@ -1350,7 +1355,7 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					     data.flags);
 
 		if (IS_ERR_OR_NULL(data.handle))
-			return PTR_ERR(data.handle);
+			return -ENOMEM;
 
 		if (copy_to_user((void __user *)arg, &data, sizeof(data)))
 			return -EFAULT;
@@ -1571,6 +1576,22 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 		seq_printf(s, "total heap size: %lx\n",
 			heap->ops->get_total(heap));
 	}
+	if (heap->ops->get_alloc_cnt) {
+		seq_printf(s, "allocation count: %lx\n",
+			heap->ops->get_alloc_cnt(heap));
+	}
+	if (heap->ops->get_umap_cnt) {
+		seq_printf(s, "umapping count: %lx\n",
+			heap->ops->get_umap_cnt(heap));
+	}
+	if (heap->ops->get_kmap_cnt) {
+		seq_printf(s, "kmapping count: %lx\n",
+			heap->ops->get_kmap_cnt(heap));
+	}
+	if (heap->ops->get_secured) {
+		seq_printf(s, "secured heap: %s\n",
+			heap->ops->get_secured(heap) ? "Yes" : "No");
+	}
 	return 0;
 }
 
@@ -1616,6 +1637,60 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 end:
 	mutex_unlock(&dev->lock);
 }
+
+int ion_secure_heap(struct ion_device *dev, int heap_id)
+{
+	struct rb_node *n;
+	int ret_val = 0;
+
+	/*
+	 * traverse the list of heaps available in this system
+	 * and find the heap that is specified.
+	 */
+	mutex_lock(&dev->lock);
+	for (n = rb_first(&dev->heaps); n != NULL; n = rb_next(n)) {
+		struct ion_heap *heap = rb_entry(n, struct ion_heap, node);
+		if (heap->type != ION_HEAP_TYPE_CP)
+			continue;
+		if (ION_HEAP(heap->id) != heap_id)
+			continue;
+		if (heap->ops->secure_heap)
+			ret_val = heap->ops->secure_heap(heap);
+		else
+			ret_val = -EINVAL;
+		break;
+	}
+	mutex_unlock(&dev->lock);
+	return ret_val;
+}
+EXPORT_SYMBOL(ion_secure_heap);
+
+int ion_unsecure_heap(struct ion_device *dev, int heap_id)
+{
+	struct rb_node *n;
+	int ret_val = 0;
+
+	/*
+	 * traverse the list of heaps available in this system
+	 * and find the heap that is specified.
+	 */
+	mutex_lock(&dev->lock);
+	for (n = rb_first(&dev->heaps); n != NULL; n = rb_next(n)) {
+		struct ion_heap *heap = rb_entry(n, struct ion_heap, node);
+		if (heap->type != ION_HEAP_TYPE_CP)
+			continue;
+		if (ION_HEAP(heap->id) != heap_id)
+			continue;
+		if (heap->ops->secure_heap)
+			ret_val = heap->ops->unsecure_heap(heap);
+		else
+			ret_val = -EINVAL;
+		break;
+	}
+	mutex_unlock(&dev->lock);
+	return ret_val;
+}
+EXPORT_SYMBOL(ion_unsecure_heap);
 
 static int ion_debug_leak_show(struct seq_file *s, void *unused)
 {

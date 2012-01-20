@@ -2670,43 +2670,31 @@ static int msmfb_overlay_ioctl_writeback_init(struct fb_info *info)
 {
 	return mdp4_writeback_init(info);
 }
-static int msmfb_overlay_ioctl_writeback_register_buffer(
-		struct fb_info *info, unsigned long *argp)
+static int msmfb_overlay_ioctl_writeback_start(
+		struct fb_info *info)
 {
 	int ret = 0;
-	struct msmfb_writeback_data data;
-
-	ret = copy_from_user(&data, argp, sizeof(data));
-	if (ret)
-		goto error;
-
-	ret = mdp4_writeback_register_buffer(info, &data);
+	ret = mdp4_writeback_start(info);
 	if (ret)
 		goto error;
 error:
 	if (ret)
-		pr_err("%s:msmfb_writeback_register_buffer "
+		pr_err("%s:msmfb_writeback_start "
 				" ioctl failed\n", __func__);
 	return ret;
 }
 
-static int msmfb_overlay_ioctl_writeback_unregister_buffer(
-		struct fb_info *info, unsigned long *argp)
+static int msmfb_overlay_ioctl_writeback_stop(
+		struct fb_info *info)
 {
 	int ret = 0;
-	struct msmfb_writeback_data data;
-
-	ret = copy_from_user(&data, argp, sizeof(data));
-	if (ret)
-		goto error;
-
-	ret = mdp4_writeback_unregister_buffer(info, &data);
+	ret = mdp4_writeback_stop(info);
 	if (ret)
 		goto error;
 
 error:
 	if (ret)
-		pr_err("%s:msmfb_writeback_unregister_buffer ioctl failed\n",
+		pr_err("%s:msmfb_writeback_stop ioctl failed\n",
 				__func__);
 	return ret;
 }
@@ -2766,14 +2754,14 @@ static int msmfb_overlay_ioctl_writeback_init(struct fb_info *info)
 {
 	return -ENOTSUPP;
 }
-static int msmfb_overlay_ioctl_writeback_register_buffer(
-		struct fb_info *info, unsigned long *argp)
+static int msmfb_overlay_ioctl_writeback_start(
+		struct fb_info *info)
 {
 	return -ENOTSUPP;
 }
 
-static int msmfb_overlay_ioctl_writeback_unregister_buffer(
-		struct fb_info *info, unsigned long *argp)
+static int msmfb_overlay_ioctl_writeback_stop(
+		struct fb_info *info)
 {
 	return -ENOTSUPP;
 }
@@ -2981,13 +2969,13 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	case MSMFB_WRITEBACK_INIT:
 		ret = msmfb_overlay_ioctl_writeback_init(info);
 		break;
-	case MSMFB_WRITEBACK_REGISTER_BUFFER:
-		ret = msmfb_overlay_ioctl_writeback_register_buffer(
-				info, argp);
+	case MSMFB_WRITEBACK_START:
+		ret = msmfb_overlay_ioctl_writeback_start(
+				info);
 		break;
-	case MSMFB_WRITEBACK_UNREGISTER_BUFFER:
-		ret = msmfb_overlay_ioctl_writeback_unregister_buffer(
-				info, argp);
+	case MSMFB_WRITEBACK_STOP:
+		ret = msmfb_overlay_ioctl_writeback_stop(
+				info);
 		break;
 	case MSMFB_WRITEBACK_QUEUE_BUFFER:
 		ret = msmfb_overlay_ioctl_writeback_queue_buffer(
@@ -3204,13 +3192,18 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		if (ret)
 			return ret;
 
-		switch (mdp_pp.op) { /*Add PCC, CSC, and LUT op handling here*/
+		switch (mdp_pp.op) { /*Add PCC and LUT op handling here*/
 #ifdef CONFIG_FB_MSM_MDP40
 		case mdp_op_csc_cfg:
+			ret = mdp4_csc_config((struct mdp_csc_cfg_data *)
+					&(mdp_pp.data));
+			break;
 		case mdp_op_pcc_cfg:
 		case mdp_op_lut_cfg:
 #endif
 		default:
+			pr_warn("%s: Only CSC supported by MDP_PP IOCTL.\n",
+					__func__);
 			ret = -EINVAL;
 			break;
 		}
@@ -3292,12 +3285,11 @@ struct fb_info *msm_fb_get_writeback_fb(void)
 }
 EXPORT_SYMBOL(msm_fb_get_writeback_fb);
 
-int msm_fb_writeback_register_buffer(struct fb_info *info,
-		struct msmfb_writeback_data *data)
+int msm_fb_writeback_start(struct fb_info *info)
 {
-	return mdp4_writeback_register_buffer(info, data);
+	return mdp4_writeback_start(info);
 }
-EXPORT_SYMBOL(msm_fb_writeback_register_buffer);
+EXPORT_SYMBOL(msm_fb_writeback_start);
 
 int msm_fb_writeback_queue_buffer(struct fb_info *info,
 		struct msmfb_data *data)
@@ -3313,12 +3305,11 @@ int msm_fb_writeback_dequeue_buffer(struct fb_info *info,
 }
 EXPORT_SYMBOL(msm_fb_writeback_dequeue_buffer);
 
-int msm_fb_writeback_unregister_buffer(struct fb_info *info,
-		struct msmfb_writeback_data *data)
+int msm_fb_writeback_stop(struct fb_info *info)
 {
-	return mdp4_writeback_unregister_buffer(info, data);
+	return mdp4_writeback_stop(info);
 }
-EXPORT_SYMBOL(msm_fb_writeback_unregister_buffer);
+EXPORT_SYMBOL(msm_fb_writeback_stop);
 int msm_fb_writeback_init(struct fb_info *info)
 {
 	return mdp4_writeback_init(info);

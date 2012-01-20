@@ -88,8 +88,8 @@
 
 #include "devices.h"
 #include "devices-msm8x60.h"
-#include "cpuidle.h"
-#include "pm.h"
+#include <mach/cpuidle.h>
+#include <mach/pm.h>
 #include "mpm.h"
 #include "spm.h"
 #include "rpm_log.h"
@@ -1435,7 +1435,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	 * usb pclk as dayatona fabric clock will be
 	 * used instead
 	 */
-	.pclk_src_name		 = "dfab_usb_hs_clk",
 	.pemp_level		 = PRE_EMPHASIS_WITH_20_PERCENT,
 	.cdr_autoreset		 = CDR_AUTO_RESET_DISABLE,
 	.se1_gating		 = SE1_GATING_DISABLE,
@@ -5240,6 +5239,28 @@ static struct platform_device *surf_devices[] __initdata = {
 };
 
 #ifdef CONFIG_ION_MSM
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+static struct ion_cp_heap_pdata cp_mm_ion_pdata = {
+	.permission_type = IPT_TYPE_MM_CARVEOUT,
+	.request_region = request_smi_region,
+	.release_region = release_smi_region,
+	.setup_region = setup_smi_region,
+};
+
+static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
+	.permission_type = IPT_TYPE_MFC_SHAREDMEM,
+	.request_region = request_smi_region,
+	.release_region = release_smi_region,
+	.setup_region = setup_smi_region,
+};
+
+static struct ion_cp_heap_pdata cp_wb_ion_pdata = {
+	.permission_type = IPT_TYPE_MDP_WRITEBACK,
+};
+
+static struct ion_co_heap_pdata co_ion_pdata = {
+};
+#endif
 static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
@@ -5255,16 +5276,15 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_SF_HEAP_NAME,
 			.size	= MSM_ION_SF_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = &co_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MM_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MM_HEAP_NAME,
 			.size	= MSM_ION_MM_SIZE,
 			.memory_type = ION_SMI_TYPE,
-			.request_region = request_smi_region,
-			.release_region = release_smi_region,
-			.setup_region = setup_smi_region,
+			.extra_data = (void *) &cp_mm_ion_pdata,
 		},
 		{
 			.id	= ION_CAMERA_HEAP_ID,
@@ -5272,23 +5292,23 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_CAMERA_HEAP_NAME,
 			.size	= MSM_ION_CAMERA_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = &co_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MFC_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MFC_HEAP_NAME,
 			.size	= MSM_ION_MFC_SIZE,
 			.memory_type = ION_SMI_TYPE,
-			.request_region = request_smi_region,
-			.release_region = release_smi_region,
-			.setup_region = setup_smi_region,
+			.extra_data = (void *) &cp_mfc_ion_pdata,
 		},
 		{
 			.id	= ION_CP_WB_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_WB_HEAP_NAME,
 			.size	= MSM_ION_WB_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = (void *) &cp_wb_ion_pdata,
 		},
 #endif
 	}

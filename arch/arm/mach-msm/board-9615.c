@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -33,8 +33,8 @@
 #include "timer.h"
 #include "devices.h"
 #include "board-9615.h"
-#include "cpuidle.h"
-#include "pm.h"
+#include <mach/cpuidle.h>
+#include <mach/pm.h>
 #include "acpuclock.h"
 #include "pm-boot.h"
 
@@ -337,7 +337,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control	= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
-	.pclk_src_name	= "dfab_usb_hs_clk",
 	.vbus_power		= msm_hsusb_vbus_power,
 	.disable_reset_on_disconnect	= true,
 };

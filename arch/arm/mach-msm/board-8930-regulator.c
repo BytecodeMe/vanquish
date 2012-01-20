@@ -24,9 +24,12 @@
  */
 VREG_CONSUMERS(L1) = {
 	REGULATOR_SUPPLY("8038_l1",		NULL),
+	REGULATOR_SUPPLY("iris_vddrfa",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(L2) = {
 	REGULATOR_SUPPLY("8038_l2",		NULL),
+	REGULATOR_SUPPLY("iris_vdddig",		"wcnss_wlan.0"),
+	REGULATOR_SUPPLY("dsi_vdda",		"mipi_dsi.1"),
 };
 VREG_CONSUMERS(L3) = {
 	REGULATOR_SUPPLY("8038_l3",		NULL),
@@ -35,6 +38,7 @@ VREG_CONSUMERS(L3) = {
 VREG_CONSUMERS(L4) = {
 	REGULATOR_SUPPLY("8038_l4",		NULL),
 	REGULATOR_SUPPLY("HSUSB_1p8",		"msm_otg"),
+	REGULATOR_SUPPLY("iris_vddxo",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(L5) = {
 	REGULATOR_SUPPLY("8038_l5",		NULL),
@@ -47,15 +51,22 @@ VREG_CONSUMERS(L7) = {
 };
 VREG_CONSUMERS(L8) = {
 	REGULATOR_SUPPLY("8038_l8",		NULL),
+	REGULATOR_SUPPLY("dsi_vdc",		"mipi_dsi.1"),
 };
 VREG_CONSUMERS(L9) = {
 	REGULATOR_SUPPLY("8038_l9",		NULL),
+	REGULATOR_SUPPLY("vdd_ana",		"3-004a"),
+	REGULATOR_SUPPLY("vdd",			"3-0024"),
 };
 VREG_CONSUMERS(L10) = {
 	REGULATOR_SUPPLY("8038_l10",		NULL),
+	REGULATOR_SUPPLY("iris_vddpa",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(L11) = {
 	REGULATOR_SUPPLY("8038_l11",		NULL),
+	REGULATOR_SUPPLY("vdd_dig",		"3-004a"),
+	REGULATOR_SUPPLY("iris_vddio",		"wcnss_wlan.0"),
+	REGULATOR_SUPPLY("riva_vddpx",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(L12) = {
 	REGULATOR_SUPPLY("8038_l12",		NULL),
@@ -91,9 +102,13 @@ VREG_CONSUMERS(L22) = {
 };
 VREG_CONSUMERS(L23) = {
 	REGULATOR_SUPPLY("8038_l23",		NULL),
+	REGULATOR_SUPPLY("dsi_vddio",		"mipi_dsi.1"),
+	REGULATOR_SUPPLY("hdmi_avdd",		"hdmi_msm.0"),
+	REGULATOR_SUPPLY("hdmi_vcc",		"hdmi_msm.0"),
 };
 VREG_CONSUMERS(L24) = {
 	REGULATOR_SUPPLY("8038_l24",		NULL),
+	REGULATOR_SUPPLY("riva_vddmx",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(L26) = {
 	REGULATOR_SUPPLY("8038_l26",		NULL),
@@ -105,6 +120,7 @@ VREG_CONSUMERS(L27) = {
 VREG_CONSUMERS(S1) = {
 	REGULATOR_SUPPLY("8038_s1",		NULL),
 	REGULATOR_SUPPLY("HSUSB_VDDCX",		"msm_otg"),
+	REGULATOR_SUPPLY("riva_vddcx",		"wcnss_wlan.0"),
 };
 VREG_CONSUMERS(S2) = {
 	REGULATOR_SUPPLY("8038_s2",		NULL),
@@ -128,13 +144,17 @@ VREG_CONSUMERS(LVS1) = {
 };
 VREG_CONSUMERS(LVS2) = {
 	REGULATOR_SUPPLY("8038_lvs2",		NULL),
+	REGULATOR_SUPPLY("vcc_i2c",		"3-004a"),
+	REGULATOR_SUPPLY("vcc_i2c",		"3-0024"),
+	REGULATOR_SUPPLY("vddp",		"12-0048"),
 };
 VREG_CONSUMERS(EXT_5V) = {
 	REGULATOR_SUPPLY("ext_5v",		NULL),
+	REGULATOR_SUPPLY("hdmi_mvs",		"hdmi_msm.0"),
 };
 VREG_CONSUMERS(EXT_OTG_SW) = {
 	REGULATOR_SUPPLY("ext_otg_sw",		NULL),
-	REGULATOR_SUPPLY("vbus_otg",          "msm_otg"),
+	REGULATOR_SUPPLY("vbus_otg",		"msm_otg"),
 };
 
 #define PM8XXX_VREG_INIT(_id, _name, _min_uV, _max_uV, _modes, _ops, \

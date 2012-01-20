@@ -400,6 +400,7 @@ void mdp4_mixer_blend_init(int mixer_num);
 void mdp4_vg_qseed_init(int vg_num);
 void mdp4_vg_csc_setup(int vp_num);
 void mdp4_mixer_csc_setup(uint32 mixer);
+void mdp4_dmap_csc_setup(void);
 void mdp4_vg_csc_update(struct mdp_csc *p);
 irqreturn_t mdp4_isr(int irq, void *ptr);
 void mdp4_overlay_format_to_pipe(uint32 format, struct mdp4_overlay_pipe *pipe);
@@ -414,6 +415,10 @@ void mdp4_overlay_dtv_ov_done_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
 	struct mdp4_overlay_pipe *pipe);
+int mdp4_overlay_dtv_set(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe);
+int mdp4_overlay_dtv_unset(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe);
 #else
 static inline void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
 	struct mdp4_overlay_pipe *pipe)
@@ -429,6 +434,16 @@ static inline void  mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
 	struct mdp4_overlay_pipe *pipe)
 {
 	/* empty */
+}
+static inline int mdp4_overlay_dtv_set(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe)
+{
+	return 0;
+}
+static inline int mdp4_overlay_dtv_unset(struct msm_fb_data_type *mfd,
+			struct mdp4_overlay_pipe *pipe)
+{
+	return 0;
 }
 #endif
 
@@ -509,7 +524,6 @@ void mdp4_mddi_overlay_restore(void);
 void mdp4_overlay_lcdc_wait4vsync(struct msm_fb_data_type *mfd);
 void mdp4_overlay_lcdc_vsync_push(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe);
-void mdp4_overlay_lcdc_set_perf(struct msm_fb_data_type *mfd);
 void mdp4_update_perf_level(u32 perf_level);
 void mdp4_set_perf_level(void);
 void mdp4_mddi_overlay_dmas_restore(void);
@@ -620,7 +634,6 @@ void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_dsi_blt_dmap_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe);
-void mdp4_overlay_dsi_video_set_perf(struct msm_fb_data_type *mfd);
 #else
 static inline void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 {
@@ -632,11 +645,6 @@ static inline void mdp4_dsi_blt_dmap_busy_wait(struct msm_fb_data_type *mfd)
 }
 static inline void mdp4_overlay_dsi_video_vsync_push(
 	struct msm_fb_data_type *mfd, struct mdp4_overlay_pipe *pipe)
-{
-	/* empty */
-}
-static inline void mdp4_overlay_dsi_video_set_perf(
-				struct msm_fb_data_type *mfd)
 {
 	/* empty */
 }
@@ -680,10 +688,8 @@ void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
 void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_overlay1_done_writeback(struct mdp_dma_data *dma);
 
-int mdp4_writeback_register_buffer(struct fb_info *info,
-		struct msmfb_writeback_data *data);
-int mdp4_writeback_unregister_buffer(struct fb_info *info,
-		struct msmfb_writeback_data *data);
+int mdp4_writeback_start(struct fb_info *info);
+int mdp4_writeback_stop(struct fb_info *info);
 int mdp4_writeback_dequeue_buffer(struct fb_info *info,
 		struct msmfb_data *data);
 int mdp4_writeback_queue_buffer(struct fb_info *info,
@@ -694,6 +700,7 @@ int mdp4_writeback_terminate(struct fb_info *info);
 
 void mdp4_hsic_set(struct mdp4_overlay_pipe *pipe, struct dpp_ctrl *ctrl);
 void mdp4_hsic_update(struct mdp4_overlay_pipe *pipe);
+int mdp4_csc_config(struct mdp_csc_cfg_data *config);
 
 u32  mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
 void mdp4_init_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);

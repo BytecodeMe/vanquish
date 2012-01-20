@@ -40,6 +40,7 @@
 #include <linux/msm_tsens.h>
 #include <linux/ks8851.h>
 #include <linux/i2c/isa1200.h>
+#include <linux/gpio_keys.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -81,8 +82,8 @@
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "spm.h"
-#include "pm.h"
-#include "cpuidle.h"
+#include <mach/pm.h>
+#include <mach/cpuidle.h>
 #include "rpm_resources.h"
 #include "mpm.h"
 #include "acpuclock.h"
@@ -281,6 +282,17 @@ static int msm8930_paddr_to_memtype(unsigned int paddr)
 }
 
 #ifdef CONFIG_ION_MSM
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+static struct ion_cp_heap_pdata cp_mm_ion_pdata = {
+	.permission_type = IPT_TYPE_MM_CARVEOUT,
+};
+
+static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
+	.permission_type = IPT_TYPE_MFC_SHAREDMEM,
+};
+static struct ion_co_heap_pdata co_ion_pdata = {
+};
+#endif
 static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
@@ -296,20 +308,23 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_SF_HEAP_NAME,
 			.size	= MSM_ION_SF_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = &co_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MM_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MM_HEAP_NAME,
 			.size	= MSM_ION_MM_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = (void *) &cp_mm_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MFC_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MFC_HEAP_NAME,
 			.size	= MSM_ION_MFC_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = (void *) &cp_mfc_ion_pdata,
 		},
 		{
 			.id	= ION_IOMMU_HEAP_ID,
@@ -785,7 +800,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control		= OTG_PMIC_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
-	.pclk_src_name		= "dfab_usb_hs_clk",
 	.pmic_id_irq		= PM8038_USB_ID_IN_IRQ(PM8038_IRQ_BASE),
 	.power_budget		= 750,
 };
@@ -993,12 +1007,19 @@ static struct msm_spm_platform_data msm_spm_l2_data[] __initdata = {
 #ifndef MSM8930_PHASE_2
 #define PM_HAP_EN_GPIO		PM8921_GPIO_PM_TO_SYS(33)
 #define PM_HAP_LEN_GPIO		PM8921_GPIO_PM_TO_SYS(20)
+#else
+#define ISA1200_HAP_EN_GPIO	77
+#define ISA1200_HAP_LEN_GPIO	78
+#define ISA1200_HAP_CLK		PM8038_GPIO_PM_TO_SYS(7)
 #endif
 
+#ifndef MSM8930_PHASE_2
 static struct msm_xo_voter *xo_handle_d1;
+#endif
 
 static int isa1200_power(int on)
 {
+#ifndef MSM8930_PHASE_2
 	int rc = 0;
 
 	gpio_set_value(HAP_SHIFT_LVL_OE_GPIO, !!on);
@@ -1016,12 +1037,19 @@ static int isa1200_power(int on)
 err_xo_vote:
 	gpio_set_value(HAP_SHIFT_LVL_OE_GPIO, !on);
 	return rc;
+#else
+	gpio_set_value_cansleep(ISA1200_HAP_CLK, !!on);
+
+	return 0;
+#endif
+
 }
 
 static int isa1200_dev_setup(bool enable)
 {
 	int rc = 0;
 
+#ifndef MSM8930_PHASE_2
 	struct pm_gpio hap_gpio_config = {
 		.direction      = PM_GPIO_DIR_OUT,
 		.pull           = PM_GPIO_PULL_NO,
@@ -1081,23 +1109,78 @@ gpio_set_dir:
 free_gpio:
 	gpio_free(HAP_SHIFT_LVL_OE_GPIO);
 	return rc;
+#else
+	struct pm_gpio hap_clk_gpio_config = {
+		.direction      = PM_GPIO_DIR_OUT,
+		.pull           = PM_GPIO_PULL_NO,
+		.out_strength   = PM_GPIO_STRENGTH_HIGH,
+		.function       = PM_GPIO_FUNC_1,
+		.inv_int_pol    = 0,
+		.vin_sel        = PM_GPIO_VIN_S4,
+		.output_buffer  = PM_GPIO_OUT_BUF_CMOS,
+		.output_value   = 0,
+	};
+
+	rc = pm8xxx_gpio_config(ISA1200_HAP_CLK, &hap_clk_gpio_config);
+	if (rc) {
+		pr_err("%s: pm8038 gpio %d config failed(%d)\n",
+				__func__, ISA1200_HAP_CLK, rc);
+		return rc;
+	}
+
+	rc = gpio_request(ISA1200_HAP_CLK, "haptics_clk");
+	if (rc) {
+		pr_err("%s: gpio_request for %d gpio failed rc(%d)\n",
+					__func__, ISA1200_HAP_CLK, rc);
+		goto fail_gpio_req;
+	}
+
+	rc = gpio_direction_output(ISA1200_HAP_CLK, 0);
+	if (rc) {
+		pr_err("%s: gpio_direction_output failed for %d gpio rc(%d)\n",
+						__func__, ISA1200_HAP_CLK, rc);
+		goto fail_gpio_dir;
+	}
+
+	return 0;
+
+fail_gpio_dir:
+	gpio_free(ISA1200_HAP_CLK);
+fail_gpio_req:
+	return rc;
+
+#endif
 }
 
 static struct isa1200_regulator isa1200_reg_data[] = {
+#ifndef MSM8930_PHASE_2
 	{
 		.name = "vcc_i2c",
 		.min_uV = ISA_I2C_VTG_MIN_UV,
 		.max_uV = ISA_I2C_VTG_MAX_UV,
 		.load_uA = ISA_I2C_CURR_UA,
 	},
+#else
+	{
+		.name = "vddp",
+		.min_uV = ISA_I2C_VTG_MIN_UV,
+		.max_uV = ISA_I2C_VTG_MAX_UV,
+		.load_uA = ISA_I2C_CURR_UA,
+	},
+#endif
 };
 
 static struct isa1200_platform_data isa1200_1_pdata = {
 	.name = "vibrator",
 	.dev_setup = isa1200_dev_setup,
 	.power_on = isa1200_power,
+#ifndef MSM8930_PHASE_2
 	.hap_en_gpio = PM_HAP_EN_GPIO,
 	.hap_len_gpio = PM_HAP_LEN_GPIO,
+#else
+	.hap_en_gpio = ISA1200_HAP_EN_GPIO,
+	.hap_len_gpio = ISA1200_HAP_LEN_GPIO,
+#endif
 	.max_timeout = 15000,
 	.mode_ctrl = PWM_GEN_MODE,
 	.pwm_fd = {
@@ -1339,6 +1422,9 @@ static struct mxt_platform_data mxt_platform_data_8930 = {
 	.x_size			= 1067,
 	.y_size			= 566,
 	.irqflags		= IRQF_TRIGGER_FALLING,
+#ifdef MSM8930_PHASE_2
+	.digital_pwr_regulator	= true,
+#endif
 	.i2c_pull_up		= true,
 	.reset_gpio		= MXT_TS_RESET_GPIO,
 	.irq_gpio		= MXT_TS_GPIO_IRQ,
@@ -1351,6 +1437,63 @@ static struct i2c_board_info mxt_device_info_8930[] __initdata = {
 		.irq = MSM_GPIO_TO_INT(MXT_TS_GPIO_IRQ),
 	},
 };
+
+#ifdef MSM8930_PHASE_2
+
+#define GPIO_VOLUME_UP		PM8038_GPIO_PM_TO_SYS(3)
+#define GPIO_VOLUME_DOWN	PM8038_GPIO_PM_TO_SYS(8)
+#define GPIO_CAMERA_SNAPSHOT	PM8038_GPIO_PM_TO_SYS(10)
+#define GPIO_CAMERA_FOCUS	PM8038_GPIO_PM_TO_SYS(11)
+
+static struct gpio_keys_button keys_8930[] = {
+	{
+		.code = KEY_VOLUMEUP,
+		.type = EV_KEY,
+		.desc = "volume_up",
+		.gpio = GPIO_VOLUME_UP,
+		.wakeup = 1,
+		.active_low = 1,
+	},
+	{
+		.code = KEY_VOLUMEDOWN,
+		.type = EV_KEY,
+		.desc = "volume_down",
+		.gpio = GPIO_VOLUME_DOWN,
+		.wakeup = 1,
+		.active_low = 1,
+	},
+	{
+		.code = KEY_CAMERA_FOCUS,
+		.type = EV_KEY,
+		.desc = "camera_focus",
+		.gpio = GPIO_CAMERA_FOCUS,
+		.wakeup = 1,
+		.active_low = 1,
+	},
+	{
+		.code = KEY_CAMERA_SNAPSHOT,
+		.type = EV_KEY,
+		.desc = "camera_snapshot",
+		.gpio = GPIO_CAMERA_SNAPSHOT,
+		.wakeup = 1,
+		.active_low = 1,
+	},
+};
+
+/* Add GPIO keys for 8930 */
+static struct gpio_keys_platform_data gpio_keys_8930_pdata = {
+	.buttons = keys_8930,
+	.nbuttons = 4,
+};
+
+static struct platform_device gpio_keys_8930 = {
+	.name		= "gpio-keys",
+	.id		= -1,
+	.dev		= {
+		.platform_data  = &gpio_keys_8930_pdata,
+	},
+};
+#endif /* MSM8930_PHASE_2 */
 
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi4_pdata = {
 	.clk_freq = 100000,
@@ -1594,11 +1737,13 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_etb_device,
 	&msm_tpiu_device,
 	&msm_funnel_device,
-	&msm_debug_device,
 	&msm_ptm_device,
 #endif
 	&msm_device_dspcrashd_8960,
 	&msm8960_device_watchdog,
+#ifdef MSM8930_PHASE_2
+	&gpio_keys_8930,
+#endif
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
@@ -1871,12 +2016,21 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		cyttsp_info,
 		ARRAY_SIZE(cyttsp_info),
 	},
+#ifndef MSM8930_PHASE_2
 	{
 		I2C_LIQUID,
 		MSM_8930_GSBI10_QUP_I2C_BUS_ID,
 		msm_isa1200_board_info,
 		ARRAY_SIZE(msm_isa1200_board_info),
 	},
+#else
+	{
+		I2C_FFA | I2C_FLUID,
+		MSM_8930_GSBI10_QUP_I2C_BUS_ID,
+		msm_isa1200_board_info,
+		ARRAY_SIZE(msm_isa1200_board_info),
+	},
+#endif
 	{
 		I2C_SURF,
 		MSM_8930_GSBI3_QUP_I2C_BUS_ID,

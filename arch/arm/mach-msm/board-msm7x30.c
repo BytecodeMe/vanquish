@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -78,7 +78,7 @@
 #include <linux/usb/android.h>
 #include <mach/usbdiag.h>
 #endif
-#include "pm.h"
+#include <mach/pm.h>
 #include "pm-boot.h"
 #include "spm.h"
 #include "acpuclock.h"
@@ -3214,7 +3214,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 #else
 	.vbus_power = msm_hsusb_vbus_power,
 #endif
-	.core_clk		 = 1,
 	.pemp_level		 = PRE_EMPHASIS_WITH_20_PERCENT,
 	.cdr_autoreset		 = CDR_AUTO_RESET_DISABLE,
 	.drv_ampl		 = HS_DRV_AMPLITUDE_DEFAULT,

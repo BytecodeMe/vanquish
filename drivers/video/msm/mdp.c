@@ -49,7 +49,7 @@ static struct clk *mdp_clk;
 static struct clk *mdp_pclk;
 static struct clk *mdp_lut_clk;
 int mdp_rev;
-
+static boolean mdp_hist_force_stop = FALSE;
 static struct regulator *footswitch;
 static unsigned int mdp_footswitch_on;
 
@@ -200,6 +200,7 @@ static int mdp_lut_update_nonlcdc(struct fb_info *info, struct fb_cmap *cmap)
 static int mdp_lut_update_lcdc(struct fb_info *info, struct fb_cmap *cmap)
 {
 	int ret;
+	uint32_t out;
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	ret = mdp_lut_hw_update(cmap);
@@ -209,7 +210,9 @@ static int mdp_lut_update_lcdc(struct fb_info *info, struct fb_cmap *cmap)
 		return ret;
 	}
 
-	MDP_OUTP(MDP_BASE + 0x90070, (mdp_lut_i << 10) | 0x17);
+	/*mask off non LUT select bits*/
+	out = inpdw(MDP_BASE + 0x90070) & ~(0x1 << 10);
+	MDP_OUTP(MDP_BASE + 0x90070, (mdp_lut_i << 10) | out);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_lut_i = (mdp_lut_i + 1)%2;
 
@@ -218,11 +221,13 @@ static int mdp_lut_update_lcdc(struct fb_info *info, struct fb_cmap *cmap)
 
 static void mdp_lut_enable(void)
 {
+	uint32_t out;
 	if (mdp_lut_push) {
 		mutex_lock(&mdp_lut_push_sem);
 		mdp_lut_push = 0;
+		out = inpdw(MDP_BASE + 0x90070) & ~(0x1 << 10);
 		MDP_OUTP(MDP_BASE + 0x90070,
-				(mdp_lut_push_i << 10) | 0x17);
+				(mdp_lut_push_i << 10) | out);
 		mutex_unlock(&mdp_lut_push_sem);
 	}
 }
@@ -255,14 +260,14 @@ int _mdp_histogram_ctrl(boolean en)
 		hist_base = 0x94000;
 
 	if (en == TRUE) {
-		if (mdp_is_hist_start)
+		if (mdp_is_hist_data)
 			return -EINVAL;
 
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		mdp_hist_frame_cnt = 1;
 		mdp_enable_irq(MDP_HISTOGRAM_TERM);
 		spin_lock_irqsave(&mdp_spin_lock, flag);
-		if (mdp_is_hist_start == FALSE && mdp_rev >= MDP_REV_40) {
+		if (mdp_rev >= MDP_REV_40) {
 			MDP_OUTP(MDP_BASE + hist_base + 0x10, 1);
 			MDP_OUTP(MDP_BASE + hist_base + 0x1c, INTR_HIST_DONE);
 		}
@@ -272,7 +277,7 @@ int _mdp_histogram_ctrl(boolean en)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 		mdp_is_hist_data = TRUE;
 	} else {
-		if (!mdp_is_hist_start && !mdp_is_hist_data)
+		if (!mdp_is_hist_data)
 			return -EINVAL;
 
 		mdp_is_hist_data = FALSE;
@@ -299,7 +304,8 @@ int mdp_histogram_ctrl(boolean en)
 {
 	int ret = 0;
 	mutex_lock(&mdp_hist_mutex);
-	ret = _mdp_histogram_ctrl(en);
+	if (mdp_is_hist_start)
+		ret = _mdp_histogram_ctrl(en);
 	mutex_unlock(&mdp_hist_mutex);
 	return ret;
 }
@@ -423,6 +429,11 @@ static int mdp_do_histogram(struct fb_info *info, struct mdp_histogram *hist)
 		goto error;
 	}
 
+	if (mdp_hist_force_stop && (mdp_rev == MDP_REV_303)) {
+		ret = -EINVAL;
+		goto error;
+	}
+
 	if (!mdp_is_hist_start) {
 		printk(KERN_ERR "%s histogram not started\n", __func__);
 		ret = -EPERM;
@@ -436,8 +447,14 @@ static int mdp_do_histogram(struct fb_info *info, struct mdp_histogram *hist)
 	wait_for_completion_killable(&mdp_hist_comp);
 
 	mutex_lock(&mdp_hist_mutex);
-	if (mdp_is_hist_data)
+	if (mdp_is_hist_data) {
+		if (mdp_hist_force_stop && (mdp_rev == MDP_REV_303)) {
+			pr_debug("%s histogram stopped\n", __func__);
+			ret = -EINVAL;
+			goto error;
+		}
 		ret =  _mdp_copy_hist_data(hist);
+	}
 error:
 	mutex_unlock(&mdp_hist_mutex);
 	return ret;
@@ -723,6 +740,12 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 		if ((mdp_all_blocks_off) && (mdp_current_clk_on)) {
 			mutex_lock(&mdp_suspend_mutex);
 			if (block == MDP_MASTER_BLOCK || mdp_suspended) {
+				if ((mdp_prim_panel_type == MIPI_CMD_PANEL) &&
+					(mdp_rev == MDP_REV_303)) {
+					mdp_hist_force_stop = TRUE;
+					complete(&mdp_hist_comp);
+				}
+
 				mdp_current_clk_on = FALSE;
 				mb();
 				/* turn off MDP clks */
@@ -897,6 +920,7 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 				dma->busy = FALSE;
 				mdp_pipe_ctrl(MDP_DMA2_BLOCK,
 					MDP_BLOCK_POWER_OFF, TRUE);
+				mdp_hist_force_stop = FALSE;
 				complete(&dma->comp);
 			}
 #endif

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,6 +15,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/msm_kgsl.h>
 #include <linux/regulator/machine.h>
+#include <linux/init.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
 #include <mach/board.h>
@@ -594,12 +595,16 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 			.bus_freq = 200000000,
 		},
 		{
+			.gpu_freq = 192000000,
+			.bus_freq = 160000000,
+		},
+		{
 			.gpu_freq = 133330000,
 			.bus_freq = 0,
 		},
 	},
 	.init_level = 0,
-	.num_levels = 2,
+	.num_levels = 3,
 	.set_grp_async = set_grp_xbar_async,
 	.idle_timeout = HZ/5,
 	.nap_allowed = false,
@@ -619,6 +624,7 @@ struct platform_device msm_kgsl_3d0 = {
 void __init msm7x25a_kgsl_3d0_init(void)
 {
 	if (cpu_is_msm7x25a() || cpu_is_msm7x25aa()) {
+		kgsl_3d0_pdata.num_levels = 2;
 		kgsl_3d0_pdata.pwrlevel[0].gpu_freq = 133330000;
 		kgsl_3d0_pdata.pwrlevel[0].bus_freq = 160000000;
 		kgsl_3d0_pdata.pwrlevel[1].gpu_freq = 96000000;
@@ -694,6 +700,31 @@ struct platform_device asoc_msm_dai1 = {
 	.name   = "msm-cpu-dai",
 	.id     = 0,
 };
+
+static struct resource gpio_resources[] = {
+	{
+		.start	= INT_GPIO_GROUP1,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= INT_GPIO_GROUP2,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device msm_device_gpio = {
+	.name		= "msmgpio",
+	.id		= -1,
+	.resource	= gpio_resources,
+	.num_resources	= ARRAY_SIZE(gpio_resources),
+};
+
+static int msm7627a_init_gpio(void)
+{
+	platform_device_register(&msm_device_gpio);
+	return 0;
+}
+postcore_initcall(msm7627a_init_gpio);
 
 int __init msm7x2x_misc_init(void)
 {
