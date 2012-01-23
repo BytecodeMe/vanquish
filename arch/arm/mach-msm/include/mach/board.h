@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/include/mach/board.h
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -320,10 +320,9 @@ struct msm_panel_common_pdata {
 	struct msm_bus_scale_pdata *mdp_bus_scale_table;
 #endif
 	int mdp_rev;
-	int mdp_writeback_memtype;
-	void *mdp_writeback_phys;    /* writeback physical addr */
-	int mdp_writeback_size_ov0;  /* overlay0 writeback size */
-	int mdp_writeback_size_ov1;  /* overlay1 writeback size */
+	u32 ov0_wb_size;  /* overlay0 writeback size */
+	u32 ov1_wb_size;  /* overlay1 writeback size */
+	u32 mem_hid;
 };
 
 

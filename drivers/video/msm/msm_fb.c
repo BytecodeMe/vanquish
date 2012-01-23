@@ -3,7 +3,7 @@
  * Core MSM framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -2923,6 +2923,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	u8 *reg_access_buf;
 
 	struct mdp_page_protection fb_page_protection;
+	struct msmfb_mdp_pp mdp_pp;
 	int ret = 0;
 
 	switch (cmd) {
@@ -3198,7 +3199,23 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		ret = -EINVAL;
 #endif
 		break;
+	case MSMFB_MDP_PP:
+		ret = copy_from_user(&mdp_pp, argp, sizeof(mdp_pp));
+		if (ret)
+			return ret;
 
+		switch (mdp_pp.op) { /*Add PCC, CSC, and LUT op handling here*/
+#ifdef CONFIG_FB_MSM_MDP40
+		case mdp_op_csc_cfg:
+		case mdp_op_pcc_cfg:
+		case mdp_op_lut_cfg:
+#endif
+		default:
+			ret = -EINVAL;
+			break;
+		}
+
+		break;
 	case MSMFB_REG_WRITE:
 
 		if (copy_from_user(&reg_access,
@@ -3390,7 +3407,9 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	mfd->index = fbi_list_index;
 	mfd->mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITECOMBINE;
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	mfd->client = msm_ion_client_create(-1, pdev->name);
+	mfd->iclient = msm_ion_client_create(-1, pdev->name);
+#else
+	mfd->iclient = NULL;
 #endif
 	/* link to the latest pdev */
 	mfd->pdev = this_dev;

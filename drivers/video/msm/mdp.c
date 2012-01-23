@@ -2,7 +2,7 @@
  *
  * MSM MDP Interface (used by framebuffer core)
  *
- * Copyright (c) 2007-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2007-2012, Code Aurora Forum. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
  * This software is licensed under the terms of the GNU General Public
@@ -31,7 +31,6 @@
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
-#include <linux/memory_alloc.h>
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <linux/semaphore.h>
@@ -119,10 +118,8 @@ extern int mdp_lcd_rd_cnt_offset_slow;
 extern int mdp_lcd_rd_cnt_offset_fast;
 extern int mdp_usec_diff_threshold;
 
-#ifdef CONFIG_FB_MSM_LCDC
 extern int first_pixel_start_x;
 extern int first_pixel_start_y;
-#endif
 
 #ifdef MSM_FB_ENABLE_DBGFS
 struct dentry *mdp_dir;
@@ -1356,30 +1353,7 @@ static int mdp_probe(struct platform_device *pdev)
 #ifdef CONFIG_FB_MSM_OVERLAY
 		mdp_hw_cursor_init();
 #endif
-
 		mdp_resource_initialized = 1;
-
-		if (!mdp_pdata)
-			return 0;
-
-		size = mdp_pdata->mdp_writeback_size_ov0 +
-			mdp_pdata->mdp_writeback_size_ov1;
-		if (size) {
-			mdp_pdata->mdp_writeback_phys =
-				(void *)allocate_contiguous_memory_nomap
-				(size,
-				 mdp_pdata->mdp_writeback_memtype,
-				 4); /* align to word size */
-			if (mdp_pdata->mdp_writeback_phys) {
-				pr_info("allocating %d bytes at %p for mdp writeback\n",
-					size, mdp_pdata->mdp_writeback_phys);
-			} else {
-				pr_err("%s cannot allocate memory for mdp writeback!\n",
-				       __func__);
-			}
-		} else {
-			mdp_pdata->mdp_writeback_phys = 0;
-		}
 		return 0;
 	}
 
@@ -1404,6 +1378,21 @@ static int mdp_probe(struct platform_device *pdev)
 	/* link to the latest pdev */
 	mfd->pdev = msm_fb_dev;
 	mfd->mdp_rev = mdp_rev;
+
+	mfd->ov0_wb_buf = MDP_ALLOC(sizeof(struct mdp_buf_type));
+	mfd->ov1_wb_buf = MDP_ALLOC(sizeof(struct mdp_buf_type));
+	memset((void *)mfd->ov0_wb_buf, 0, sizeof(struct mdp_buf_type));
+	memset((void *)mfd->ov1_wb_buf, 0, sizeof(struct mdp_buf_type));
+
+	if (mdp_pdata) {
+		mfd->ov0_wb_buf->size = mdp_pdata->ov0_wb_size;
+		mfd->ov1_wb_buf->size = mdp_pdata->ov1_wb_size;
+		mfd->mem_hid = mdp_pdata->mem_hid;
+	} else {
+		mfd->ov0_wb_buf->size = 0;
+		mfd->ov1_wb_buf->size = 0;
+		mfd->mem_hid = 0;
+	}
 
 	mfd->ov0_blt_state  = 0;
 	mfd->use_ov0_blt = 0 ;
@@ -1668,19 +1657,6 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 	}
 #endif
-
-	if (mdp_pdata && mdp_pdata->mdp_writeback_phys) {
-		mfd->writeback_overlay0_phys =
-			(mdp_pdata->mdp_writeback_size_ov0) ?
-			mdp_pdata->mdp_writeback_phys : 0;
-		mfd->writeback_overlay1_phys =
-			(mdp_pdata->mdp_writeback_size_ov1) ?
-			(mdp_pdata->mdp_writeback_phys +
-			 mdp_pdata->mdp_writeback_size_ov0) : 0;
-	} else {
-		mfd->writeback_overlay0_phys = 0;
-		mfd->writeback_overlay1_phys = 0;
-	}
 
 	/* set driver data */
 	platform_set_drvdata(msm_fb_dev, mfd);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2671,14 +2671,16 @@ static void __init msm8x60_init_dsps(void)
 #define USER_SMI_SIZE         (MSM_SMI_SIZE - KERNEL_SMI_SIZE)
 #define MSM_PMEM_SMIPOOL_SIZE USER_SMI_SIZE
 
-#define MSM_ION_EBI_SIZE        MSM_PMEM_SF_SIZE
-#define MSM_ION_ADSP_SIZE       MSM_PMEM_ADSP_SIZE
-#define MSM_ION_SMI_SIZE	MSM_PMEM_SMIPOOL_SIZE
+#define MSM_ION_SF_SIZE		0x1800000 /* 24MB */
+#define MSM_ION_CAMERA_SIZE     MSM_PMEM_ADSP_SIZE
+#define MSM_ION_MM_SIZE		0x3800000 /* 56MB */
+#define MSM_ION_MFC_SIZE	SZ_8K
+#define MSM_ION_WB_SIZE		0x600000 /* 6MB */
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-#define MSM_ION_HEAP_NUM	5
+#define MSM_ION_HEAP_NUM	6
 #else
-#define MSM_ION_HEAP_NUM	2
+#define MSM_ION_HEAP_NUM	1
 #endif
 
 static unsigned fb_size;
@@ -5242,39 +5244,51 @@ static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
 		{
-			.id	= ION_HEAP_SYSTEM_ID,
+			.id	= ION_SYSTEM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_SYSTEM,
 			.name	= ION_VMALLOC_HEAP_NAME,
 		},
-		{
-			.id	= ION_HEAP_SYSTEM_CONTIG_ID,
-			.type	= ION_HEAP_TYPE_SYSTEM_CONTIG,
-			.name	= ION_KMALLOC_HEAP_NAME,
-		},
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 		{
-			.id	= ION_HEAP_EBI_ID,
+			.id	= ION_SF_HEAP_ID,
 			.type	= ION_HEAP_TYPE_CARVEOUT,
-			.name	= ION_EBI1_HEAP_NAME,
-			.size	= MSM_ION_EBI_SIZE,
+			.name	= ION_SF_HEAP_NAME,
+			.size	= MSM_ION_SF_SIZE,
 			.memory_type = ION_EBI_TYPE,
 		},
 		{
-			.id	= ION_HEAP_ADSP_ID,
+			.id	= ION_CP_MM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_CARVEOUT,
-			.name	= ION_ADSP_HEAP_NAME,
-			.size	= MSM_ION_ADSP_SIZE,
-			.memory_type = ION_EBI_TYPE,
-		},
-		{
-			.id	= ION_HEAP_SMI_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
-			.name	= ION_SMI_HEAP_NAME,
-			.size	= MSM_ION_SMI_SIZE,
+			.name	= ION_MM_HEAP_NAME,
+			.size	= MSM_ION_MM_SIZE,
 			.memory_type = ION_SMI_TYPE,
 			.request_region = request_smi_region,
 			.release_region = release_smi_region,
 			.setup_region = setup_smi_region,
+		},
+		{
+			.id	= ION_CAMERA_HEAP_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_CAMERA_HEAP_NAME,
+			.size	= MSM_ION_CAMERA_SIZE,
+			.memory_type = ION_EBI_TYPE,
+		},
+		{
+			.id	= ION_CP_MFC_HEAP_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_MFC_HEAP_NAME,
+			.size	= MSM_ION_MFC_SIZE,
+			.memory_type = ION_SMI_TYPE,
+			.request_region = request_smi_region,
+			.release_region = release_smi_region,
+			.setup_region = setup_smi_region,
+		},
+		{
+			.id	= ION_CP_WB_HEAP_ID,
+			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.name	= ION_WB_HEAP_NAME,
+			.size	= MSM_ION_WB_SIZE,
+			.memory_type = ION_EBI_TYPE,
 		},
 #endif
 	}
@@ -5318,9 +5332,11 @@ static struct memtype_reserve msm8x60_reserve_table[] __initdata = {
 static void reserve_ion_memory(void)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
-	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_EBI_SIZE;
-	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_ADSP_SIZE;
-	msm8x60_reserve_table[MEMTYPE_SMI].size += MSM_ION_SMI_SIZE;
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_SF_SIZE;
+	msm8x60_reserve_table[MEMTYPE_SMI].size += MSM_ION_MM_SIZE;
+	msm8x60_reserve_table[MEMTYPE_SMI].size += MSM_ION_MFC_SIZE;
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_CAMERA_SIZE;
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += MSM_ION_WB_SIZE;
 #endif
 }
 
@@ -8936,6 +8952,111 @@ static int lcdc_panel_power(int on)
 }
 
 #ifdef CONFIG_MSM_BUS_SCALING
+
+static struct msm_bus_vectors rotator_init_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_SMI,
+		.ab = 0,
+		.ib = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+};
+
+static struct msm_bus_vectors rotator_ui_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_SMI,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1024 * 600 * 4 * 2 * 60),
+		.ib  = (1024 * 600 * 4 * 2 * 60 * 1.5),
+	},
+};
+
+static struct msm_bus_vectors rotator_vga_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_SMI,
+		.ab  = (640 * 480 * 2 * 2 * 30),
+		.ib  = (640 * 480 * 2 * 2 * 30 * 1.5),
+	},
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (640 * 480 * 2 * 2 * 30),
+		.ib  = (640 * 480 * 2 * 2 * 30 * 1.5),
+	},
+};
+
+static struct msm_bus_vectors rotator_720p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_SMI,
+		.ab  = (1280 * 736 * 2 * 2 * 30),
+		.ib  = (1280 * 736 * 2 * 2 * 30 * 1.5),
+	},
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1280 * 736 * 2 * 2 * 30),
+		.ib  = (1280 * 736 * 2 * 2 * 30 * 1.5),
+	},
+};
+
+static struct msm_bus_vectors rotator_1080p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_SMI,
+		.ab  = (1920 * 1088 * 2 * 2 * 30),
+		.ib  = (1920 * 1088 * 2 * 2 * 30 * 1.5),
+	},
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1920 * 1088 * 2 * 2 * 30),
+		.ib  = (1920 * 1088 * 2 * 2 * 30 * 1.5),
+	},
+};
+
+static struct msm_bus_paths rotator_bus_scale_usecases[] = {
+	{
+		ARRAY_SIZE(rotator_init_vectors),
+		rotator_init_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_ui_vectors),
+		rotator_ui_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_vga_vectors),
+		rotator_vga_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_720p_vectors),
+		rotator_720p_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_1080p_vectors),
+		rotator_1080p_vectors,
+	},
+};
+
+struct msm_bus_scale_pdata rotator_bus_scale_pdata = {
+	rotator_bus_scale_usecases,
+	ARRAY_SIZE(rotator_bus_scale_usecases),
+	.name = "rotator",
+};
+
 static struct msm_bus_vectors mdp_init_vectors[] = {
 	/* For now, 0th array entry is reserved.
 	 * Please leave 0 as is and don't use it
@@ -9429,19 +9550,23 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_41,
-	.mdp_writeback_memtype = MEMTYPE_EBI1,
-	.mdp_writeback_phys = NULL,
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	.mem_hid = ION_CP_WB_HEAP_ID,
+#else
+	.mem_hid = MEMTYPE_EBI1,
+#endif
 };
 
 static void __init reserve_mdp_memory(void)
 {
-	mdp_pdata.mdp_writeback_size_ov0 = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
-	mdp_pdata.mdp_writeback_size_ov1 = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
-
-	msm8x60_reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
-		mdp_pdata.mdp_writeback_size_ov0;
-	msm8x60_reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
-		mdp_pdata.mdp_writeback_size_ov1;
+	mdp_pdata.ov0_wb_size = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
+	mdp_pdata.ov1_wb_size = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
+#if defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
+	msm8x60_reserve_table[mdp_pdata.mem_hid].size +=
+		mdp_pdata.ov0_wb_size;
+	msm8x60_reserve_table[mdp_pdata.mem_hid].size +=
+		mdp_pdata.ov1_wb_size;
+#endif
 }
 
 #ifdef CONFIG_FB_MSM_TVOUT

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, Motorola Mobility. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,20 +11,23 @@
  *
  */
 
-#ifndef __PMIC8058_PWRKEY_H__
-#define __PMIC8058_PWRKEY_H__
+#include "utags.h"
 
-struct pmic8058_pwrkey_pdata {
-	bool pull_up;
-	/* time after which pwr key event should be generated, if key is
-	 * released before that then end key event is reported
-	 */
-	u16  pwrkey_time_ms;
-	/* time delay for pwr-key state change
-	 * interrupt triggering.
-	 */
-	u32  kpd_trigger_delay_us;
-	u32  wakeup;
+#ifndef __UTAGS_INTERNAL_H_HEADER__
+#define __UTAGS_INTERNAL_H_HEADER__
+
+#define TO_TAG_SIZE(n)      (((n)+3)>>2)
+#define FROM_TAG_SIZE(n)    ((n)<<2)
+
+struct frozen_utag {
+	uint32_t	type;
+	uint32_t	size;
+	uint8_t		payload[];
 };
 
-#endif /* __PMIC8058_PWRKEY_H__ */
+/* comes out to 8 since payload is empty array */
+#define UTAG_MIN_TAG_SIZE   (sizeof(struct frozen_utag))
+
+extern const char *utags_blkdev;
+
+#endif

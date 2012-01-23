@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,6 +21,9 @@
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
+#include <linux/ion.h>
+#include <mach/ion.h>
+
 #include "devices.h"
 #include "board-8960.h"
 
@@ -400,6 +403,79 @@ static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 
 #ifdef CONFIG_MSM_BUS_SCALING
 
+static struct msm_bus_vectors rotator_init_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+};
+
+static struct msm_bus_vectors rotator_ui_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1024 * 600 * 4 * 2 * 60),
+		.ib  = (1024 * 600 * 4 * 2 * 60 * 1.5),
+	},
+};
+
+static struct msm_bus_vectors rotator_vga_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (640 * 480 * 2 * 2 * 30),
+		.ib  = (640 * 480 * 2 * 2 * 30 * 1.5),
+	},
+};
+static struct msm_bus_vectors rotator_720p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1280 * 736 * 2 * 2 * 30),
+		.ib  = (1280 * 736 * 2 * 2 * 30 * 1.5),
+	},
+};
+
+static struct msm_bus_vectors rotator_1080p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_ROTATOR,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = (1920 * 1088 * 2 * 2 * 30),
+		.ib  = (1920 * 1088 * 2 * 2 * 30 * 1.5),
+	},
+};
+
+static struct msm_bus_paths rotator_bus_scale_usecases[] = {
+	{
+		ARRAY_SIZE(rotator_init_vectors),
+		rotator_init_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_ui_vectors),
+		rotator_ui_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_vga_vectors),
+		rotator_vga_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_720p_vectors),
+		rotator_720p_vectors,
+	},
+	{
+		ARRAY_SIZE(rotator_1080p_vectors),
+		rotator_1080p_vectors,
+	},
+};
+
+struct msm_bus_scale_pdata rotator_bus_scale_pdata = {
+	rotator_bus_scale_usecases,
+	ARRAY_SIZE(rotator_bus_scale_usecases),
+	.name = "rotator",
+};
+
 static struct msm_bus_vectors mdp_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
@@ -550,19 +626,23 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_42,
-	.mdp_writeback_memtype = MEMTYPE_EBI1,
-	.mdp_writeback_phys = NULL,
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	.mem_hid = ION_CP_MM_HEAP_ID,
+#else
+	.mem_hid = MEMTYPE_EBI1,
+#endif
 };
 
 void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
 {
-	mdp_pdata.mdp_writeback_size_ov0 = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
-	mdp_pdata.mdp_writeback_size_ov1 = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
-
-	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
-		mdp_pdata.mdp_writeback_size_ov0;
-	reserve_table[mdp_pdata.mdp_writeback_memtype].size +=
-		mdp_pdata.mdp_writeback_size_ov1;
+	mdp_pdata.ov0_wb_size = MSM_FB_OVERLAY0_WRITEBACK_SIZE;
+	mdp_pdata.ov1_wb_size = MSM_FB_OVERLAY1_WRITEBACK_SIZE;
+#if defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
+	reserve_table[mdp_pdata.mem_hid].size +=
+		mdp_pdata.ov0_wb_size;
+	reserve_table[mdp_pdata.mem_hid].size +=
+		mdp_pdata.ov1_wb_size;
+#endif
 }
 
 static struct platform_device mipi_dsi_renesas_panel_device = {

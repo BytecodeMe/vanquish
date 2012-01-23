@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, Motorola Mobility. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,14 +10,7 @@
  * GNU General Public License for more details.
  *
  */
-#ifndef __PMIC8058_VIBRATOR_H__
-#define __PMIC8058_VIBRATOR_H__
 
-struct pmic8058_vibrator_pdata {
-	int initial_vibrate_ms;
-	int max_timeout_ms;
+#include "utags_internal.h"
 
-	int level_mV;
-};
-
-#endif /* __PMIC8058_VIBRATOR_H__ */
+const char *utags_blkdev = "/dev/block/mmcblk0p16";

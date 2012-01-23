@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -126,7 +126,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		lcdc_pipe = pipe; /* keep it */
 		init_completion(&lcdc_comp);
 
-		pipe->blt_base = (ulong) mfd->writeback_overlay0_phys;
+		mdp4_init_writeback_buf(mfd, MDP4_MIXER0);
 		pipe->blt_addr = 0;
 
 	} else {
@@ -466,14 +466,16 @@ static void mdp4_lcdc_do_blt(struct msm_fb_data_type *mfd, int enable)
 	unsigned long flag;
 	int change = 0;
 
-	if (lcdc_pipe->blt_base == 0) {
+	mdp4_allocate_writeback_buf(mfd, MDP4_MIXER0);
+
+	if (!mfd->ov0_wb_buf->phys_addr) {
 		pr_debug("%s: no blt_base assigned\n", __func__);
 		return;
 	}
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (enable && lcdc_pipe->blt_addr == 0) {
-		lcdc_pipe->blt_addr = lcdc_pipe->blt_base;
+		lcdc_pipe->blt_addr = mfd->ov0_wb_buf->phys_addr;
 		change++;
 		lcdc_pipe->blt_cnt = 0;
 		lcdc_pipe->ov_cnt = 0;

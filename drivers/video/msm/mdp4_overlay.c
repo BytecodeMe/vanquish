@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1247,8 +1247,7 @@ void mdp4_mixer_stage_up(struct mdp4_overlay_pipe *pipe)
 
 	spipe = mdp4_overlay_stage_pipe(pipe->mixer_num, pipe->mixer_stage);
 	if ((spipe != NULL) && (spipe->pipe_num != pipe->pipe_num)) {
-		pr_err("%s: unable to stage pipe=%d at mixer_stage=%d\n",
-				__func__, pipe->pipe_ndx, pipe->mixer_stage);
+		mdp4_stat.err_stage++;
 		return;
 	}
 
@@ -1349,7 +1348,7 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 	struct mdp4_overlay_pipe *bg_pipe;
 	unsigned char *overlay_base, *rgb_base;
 	uint32 c0, c1, c2, blend_op, constant_color = 0, rgb_src_format;
-	uint32 fg_color3_out;
+	uint32 fg_color3_out, fg_alpha = 0, bg_alpha = 0;
 	int off;
 
 	if (pipe->mixer_stage == MDP4_MIXER_STAGE_BASE)
@@ -1373,17 +1372,48 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 		return;
 	}
 
+	if (bg_pipe->pipe_type == OVERLAY_TYPE_BF &&
+	    pipe->mixer_stage > MDP4_MIXER_STAGE0) {
+		bg_pipe = mdp4_overlay_stage_pipe(pipe->mixer_num,
+						  MDP4_MIXER_STAGE0);
+	}
+
+	if (pipe->alpha_enable) {
+		/* alpha channel is lost on VG pipe when downscaling */
+		if (pipe->pipe_type == OVERLAY_TYPE_VIDEO &&
+		    (pipe->dst_w < pipe->src_w || pipe->dst_h < pipe->src_h))
+			fg_alpha = 0;
+		else
+			fg_alpha = 1;
+	}
+
+	if (!fg_alpha && bg_pipe && bg_pipe->alpha_enable) {
+		struct mdp4_overlay_pipe *tmp;
+		int stage;
+
+		bg_alpha = 1;
+		/* check all bg layers are opaque to propagate bg alpha */
+		stage = bg_pipe->mixer_stage + 1;
+		for (; stage < pipe->mixer_stage; stage++) {
+			tmp = mdp4_overlay_stage_pipe(pipe->mixer_num, stage);
+			if (!tmp || tmp->alpha_enable || tmp->is_fg) {
+				bg_alpha = 0;
+				break;
+			}
+		}
+	}
+
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	blend_op = (MDP4_BLEND_FG_ALPHA_FG_CONST |
 		    MDP4_BLEND_BG_ALPHA_BG_CONST);
 	outpdw(overlay_base + off + 0x108, pipe->alpha);
 	outpdw(overlay_base + off + 0x10c, 0xff - pipe->alpha);
-	fg_color3_out = 0; /* keep bg alpha by default */
+	fg_color3_out = 1; /* keep fg alpha by default */
 
 	if (pipe->is_fg) {
 		if (pipe->alpha == 0xff &&
-		    bg_pipe->pipe_num <= OVERLAY_PIPE_RGB2) {
+		    bg_pipe && bg_pipe->pipe_num <= OVERLAY_PIPE_RGB2) {
 			rgb_base = MDP_BASE + MDP4_RGB_BASE;
 			rgb_base += MDP4_RGB_OFF * bg_pipe->pipe_num;
 			rgb_src_format = inpdw(rgb_base + 0x50);
@@ -1391,14 +1421,11 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 			outpdw(rgb_base + 0x50, rgb_src_format);
 			outpdw(rgb_base + 0x1008, constant_color);
 		}
-	} else if (pipe->alpha_enable) {
-		/* pick fg alpha */
+	} else if (fg_alpha) {
 		blend_op = (MDP4_BLEND_BG_ALPHA_FG_PIXEL |
-			    MDP4_BLEND_FG_ALPHA_FG_PIXEL |
 			    MDP4_BLEND_BG_INV_ALPHA);
 		fg_color3_out = 1; /* keep fg alpha */
-	} else if (bg_pipe->alpha_enable) {
-		/* pick bg alpha */
+	} else if (bg_alpha) {
 		blend_op = (MDP4_BLEND_BG_ALPHA_BG_PIXEL |
 			    MDP4_BLEND_FG_ALPHA_BG_PIXEL |
 			    MDP4_BLEND_FG_INV_ALPHA);
@@ -1419,7 +1446,7 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 			outpdw(overlay_base + off + 0x118,
 					(c1 << 16 | c0));
 			outpdw(overlay_base + off + 0x11c, c2);
-		} else {
+		} else if (bg_pipe) {
 			transp_color_key(bg_pipe->src_format,
 				pipe->transp, &c0, &c1, &c2);
 			/* bg blocked */
@@ -1634,8 +1661,7 @@ static int mdp4_overlay_validate_downscale(struct mdp_overlay *req,
 	pr_debug("fillratex100 %lu, mdp_pixels_produced %lu\n",
 		fillratex100, mdp_pixels_produced);
 	if (mdp_pixels_produced <= mfd->panel_info.xres) {
-		pr_err("%s():display underflow detected with downscale"
-			" params\n", __func__);
+		mdp4_stat.err_underflow++;
 		return -ERANGE;
 	}
 
@@ -1859,10 +1885,10 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 	}
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	*srcp_ihdl = ion_import_fd(mfd->client, img->memory_id);
+	*srcp_ihdl = ion_import_fd(mfd->iclient, img->memory_id);
 	if (IS_ERR_OR_NULL(*srcp_ihdl))
 		return PTR_ERR(*srcp_ihdl);
-	if (!ion_phys(mfd->client, *srcp_ihdl, start, (size_t *) len))
+	if (!ion_phys(mfd->iclient, *srcp_ihdl, start, (size_t *) len))
 		return 0;
 	else
 		return -EINVAL;
@@ -2125,6 +2151,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 	mixer = mfd->panel_info.pdest;	/* DISPLAY_1 or DISPLAY_2 */
 
 	ret = mdp4_overlay_req2pipe(req, mixer, &pipe, mfd);
+
 	if (ret < 0) {
 		mutex_unlock(&mfd->dma->ov_mutex);
 		pr_err("%s: mdp4_overlay_req2pipe, ret=%d\n", __func__, ret);
@@ -2135,6 +2162,13 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		u32 use_blt = mdp4_overlay_blt_enable(req, mfd,	perf_level);
 		mfd->use_ov0_blt &= ~(1 << (pipe->pipe_ndx-1));
 		mfd->use_ov0_blt |= (use_blt << (pipe->pipe_ndx-1));
+	}
+
+	if (!IS_ERR_OR_NULL(mfd->iclient)) {
+		if (pipe->flags & MDP_SECURE_OVERLAY_SESSION)
+			mfd->mem_hid |= ION_SECURE;
+		else
+			mfd->mem_hid &= ~ION_SECURE;
 	}
 
 	/* return id back to user */
@@ -2189,7 +2223,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 			}
 		} else {
 			if (ctrl->panel_mode & MDP4_PANEL_DTV)
-				mdp4_overlay_dtv_vsync_push(mfd, pipe);
+				mdp4_overlay_dtv_ov_done_push(mfd, pipe);
 		}
 	}
 	mutex_unlock(&mfd->dma->ov_mutex);
@@ -2284,6 +2318,8 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 
 		mfd->use_ov0_blt &= ~(1 << (pipe->pipe_ndx-1));
 		mdp4_overlay_update_blt_mode(mfd);
+		if (!mfd->use_ov0_blt)
+			mdp4_free_writeback_buf(mfd, MDP4_MIXER0);
 	}
 	else {	/* mixer1, DTV, ATV */
 		if (ctrl->panel_mode & MDP4_PANEL_DTV)
@@ -2398,7 +2434,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 
 	pipe = mdp4_overlay_ndx2pipe(req->id);
 	if (pipe == NULL) {
-		pr_err("%s: req_id=%d Error\n", __func__, req->id);
+		mdp4_stat.err_play++;
 		return -ENODEV;
 	}
 
@@ -2601,11 +2637,11 @@ end:
 #endif
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	if (!IS_ERR_OR_NULL(srcp0_ihdl))
-		ion_free(mfd->client, srcp0_ihdl);
+		ion_free(mfd->iclient, srcp0_ihdl);
 	if (!IS_ERR_OR_NULL(srcp1_ihdl))
-		ion_free(mfd->client, srcp1_ihdl);
+		ion_free(mfd->iclient, srcp1_ihdl);
 	if (!IS_ERR_OR_NULL(srcp2_ihdl))
-		ion_free(mfd->client, srcp2_ihdl);
+		ion_free(mfd->iclient, srcp2_ihdl);
 #endif
 	return ret;
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -45,17 +45,12 @@ static int vsync_start_y_adjust = 4;
 
 struct timer_list dsi_clock_timer;
 
-static bool dsi_panel_on;
 
 void mdp4_overlay_dsi_state_set(int state)
 {
 	unsigned long flag;
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
-
-	if ((dsi_state != ST_DSI_RESUME) && (state == ST_DSI_RESUME))
-		dsi_panel_on = false;
-
 	dsi_state = state;
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 }
@@ -162,7 +157,7 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 
 		dsi_pipe = pipe; /* keep it */
 
-		pipe->blt_base = (ulong) mfd->writeback_overlay0_phys;
+		mdp4_init_writeback_buf(mfd, MDP4_MIXER0);
 		pipe->blt_addr = 0;
 
 	} else {
@@ -307,7 +302,9 @@ int mdp4_dsi_overlay_blt_start(struct msm_fb_data_type *mfd)
 	pr_debug("%s: blt_end=%d blt_addr=%x pid=%d\n",
 	__func__, dsi_pipe->blt_end, (int)dsi_pipe->blt_addr, current->pid);
 
-	if (dsi_pipe->blt_base == 0) {
+	mdp4_allocate_writeback_buf(mfd, MDP4_MIXER0);
+
+	if (mfd->ov0_wb_buf->phys_addr == 0) {
 		pr_info("%s: no blt_base assigned\n", __func__);
 		return -EBUSY;
 	}
@@ -319,7 +316,7 @@ int mdp4_dsi_overlay_blt_start(struct msm_fb_data_type *mfd)
 		dsi_pipe->blt_cnt = 0;
 		dsi_pipe->ov_cnt = 0;
 		dsi_pipe->dmap_cnt = 0;
-		dsi_pipe->blt_addr = dsi_pipe->blt_base;
+		dsi_pipe->blt_addr = mfd->ov0_wb_buf->phys_addr;
 		mdp4_stat.blt_dsi_cmd++;
 		spin_unlock_irqrestore(&mdp_spin_lock, flag);
 		return 0;
@@ -675,36 +672,5 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 			complete(&mfd->pan_comp);
 		}
 	}
-
-	mdp4_dsi_panel_on(mfd);
-
 	mutex_unlock(&mfd->dma->ov_mutex);
-}
-
-void mdp4_dsi_panel_on(struct msm_fb_data_type *mfd)
-{
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-	uint32 panel;
-	struct msm_fb_panel_data *pdata =
-		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-
-	if (dsi_panel_on == false) {
-		panel = mdp4_overlay_panel_list();
-
-		/*
-		 * If the panel is a DSI command mode then we need to wait for
-		 * the DSI link to be freeand done with the image transferring
-		 * before we turn on the panel.
-		 * We don't have to do anything for Video Mode panel because
-		 * it is handled in mdp4_overlay_dsi_video_wait4event()
-		 */
-		if (panel & MDP4_PANEL_DSI_CMD)
-			mdp4_dsi_cmd_dma_busy_wait(mfd);
-
-		if (pdata->panel_on)
-			pdata->panel_on(mfd->pdev);
-
-		dsi_panel_on = true;
-	}
-#endif
 }

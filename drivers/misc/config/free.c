@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, Motorola Mobility. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,11 +11,22 @@
  *
  */
 
-#ifndef __RTC_PM8058_H__
-#define __RTC_PM8058_H__
+#include "utags.h"
 
-struct pm8058_rtc_platform_data {
-	bool rtc_alarm_powerup;
-};
+enum utag_error free_tags(struct utag *tags)
+{
+  struct utag *next;
 
-#endif /* __RTC_PM8058_H__ */
+  while(tags) {
+    next = tags->next;
+
+    if (tags->payload)
+      kfree(tags->payload);
+
+    kfree(tags);
+
+    tags = next;
+  }
+
+  return UTAG_NO_ERROR;
+}

@@ -221,6 +221,16 @@ int __init board_boot_mode_init(char *s)
 }
 __setup("androidboot.mode=", board_boot_mode_init);
 
+#define SERIALNO_MAX_LEN 64
+static char serialno[SERIALNO_MAX_LEN + 1];
+int __init board_serialno_init(char *s)
+{
+	strncpy(serialno, s, SERIALNO_MAX_LEN);
+	boot_mode[SERIALNO_MAX_LEN] = '\0';
+	return 1;
+}
+__setup("androidboot.serialno=", board_serialno_init);
+
 static int boot_mode_is_factory(void)
 {
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
@@ -1399,6 +1409,35 @@ static void w1_gpio_enable_regulators(int enable)
 	}
 }
 
+struct mmi_unit_info_v1 mmi_unit_info_v1 = {
+	.machine = "dummy_mach",
+	.barcode = "dummy_barcode",
+};
+
+struct platform_device msm_device_smd = {
+	.name	= "msm_smd",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &mmi_unit_info_v1,
+	},
+};
+
+static void init_mmi_unit_info(void){
+	struct mmi_unit_info_v1 *mui;
+	mui = &mmi_unit_info_v1;
+	mui->version = 1;
+	mui->system_rev = system_rev;
+	mui->system_serial_low = system_serial_low;
+	mui->system_serial_high = system_serial_high;
+	strncpy(mui->machine, machine_desc->name, MACHINE_MAX_LEN);
+	strncpy(mui->barcode, serialno, BARCODE_MAX_LEN);
+
+	pr_err("unit_info (SMEM): version = 0x%02x, system_rev = 0x%08x, "
+		"system_serial = 0x%08x%08x, machine = '%s', barcode = '%s'\n",
+		mui->version, mui->system_rev, mui->system_serial_high,
+		mui->system_serial_low, mui->machine, mui->barcode);
+}
+
 static struct platform_device *mmi_devices[] __initdata = {
 	&msm8960_w1_gpio_device,
 	&msm_8960_q6_lpass,
@@ -1665,6 +1704,11 @@ static __init void register_i2c_devices_from_dt(int bus)
 		if (prop && (len == sizeof(u32))) {
 			/* must match type identifiers defined in DT schema */
 			switch (*(u32 *)prop) {
+			case 0x00000019: /* Generic_Motsoc1 */
+				info.platform_data =
+					&msm_camera_sensor_motsoc1_data;
+				break;
+
 			case 0x00040002: /* Cypress_CYTTSP3 */
 				info.platform_data = &ts_platform_data_cyttsp3;
 				mot_setup_touch_cyttsp3();
@@ -1700,6 +1744,16 @@ static __init void register_i2c_devices_from_dt(int bus)
 			case 0x000270000: /* Melfas_MMS100 */
 				info.platform_data = &touch_pdata;
 				melfas_ts_platform_init();
+				break;
+
+			case 0x00280000: /* Aptina_MT9M114 */
+				info.platform_data =
+					&msm_camera_sensor_mt9m114_data;
+				break;
+
+			case 0x00290000: /* Omnivision_OV8820 */
+				info.platform_data =
+					&msm_camera_sensor_ov8820_data;
 				break;
 			}
 		}
@@ -2069,6 +2123,8 @@ static void __init msm8960_mmi_init(void)
 
 	change_memory_power = &msm8960_change_memory_power;
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
+
+	init_mmi_unit_info();
 }
 
 static int __init mot_parse_atag_baseband(const struct tag *tag)
@@ -2169,12 +2225,6 @@ static __init void teufel_init(void)
 	else
 		set_emu_detection_resource("EMU_ID_EN_GPIO", 94);
 #endif
-	ENABLE_I2C_DEVICE(CAMERA_MSM);
-#ifdef CONFIG_INPUT_CT406
-	if (system_rev >= HWREV_P2)
-		ENABLE_I2C_DEVICE(ALS_CT406);
-#endif
-	ENABLE_I2C_DEVICE(CAMERA_FLASH_MSM);
 
 	/* Setup correct button backlight LED name */
 	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
@@ -2208,13 +2258,6 @@ static __init void qinara_init(void)
 #endif
 	flash_hw_enable = 2;
 
-	ENABLE_I2C_DEVICE(TOUCHSCREEN_CYTTSP3);
-	ENABLE_I2C_DEVICE(CAMERA_MSM);
-	if (system_rev >= HWREV_P2)
-		ENABLE_I2C_DEVICE(ALS_CT406);
-	ENABLE_I2C_DEVICE(CAMERA_FLASH_MSM);
-	ENABLE_I2C_DEVICE(BACKLIGHT_LM3532);
-
 	/* Setup correct button backlight LED name */
 	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
 
@@ -2244,14 +2287,6 @@ static __init void vanquish_init(void)
 #endif
 	flash_hw_enable = 2;
 
-	ENABLE_I2C_DEVICE(TOUCHSCREEN_MELFAS100_TS);
-	ENABLE_I2C_DEVICE(CAMERA_MSM);
-	ENABLE_I2C_DEVICE(CAMERA_FLASH_MSM);
-	if (system_rev >= HWREV_P2)
-		ENABLE_I2C_DEVICE(ALS_CT406);
-#ifdef CONFIG_PN544
-	ENABLE_I2C_DEVICE(NFC_PN544);
-#endif
 	use_mdp_vsync = MDP_VSYNC_DISABLED;
 	msm8960_mmi_init();
 }
@@ -2295,11 +2330,6 @@ static __init void becker_init(void)
 {
 	flash_hw_enable = 2;
 	strncpy(panel_name, "mipi_mot_cmd_auo_qhd_430", PANEL_NAME_MAX_LEN);
-	ENABLE_I2C_DEVICE(TOUCHSCREEN_ATMEL);
-	ENABLE_I2C_DEVICE(CAMERA_MSM);
-	ENABLE_I2C_DEVICE(CAMERA_FLASH_MSM);
-	ENABLE_I2C_DEVICE(ALS_CT406);
-	ENABLE_I2C_DEVICE(BACKLIGHT_LM3532);
 
 	/* Setup correct button backlight LED name */
 	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
@@ -2324,10 +2354,6 @@ static __init void asanti_init(void)
 	otg_control_data = NULL;
 	pm8921_gpios = pm8921_gpios_asanti;
 	pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_asanti);
-	ENABLE_I2C_DEVICE(TOUCHSCREEN_ATMEL);
-	ENABLE_I2C_DEVICE(CAMERA_MSM);
-	ENABLE_I2C_DEVICE(ALS_CT406);
-	ENABLE_I2C_DEVICE(BACKLIGHT_LM3532);
 	keypad_data = &mmi_qwerty_keypad_data;
 	keypad_mode = MMI_KEYPAD_RESET|MMI_KEYPAD_SLIDER;
 
