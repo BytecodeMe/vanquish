@@ -452,6 +452,19 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov2720_data = {
 };
 #endif
 
+#ifdef CONFIG_DW9714_ACT
+static struct i2c_board_info dw9714_actuator_i2c_info = {
+       I2C_BOARD_INFO("dw9714_act", 0x18),
+};
+
+static struct msm_actuator_info dw9714_actuator_info = {
+       .board_info     = &dw9714_actuator_i2c_info,
+       .bus_id         = MSM_8960_GSBI4_QUP_I2C_BUS_ID,
+       .vcm_pwd        = 0,
+       .vcm_enable     = 1,
+       };
+#endif
+
 static struct msm8960_privacy_light_cfg privacy_light_info = {
 	.mpp = PM8921_MPP_PM_TO_SYS(12),
 };
