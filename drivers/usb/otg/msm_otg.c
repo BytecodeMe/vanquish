@@ -975,6 +975,9 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 	int ret;
 	static bool vbus_is_on;
 
+	if (motg->pdata->otg_control == OTG_ACCY_CONTROL)
+		return;
+
 	if (vbus_is_on == on)
 		return;
 
@@ -2663,6 +2666,11 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 
 		if (motg->pdata->otg_control == OTG_PHY_CONTROL)
 			motg->caps = ALLOW_PHY_RETENTION;
+
+		if (motg->pdata->otg_control == OTG_ACCY_CONTROL)
+			motg->caps = ALLOW_PHY_POWER_COLLAPSE |
+				ALLOW_PHY_RETENTION |
+				ALLOW_PHY_COMP_DISABLE;
 	}
 
 	wake_lock(&motg->wlock);

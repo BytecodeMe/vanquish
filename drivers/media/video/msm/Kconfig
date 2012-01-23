@@ -135,6 +135,10 @@ config IMX074_ACT
 	---help---
 	Actuator for SONY 13.5 MP Bayer Sensor
 
+config DW9714_ACT
+	bool "Actuator OV8820 module (BAYER 8M)"
+	depends on MSM_CAMERA && ARCH_MSM8960
+
 config S5K3E2FX
 	bool "Sensor s5k3e2fx (Samsung 5M)"
 	depends on MSM_CAMERA && !ARCH_MSM8X60 && !MSM_CAMERA_V4L2
