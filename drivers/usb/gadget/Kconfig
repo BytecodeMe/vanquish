@@ -1089,6 +1089,12 @@ config USB_G_WEBCAM
 
 endchoice
 
+config USB_MOT_ANDROID
+        tristate "Mot Android USB"
+        depends on USB_G_ANDROID
+        help
+          This option adds CDROM and Mode switching support to the Android gadget.
+
 config USB_CSW_HACK
 	boolean "USB Mass storage csw hack Feature"
 	default y

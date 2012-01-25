@@ -153,6 +153,12 @@
 
 
 /*-------------------------------------------------------------------------*/
+#ifdef CONFIG_USB_MOT_ANDROID
+static int cdrom_enable ;
+
+module_param_named(cdrom, cdrom_enable, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(cdrom, "true to emulate cdrom instead of disk");
+#endif
 
 /* Bulk-only data structures */
 
@@ -188,7 +194,9 @@ struct bulk_cs_wrap {
 /* Bulk-only class specific requests */
 #define USB_BULK_RESET_REQUEST		0xff
 #define USB_BULK_GET_MAX_LUN_REQUEST	0xfe
-
+#ifdef CONFIG_USB_MOT_ANDROID
+#define USB_BULK_GET_ENCAP_RESPONSE     0x02
+#endif
 
 /* CBI Interrupt data structure */
 struct interrupt_data {
