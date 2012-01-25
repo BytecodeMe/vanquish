@@ -37,10 +37,6 @@ config IMX074
 	default n
 	---help---
 	SONY 13.5 MP Bayer Sensor
-config MOTSOC1
-    bool "Sensor MOTSOC1 (13MP)"
-    depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
-    default n
 config MT9M114
     bool "Sensor MT9M114 (YUV 1.26M)"
     depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)

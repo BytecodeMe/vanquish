@@ -26,11 +26,6 @@
 #include "msm.h"
 #include "msm_vfe32.h"
 
-#ifdef CONFIG_MOTSOC1
-int32_t motsoc1_active(void);
-int32_t motsoc1_start_transfer(void);
-#endif
-
 atomic_t irq_cnt;
 
 #define CHECKED_COPY_FROM_USER(in) {					\
@@ -878,11 +873,6 @@ static int vfe32_capture(uint32_t num_frames_capture)
 				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch0]);
 		}
 	}
-#ifdef CONFIG_MOTSOC1
-	/* MOTSOC1 capture hack */
-	if (motsoc1_active())
-		msm_io_w(0x00, vfe32_ctrl->vfebase + 0x000006F8);
-#endif
 	msm_io_w(irq_comp_mask, vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
 	msm_io_r(vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
 	msm_camio_bus_scale_cfg(
@@ -1293,11 +1283,6 @@ static int vfe32_proc_general(struct msm_isp_cmd *cmd)
 			}
 		}
 		rc = vfe32_capture(snapshot_cnt);
-#ifdef CONFIG_MOTSOC1
-		/* MOTSOC1 capture hack */
-		if (motsoc1_active())
-			motsoc1_start_transfer();
-#endif
 		break;
 	case VFE_CMD_START_RECORDING:
 		pr_info("vfe32_proc_general: cmdID = %s\n",
