@@ -93,10 +93,6 @@
 #include <linux/i2c/lm3532.h>
 #endif
 
-#ifdef CONFIG_PN544
-#include <linux/nfc/pn544.h>
-#endif
-
 #ifdef CONFIG_WCD9310_CODEC
 #include <linux/slimbus/slimbus.h>
 #include <linux/mfd/wcd9310/core.h>
@@ -131,32 +127,6 @@
 #include "pm-boot.h"
 #include "msm_watchdog.h"
 
-/* Initial PM8921 GPIO configurations */
-static struct pm8xxx_gpio_init pm8921_gpios_teufel_m1[] = {
-	PM8XXX_GPIO_DISABLE(6),				 			/* Disable unused */
-	PM8XXX_GPIO_DISABLE(7),				 			/* Disable NFC */
-	PM8XXX_GPIO_INPUT(16,	    PM_GPIO_PULL_UP_30), /* SD_CARD_WP */
-	PM8XXX_GPIO_OUTPUT_FUNC(24, 0, PM_GPIO_FUNC_2),	 /* Red LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(25, 0, PM_GPIO_FUNC_2),	 /* Green LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(26, 0, PM_GPIO_FUNC_2),	 /* Blue LED */
-	PM8XXX_GPIO_INPUT(22,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
-	PM8XXX_GPIO_OUTPUT(43, 1),			 		/* DISP_RESET_N */
-	PM8XXX_GPIO_OUTPUT(42, 0),                      /* USB 5V reg enable */
-};
-
-/* Initial PM8921 GPIO configurations */
-static struct pm8xxx_gpio_init pm8921_gpios_teufel_m2[] = {
-	PM8XXX_GPIO_DISABLE(6),				 			/* Disable unused */
-	PM8XXX_GPIO_DISABLE(7),				 			/* Disable NFC */
-	PM8XXX_GPIO_INPUT(16,	    PM_GPIO_PULL_UP_30), /* SD_CARD_WP */
-	PM8XXX_GPIO_OUTPUT_FUNC(24, 0, PM_GPIO_FUNC_2),	 /* Red LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(25, 0, PM_GPIO_FUNC_2),	 /* Green LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(26, 0, PM_GPIO_FUNC_2),	 /* Blue LED */
-	PM8XXX_GPIO_INPUT(20,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
-	PM8XXX_GPIO_OUTPUT(43,	    0),			 		/* DISP_RESET_N */
-	PM8XXX_GPIO_OUTPUT(42, 0),                      /* USB 5V reg enable */
-};
-
 /* Initial PM8921 GPIO configurations vanquish, quinara */
 static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
 	PM8XXX_GPIO_DISABLE(6),				 			/* Disable unused */
@@ -173,40 +143,6 @@ static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
 	PM8XXX_GPIO_OUTPUT(43,	    PM_GPIO_PULL_UP_1P5), /* DISP_RESET_N */
 	PM8XXX_GPIO_OUTPUT_VIN(37, PM_GPIO_PULL_UP_30,
 			PM_GPIO_VIN_L17),	/* DISP_RESET_N on P1C+ */
-};
-
-
-/* Initial PM8921 GPIO configurations vanquish P2 */
-static struct pm8xxx_gpio_init pm8921_gpios_vanquish_p2[] = {
-	PM8XXX_GPIO_DISABLE(6),				 /* Disable unused */
-	PM8XXX_GPIO_DISABLE(7),				 /* Disable NFC */
-	PM8XXX_GPIO_INPUT(16,	    PM_GPIO_PULL_UP_30), /* SD_CARD_WP */
-	PM8XXX_GPIO_PAIRED_OUT_VIN(21, PM_GPIO_VIN_L17), /* Whisper TX 2.7V */
-	PM8XXX_GPIO_PAIRED_IN_VIN(22,  PM_GPIO_VIN_S4),	 /* Whisper TX 1.8V */
-	PM8XXX_GPIO_OUTPUT_FUNC(24, 0, PM_GPIO_FUNC_2),	 /* Red LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(25, 0, PM_GPIO_FUNC_2),	 /* Green LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(26, 0, PM_GPIO_FUNC_2),	 /* Blue LED */
-	PM8XXX_GPIO_INPUT(20,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
-	PM8XXX_GPIO_PAIRED_IN_VIN(41,  PM_GPIO_VIN_L17), /* Whisper TX 2.7V */
-	PM8XXX_GPIO_PAIRED_OUT_VIN(42, PM_GPIO_VIN_S4),	 /* Whisper TX 1.8V */
-	PM8XXX_GPIO_OUTPUT(43,	PM_GPIO_PULL_UP_1P5),	 /* DISP_RESET_N */
-	PM8XXX_GPIO_OUTPUT(37,	PM_GPIO_PULL_UP_1P5), /* DISP_RESET_N on P2 */
-};
-
-static struct pm8xxx_gpio_init pm8921_gpios_asanti[] = {
-	PM8XXX_GPIO_DISABLE(6),				 /* Disable unused */
-	PM8XXX_GPIO_DISABLE(7),				 /* Disable NFC */
-	PM8XXX_GPIO_INPUT(16,	    PM_GPIO_PULL_UP_30), /* SD_CARD_WP */
-	PM8XXX_GPIO_PAIRED_OUT_VIN(21, PM_GPIO_VIN_L17), /* Whisper TX 2.7V */
-	PM8XXX_GPIO_PAIRED_IN_VIN(22,  PM_GPIO_VIN_S4),  /* Whisper TX 1.8V */
-	PM8XXX_GPIO_OUTPUT_FUNC(24, 0, PM_GPIO_FUNC_2),	 /* Red LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(25, 0, PM_GPIO_FUNC_2),	 /* Green LED */
-	PM8XXX_GPIO_OUTPUT_FUNC(26, 0, PM_GPIO_FUNC_2),	 /* Blue LED */
-	PM8XXX_GPIO_INPUT(20,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
-	PM8XXX_GPIO_PAIRED_IN_VIN(41,  PM_GPIO_VIN_L17), /* Whisper TX 2.7V */
-	PM8XXX_GPIO_PAIRED_OUT_VIN(42, PM_GPIO_VIN_S4),  /* Whisper TX 1.8V */
-	PM8XXX_GPIO_OUTPUT(43, 1),			 /* DISP_RESET_N */
-	PM8XXX_GPIO_INPUT(33,	    PM_GPIO_PULL_UP_30), /* Volume Down key */
 };
 
 /* Initial PM8921 MPP configurations */
@@ -232,6 +168,30 @@ static int keypad_mode = MMI_KEYPAD_RESET;
 static int phy_settings[] = {0x34, 0x82, 0x3f, 0x81, -1};
 
 bool camera_single_mclk;
+
+/*
+ * HACK: Ideally all clocks would be configured directly from the device tree.
+ * Don't use this as a template for future device tree changes.
+ */
+static void __init config_camera_single_mclk_from_dt(void)
+{
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "camera_single_mclk", &len);
+	if (prop && (len == sizeof(u8)))
+		camera_single_mclk = *(u8 *)prop;
+
+	of_node_put(chosen);
+
+out:
+	return;
+}
 
 #define BOOT_MODE_MAX_LEN 64
 static char boot_mode[BOOT_MODE_MAX_LEN + 1];
@@ -572,6 +532,12 @@ static int is_smd(void) {
 	return !strncmp(panel_name, "mipi_mot_video_smd_hd_465", PANEL_NAME_MAX_LEN);
 }
 
+/*
+ * HACK: Ideally instead of basing code decisions on a string specifying the
+ * name of the device, the device tree would contain a structure composed of
+ * individual configuratble items that could be use in code to make decisions.
+ * Don't use this as a template for future device tree changes.
+ */
 static __init void load_panel_name_from_dt(void)
 {
 	struct device_node *chosen;
@@ -1540,24 +1506,6 @@ struct i2c_registry {
 	int                    len;
 };
 
-#ifdef CONFIG_PN544
-struct pn544_i2c_platform_data pn544_pdata = {
-		.irq_gpio = -1,
-		.ven_gpio = -1,
-		.firmware_gpio = -1,
-		.ven_polarity = 0,
-};
-
-static void __init msm8960_pn544_init(void)
-{
-	printk(KERN_DEBUG "msm8960_pn544_init: is called, set gpio numbers.\n");
-	pn544_pdata.ven_gpio = GPIO_NFC_VEN;
-	pn544_pdata.irq_gpio = GPIO_NFC_IRQ;
-	pn544_pdata.firmware_gpio = GPIO_NFC_FW_UPDATE;
-}
-
-#endif /* CONFIG_PN544 */
-
 #ifdef CONFIG_BACKLIGHT_LM3532
 static struct i2c_board_info lm3532_i2c_boardinfo[] __initdata = {
 	{
@@ -1621,6 +1569,8 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 
 #endif /* CONFIG_I2C */
 
+static void __init set_emu_detection_resource(const char *res_name, int value);
+
 static __init void config_emu_det_from_dt(void)
 {
 	struct device_node *chosen;
@@ -1635,10 +1585,110 @@ static __init void config_emu_det_from_dt(void)
 	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
 		otg_control_data = NULL;
 
+	prop = of_get_property(chosen, "emu_id_enable_gpio", &len);
+	if (prop && (len == sizeof(u32)))
+		set_emu_detection_resource("EMU_ID_EN_GPIO", *(u32 *)prop);
+
 	of_node_put(chosen);
 
 out:
 	return;
+}
+
+/*
+ * HACK: Ideally all clocks would be configured directly from the device tree.
+ * Don't use this as a template for future device tree changes.
+ */
+static __init void config_gsbi12_clk_from_dt(void)
+{
+#ifdef CONFIG_EMU_DETECTION
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "setup_gsbi12_clock", &len);
+	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+		mot_setup_gsbi12_clk();
+
+	of_node_put(chosen);
+
+out:
+#endif
+	return;
+}
+
+/*
+ * HACK: Ideally all pinmuxes would be configured directly from the device
+ * tree. Don't use this as a template for future device tree changes.
+ */
+static __init void config_mdp_vsync_from_dt(void)
+{
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "use_mdp_vsync", &len);
+	if (prop && (len == sizeof(u8)))
+		use_mdp_vsync = *(u8*)prop ? MDP_VSYNC_ENABLED
+			: MDP_VSYNC_DISABLED;
+
+	of_node_put(chosen);
+
+out:
+	return;
+}
+
+/*
+ * HACK: Ideally the complete keypad description could be pulled out of the
+ * device tree. The LED configuration here should probably be moved elsewhere.
+ * Don't use this as a template for future device tree changes.
+ */
+static __init void config_keyboard_from_dt(void)
+{
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "qwerty_keyboard", &len);
+	if (prop && (len == sizeof(u8)) && *(u8 *)prop) {
+		keypad_data = &mmi_qwerty_keypad_data;
+		keypad_mode = MMI_KEYPAD_RESET|MMI_KEYPAD_SLIDER;
+
+		/* Enable keyboard backlight */
+		strncpy((char *)&mp_lm3532_pdata.ctrl_b_name,
+				"keyboard-backlight",
+				sizeof(mp_lm3532_pdata.ctrl_b_name)-1);
+		mp_lm3532_pdata.led2_controller = LM3532_CNTRL_B;
+		mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE;
+	}
+
+	of_node_put(chosen);
+
+out:
+	return;
+}
+
+static __init u32 dt_get_u32_or_die(struct device_node *node, const char *name)
+{
+	int len = 0;
+	const void *prop;
+
+	prop = of_get_property(node, name, &len);
+	BUG_ON(!prop || (len != sizeof(u32)));
+
+	return *(u32 *)prop;
 }
 
 static __init u16 dt_get_u16_or_die(struct device_node *node, const char *name)
@@ -1790,6 +1840,58 @@ out:
 	return;
 }
 
+static __init void load_pm8921_leds_from_dt(void)
+{
+	struct device_node *parent, *child;
+
+	parent = of_find_node_by_path("/System@0/PowerIC@0");
+	if (!parent)
+		goto out;
+
+	for_each_child_of_node(parent, child) {
+		int len = 0;
+		const void *prop;
+
+		prop = of_get_property(child, "type", &len);
+		if (prop && (len == sizeof(u32))) {
+			/* Qualcomm_PM8921_LED as defined in DT schema */
+			if (0x001E000E == *(u32 *)prop) {
+				unsigned index;
+				struct led_info *led_info;
+
+				index = dt_get_u32_or_die(child, "index");
+
+				led_info = kzalloc(sizeof(struct led_info),
+						GFP_KERNEL);
+				BUG_ON(!led_info);
+
+				prop = of_get_property(child, "name", &len);
+				BUG_ON(!prop);
+
+				led_info->name = kstrndup((const char *)prop,
+						len, GFP_KERNEL);
+				BUG_ON(!led_info->name);
+
+				prop = of_get_property(child,
+						"default_trigger", &len);
+				BUG_ON(!prop);
+
+				led_info->default_trigger = kstrndup(
+						(const char *)prop,
+						len, GFP_KERNEL);
+				BUG_ON(!led_info->default_trigger);
+
+				pm8xxx_set_led_info(index, led_info);
+			}
+		}
+	}
+
+	of_node_put(parent);
+
+out:
+	return;
+}
+
 static __init void register_i2c_devices_from_dt(int bus)
 {
 	char path[18];
@@ -1822,6 +1924,12 @@ static __init void register_i2c_devices_from_dt(int bus)
 		if (prop && (len == sizeof(u8)))
 			info.irq = MSM_GPIO_TO_INT(*(u8 *)prop);
 
+		prop = of_get_property(child, "platform_data", &len);
+		if (prop && len) {
+			info.platform_data = kmemdup(prop, len, GFP_KERNEL);
+			BUG_ON(!info.platform_data);
+		}
+
 		prop = of_get_property(child, "type", &len);
 		if (prop && (len == sizeof(u32))) {
 			/* must match type identifiers defined in DT schema */
@@ -1851,12 +1959,6 @@ static __init void register_i2c_devices_from_dt(int bus)
 					camera_flash_3556.hw_enable =
 						*(u32 *)prop;
 				info.platform_data = &camera_flash_3556;
-				break;
-
-			case 0x00190001: /* NXP_PN544 */
-#ifdef CONFIG_PN544
-				info.platform_data = &pn544_pdata;
-#endif
 				break;
 
 			case 0x00250001: /* TAOS_CT406 */
@@ -1918,6 +2020,26 @@ static void __init register_i2c_devices(void)
 }
 
 static unsigned sdc_detect_gpio = 20;
+
+static __init void config_sdc_from_dt(void)
+{
+	struct device_node *node;
+	int len = 0;
+	const void *prop;
+
+	node = of_find_node_by_path("/System@0/SDHC@0/SDHCSLOT@3");
+	if (!node)
+		goto out;
+
+	prop = of_get_property(node, "pm8921,gpio", &len);
+	if (prop && (len == sizeof(u32)))
+		sdc_detect_gpio = *(u32 *)prop;
+
+	of_node_put(node);
+
+out:
+	return;
+}
 
 static struct gpiomux_setting mdp_disp_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
@@ -2152,16 +2274,6 @@ static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 	.max_clock_speed = 15060000,
 };
 
-static struct led_info msm8960_mmi_button_backlight = {
-	.name = "button-backlight",
-	.default_trigger = "none",
-};
-
-static struct led_info msm8960_shift_key_backlight = {
-	.name = "shift-key-light",
-	.default_trigger = "none",
-};
-
 #define EXPECTED_MBM_PROTOCOL_VERSION 1
 static uint32_t mbm_protocol_version;
 
@@ -2182,8 +2294,18 @@ static void __init msm8960_mmi_init(void)
 
 	msm8960_init_rpm();
 
+	config_keyboard_from_dt();
+
+	config_gsbi12_clk_from_dt();
+
 	/* load panel_name from device tree, if present */
 	load_panel_name_from_dt();
+
+	/* configure pm8921 leds */
+	load_pm8921_leds_from_dt();
+
+	/* needs to happen before msm_clock_init */
+	config_camera_single_mclk_from_dt();
 
 	pmic_reset_irq = PM8921_IRQ_BASE + PM8921_RESOUT_IRQ;
 	regulator_suppress_info_printing();
@@ -2192,6 +2314,7 @@ static void __init msm8960_mmi_init(void)
 	msm8960_init_regulators();
 	msm_clock_init(&msm8960_clock_init_data);
 
+	config_mdp_vsync_from_dt();
 	gpiomux_init(use_mdp_vsync);
 	mot_gpiomux_init(keypad_mode);
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
@@ -2243,16 +2366,13 @@ static void __init msm8960_mmi_init(void)
 #ifdef CONFIG_MSM_CAMERA
 	msm8960_init_cam();
 #endif
+	config_sdc_from_dt();
 	msm8960_init_mmc(sdc_detect_gpio);
 	acpuclk_init(&acpuclk_8960_soc_data);
 	register_i2c_devices();
 	msm_fb_add_devices();
 	msm8960_init_slim();
 	msm8960_init_dsps();
-
-#ifdef CONFIG_PN544	/* NFC */
-	msm8960_pn544_init();
-#endif
 
 	msm8960_sensors_init();
 	msm8960_pm_init(RPM_APCC_CPU0_WAKE_UP_IRQ);
@@ -2338,14 +2458,8 @@ static void __init mmi_init_early(void)
 
 static __init void teufel_init(void)
 {
-	if (system_rev <= HWREV_M1) {
-		sdc_detect_gpio = 22;
-		pm8921_gpios = pm8921_gpios_teufel_m1;
-		pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_teufel_m1);
-	} else {
-		pm8921_gpios = pm8921_gpios_teufel_m2;
-		pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_teufel_m2);
-	}
+	/* need panel_name early so that is_smd below will be correct */
+	load_pm8921_gpios_from_dt();
 
 	if (is_smd()) {
 		ENABLE_I2C_DEVICE(TOUCHSCREEN_MELFAS100_TS);
@@ -2353,18 +2467,6 @@ static __init void teufel_init(void)
 		ENABLE_I2C_DEVICE(TOUCHSCREEN_CYTTSP3);
 		ENABLE_I2C_DEVICE(BACKLIGHT_LM3532);
 	}
-
-#ifdef CONFIG_EMU_DETECTION
-	if (system_rev <= HWREV_P2)
-		otg_control_data = NULL;
-	else
-		set_emu_detection_resource("EMU_ID_EN_GPIO", 94);
-#endif
-
-	/* Setup correct button backlight LED name */
-	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
-
-	camera_single_mclk = true;
 
 	msm8960_mmi_init();
 }
@@ -2380,55 +2482,16 @@ MACHINE_START(TEUFEL, "Teufel")
 	.init_very_early = msm8960_early_memory,
 MACHINE_END
 
-static __init void qinara_init(void)
-{
-#ifdef CONFIG_EMU_DETECTION
-	mot_setup_gsbi12_clk();
-	if (system_rev < HWREV_P1B2)
-		otg_control_data = NULL;
-#endif
-
-	/* Setup correct button backlight LED name */
-	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
-
-	if (system_rev < HWREV_P2)
-		camera_single_mclk = true;
-
-	msm8960_mmi_init();
-}
-
 MACHINE_START(QINARA, "Qinara")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
-	.init_machine = qinara_init,
+	.init_machine = msm8960_mmi_init,
 	.init_early = mmi_init_early,
 	.init_very_early = msm8960_early_memory,
 MACHINE_END
-
-static __init void vanquish_init(void)
-{
-#ifdef CONFIG_EMU_DETECTION
-	mot_setup_gsbi12_clk();
-	if (system_rev < HWREV_P1B2)
-		otg_control_data = NULL;
-#endif
-
-	if (system_rev >= HWREV_P2) {
-		pm8921_gpios = pm8921_gpios_vanquish_p2;
-		pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_vanquish_p2);
-	}
-	use_mdp_vsync = MDP_VSYNC_DISABLED;
-	msm8960_mmi_init();
-#ifdef CONFIG_PN544
-	if (system_rev < HWREV_P2) {
-		pr_debug(KERN_DEBUG "msm8960_pn544_init: reverse ven_polarity.\n");
-		pn544_pdata.ven_polarity = 1;
-	}
-#endif
-}
 
 MACHINE_START(VANQUISH, "Vanquish")
 	.map_io = msm8960_map_io,
@@ -2436,20 +2499,10 @@ MACHINE_START(VANQUISH, "Vanquish")
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
-	.init_machine = vanquish_init,
+	.init_machine = msm8960_mmi_init,
 	.init_early = mmi_init_early,
 	.init_very_early = msm8960_early_memory,
 MACHINE_END
-
-static __init void becker_init(void)
-{
-	strncpy(panel_name, "mipi_mot_cmd_auo_qhd_430", PANEL_NAME_MAX_LEN);
-
-	/* Setup correct button backlight LED name */
-	pm8xxx_set_led_info(1, &msm8960_mmi_button_backlight);
-
-	msm8960_mmi_init();
-}
 
 MACHINE_START(BECKER, "Becker")
     .map_io = msm8960_map_io,
@@ -2457,31 +2510,10 @@ MACHINE_START(BECKER, "Becker")
     .init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
     .timer = &msm_timer,
-    .init_machine = becker_init,
+	.init_machine = msm8960_mmi_init,
 	.init_early = mmi_init_early,
     .init_very_early = msm8960_early_memory,
 MACHINE_END
-
-static __init void asanti_init(void)
-{
-	strncpy(panel_name, "mipi_mot_cmd_auo_qhd_430", PANEL_NAME_MAX_LEN);
-	otg_control_data = NULL;
-	pm8921_gpios = pm8921_gpios_asanti;
-	pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_asanti);
-	keypad_data = &mmi_qwerty_keypad_data;
-	keypad_mode = MMI_KEYPAD_RESET|MMI_KEYPAD_SLIDER;
-
-	/* Enable keyboard backlight */
-	strncpy((char *)&mp_lm3532_pdata.ctrl_b_name, "keyboard-backlight",
-		sizeof(mp_lm3532_pdata.ctrl_b_name)-1);
-	mp_lm3532_pdata.led2_controller = LM3532_CNTRL_B;
-	mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE;
-
-	/* Setup correct shift key light LED name */
-	pm8xxx_set_led_info(1, &msm8960_shift_key_backlight);
-
-	msm8960_mmi_init();
-}
 
 MACHINE_START(ASANTI, "Asanti")
 	.map_io = msm8960_map_io,
@@ -2489,7 +2521,7 @@ MACHINE_START(ASANTI, "Asanti")
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
-	.init_machine = asanti_init,
+	.init_machine = msm8960_mmi_init,
 	.init_early = mmi_init_early,
 	.init_very_early = msm8960_early_memory,
 MACHINE_END
