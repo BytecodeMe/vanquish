@@ -373,4 +373,12 @@ config PM8921_FACTORY_SHUTDOWN
 	  Say Y here to enable factory shutdown support in PM8921 Charger
 	  driver.
 
+config PM8921_TEST_OVERRIDE
+	bool "Enable PM8921 user-space override test functionality"
+	depends on PM8921_CHARGER && PM8921_BMS
+	default n
+	help
+	  Say Y here to enable user-space override of specific battery
+	  state variables.  To be used for test purposes only
+
 endif # POWER_SUPPLY

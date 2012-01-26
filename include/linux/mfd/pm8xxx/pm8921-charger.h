@@ -347,6 +347,11 @@ int pm8921_usb_ovp_set_hystersis(enum pm8921_usb_debounce_time ms);
  *
  */
 int pm8921_usb_ovp_disable(int disable);
+
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+void pm8921_override_force_battery_update(void);
+#endif
+
 #else
 static inline void pm8921_charger_vbus_draw(unsigned int mA)
 {

@@ -20,6 +20,7 @@
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/mfd/pm8xxx/pm8xxx-adc.h>
 #include <linux/mfd/pm8xxx/ccadc.h>
+#include <linux/mfd/pm8xxx/pm8921-charger.h>
 #include <linux/interrupt.h>
 #include <linux/bitops.h>
 #include <linux/debugfs.h>
@@ -106,6 +107,10 @@ struct pm8921_bms_chip {
 	uint16_t		ocv_reading_at_100;
 	int			cc_reading_at_100;
 	int			max_voltage_uv;
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	int			user_override;
+	int			user_override_is_chg;
+#endif
 };
 
 static struct pm8921_bms_chip *the_chip;
@@ -787,6 +792,11 @@ static int read_soc_params_raw(struct pm8921_bms_chip *chip,
 {
 	unsigned long flags;
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	if (chip->user_override)
+		return 0;
+#endif
+
 	spin_lock_irqsave(&chip->bms_output_lock, flags);
 	pm_bms_lock_output_data(chip);
 
@@ -1089,6 +1099,11 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	int update_userspace = 1;
 	int cc_uah;
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	if (chip->user_override)
+		return last_soc;
+#endif
+
 	calculate_soc_params(chip, raw, batt_temp, chargecycles,
 						&fcc_uah,
 						&unusable_charge_uah,
@@ -1325,6 +1340,11 @@ void pm8921_bms_charging_began(void)
 	struct pm8xxx_adc_chan_result result;
 	struct pm8921_soc_params raw;
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	if (the_chip->user_override)
+		return;
+#endif
+
 	rc = pm8xxx_adc_read(the_chip->batt_temp_channel, &result);
 	if (rc) {
 		pr_err("error reading adc channel = %d, rc = %d\n",
@@ -1356,6 +1376,11 @@ void pm8921_bms_charging_end(int is_battery_full)
 
 	if (the_chip == NULL)
 		return;
+
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	if (the_chip->user_override)
+		goto calculate_percent;
+#endif
 
 	rc = pm8xxx_adc_read(the_chip->batt_temp_channel, &result);
 	if (rc) {
@@ -1408,6 +1433,9 @@ void pm8921_bms_charging_end(int is_battery_full)
 	bms_end_ocv_uv = raw.last_good_ocv_uv;
 	calculate_cc_uah(the_chip, raw.cc, &bms_end_cc_uah);
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+calculate_percent:
+#endif
 	if (the_chip->end_percent > the_chip->start_percent) {
 		last_charge_increase +=
 			the_chip->end_percent - the_chip->start_percent;
@@ -1896,6 +1924,90 @@ static void create_debugfs_entries(struct pm8921_bms_chip *chip)
 	}
 }
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+struct pm8921_override_user_data {
+	int is_charging;
+	int soc;
+	int cc_uah;
+	int real_fcc_batt_temp;
+	int real_fcc;
+	int ocv;
+	int rbatt;
+};
+
+int pm8921_override_get_charge_status(int *status)
+{
+	if (!the_chip->user_override)
+		return 0;
+
+	*status = (the_chip->user_override_is_chg == 0) ?
+		POWER_SUPPLY_STATUS_DISCHARGING : POWER_SUPPLY_STATUS_CHARGING;
+	return 1;
+}
+EXPORT_SYMBOL(pm8921_override_get_charge_status);
+
+static ssize_t pm8921_override_write(struct file *filp,
+				struct kobject *kobj,
+				struct bin_attribute *bin_attr,
+				char *buf, loff_t off, size_t count)
+{
+	struct platform_device *pdev =
+		to_platform_device(container_of(kobj, struct device, kobj));
+	struct pm8921_bms_chip *chip = platform_get_drvdata(pdev);
+	struct pm8921_override_user_data usr_data;
+
+	if (off != 0)
+		return -EIO;
+
+	if (count != sizeof(usr_data))
+		return -EIO;
+
+	memcpy(&usr_data, buf, sizeof(usr_data));
+
+	if (usr_data.soc != -EINVAL)
+		last_soc = usr_data.soc;
+
+	if (usr_data.real_fcc_batt_temp != -EINVAL)
+		last_real_fcc_batt_temp = usr_data.real_fcc_batt_temp;
+
+	if (usr_data.rbatt != -EINVAL)
+		last_rbatt = usr_data.rbatt;
+
+	if (usr_data.real_fcc != -EINVAL)
+		last_real_fcc_mah = usr_data.real_fcc;
+
+	if (usr_data.ocv != -EINVAL)
+		last_ocv_uv = usr_data.ocv;
+
+	if (!chip->user_override_is_chg && usr_data.is_charging) {
+		chip->user_override_is_chg = 1;
+		the_chip->start_percent = usr_data.soc;
+		bms_start_percent = usr_data.soc;
+		bms_start_ocv_uv = last_ocv_uv;
+		bms_start_cc_uah = usr_data.cc_uah;
+	} else if (chip->user_override_is_chg && !usr_data.is_charging) {
+		chip->user_override_is_chg = 0;
+		the_chip->end_percent = usr_data.soc;
+		bms_end_percent = usr_data.soc;
+		bms_end_ocv_uv = last_ocv_uv;
+		bms_end_cc_uah = usr_data.cc_uah;
+		pm8921_bms_charging_end(0);
+	}
+
+	pm8921_override_force_battery_update();
+	return count;
+}
+
+static struct bin_attribute pm8921_override_attr = {
+	.attr = {
+		.name = "override.bin",
+		.mode = 0666,
+	},
+	.size = sizeof(struct pm8921_override_user_data),
+	.write = pm8921_override_write
+};
+#endif
+
 static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -1950,6 +2062,17 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 		goto free_irqs;
 	}
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	chip->user_override = 1;
+	rc = sysfs_create_bin_file(&chip->dev->kobj,
+				&pm8921_override_attr);
+	if (rc) {
+		pr_err("couldn't create override attribute rc = %d\n",
+			rc);
+		goto free_irqs;
+	}
+#endif
+
 	platform_set_drvdata(pdev, chip);
 	the_chip = chip;
 	create_debugfs_entries(chip);
@@ -1984,6 +2107,9 @@ static int __devexit pm8921_bms_remove(struct platform_device *pdev)
 {
 	struct pm8921_bms_chip *chip = platform_get_drvdata(pdev);
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	sysfs_remove_bin_file(&chip->dev->kobj, &pm8921_override_attr);
+#endif
 	free_irqs(chip);
 	kfree(chip->adjusted_fcc_temp_lut);
 	platform_set_drvdata(pdev, NULL);

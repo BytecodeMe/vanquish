@@ -1317,6 +1317,11 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 	int fsm_state = pm_chg_get_fsm_state(chip);
 	int i;
 
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+	if (pm8921_override_get_charge_status(&batt_state))
+		return batt_state;
+#endif
+
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	if (chip->force_shutdown)
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -1778,6 +1783,19 @@ int pm8921_set_usb_power_supply_type(enum power_supply_type type)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(pm8921_set_usb_power_supply_type);
+
+#ifdef CONFIG_PM8921_TEST_OVERRIDE
+void pm8921_override_force_battery_update(void)
+{
+	if (!the_chip) {
+		pr_err("called before init\n");
+		return;
+	}
+
+	power_supply_changed(&the_chip->batt_psy);
+}
+EXPORT_SYMBOL_GPL(pm8921_override_force_battery_update);
+#endif
 
 int pm8921_batt_temperature(void)
 {
