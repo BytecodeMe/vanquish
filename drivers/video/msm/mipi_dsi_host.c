@@ -1019,7 +1019,13 @@ void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		wait_for_completion(&dsi_mdp_comp);
+		if (wait_for_completion_timeout(&dsi_mdp_comp,
+					msecs_to_jiffies(100)) == 0) {
+			pr_err("failed to wait for MDP complete\n");
+			spin_lock_irqsave(&dsi_mdp_lock, flag);
+			dsi_mdp_busy = false;
+			spin_unlock_irqrestore(&dsi_mdp_lock, flag);
+		}
 	}
 	pr_debug("%s: done pid=%d\n",
 				__func__, current->pid);

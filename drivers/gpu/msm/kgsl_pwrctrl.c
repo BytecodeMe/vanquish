@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -362,6 +362,7 @@ void kgsl_pwrctrl_clk(struct kgsl_device *device, int state)
 		}
 	}
 }
+EXPORT_SYMBOL(kgsl_pwrctrl_clk);
 
 void kgsl_pwrctrl_axi(struct kgsl_device *device, int state)
 {
@@ -427,13 +428,11 @@ void kgsl_pwrctrl_irq(struct kgsl_device *device, int state)
 			&pwr->power_flags)) {
 			trace_kgsl_irq(device, state);
 			enable_irq(pwr->interrupt_num);
-			device->ftbl->irqctrl(device, 1);
 		}
 	} else if (state == KGSL_PWRFLAGS_OFF) {
 		if (test_and_clear_bit(KGSL_PWRFLAGS_IRQ_ON,
 			&pwr->power_flags)) {
 			trace_kgsl_irq(device, state);
-			device->ftbl->irqctrl(device, 0);
 			if (in_interrupt())
 				disable_irq_nosync(pwr->interrupt_num);
 			else
@@ -622,7 +621,7 @@ void kgsl_timer(unsigned long data)
 	struct kgsl_device *device = (struct kgsl_device *) data;
 
 	KGSL_PWR_INFO(device, "idle timer expired device %d\n", device->id);
-	if (device->requested_state != KGSL_STATE_SUSPEND) {
+	if (device->requested_state == KGSL_STATE_NONE) {
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_SLEEP);
 		/* Have work run in a non-interrupt context. */
 		queue_work(device->work_queue, &device->idle_check_ws);
@@ -850,6 +849,16 @@ void kgsl_pwrctrl_disable(struct kgsl_device *device)
 	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_OFF);
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_disable);
+
+void kgsl_pwrctrl_stop_work(struct kgsl_device *device)
+{
+	del_timer_sync(&device->idle_timer);
+	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
+	mutex_unlock(&device->mutex);
+	flush_workqueue(device->work_queue);
+	mutex_lock(&device->mutex);
+}
+EXPORT_SYMBOL(kgsl_pwrctrl_stop_work);
 
 void kgsl_pwrctrl_set_state(struct kgsl_device *device, unsigned int state)
 {

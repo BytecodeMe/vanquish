@@ -52,17 +52,11 @@ obj-$(CONFIG_MSM_CPU_AVS) += avs.o
 obj-$(CONFIG_MSM_AVS_HW) += avs_hw.o
 obj-$(CONFIG_CPU_V6) += idle-v6.o
 obj-$(CONFIG_CPU_V7) += idle-v7.o
-obj-$(CONFIG_MSM_JTAG_V7) += jtag-v7.o
+obj-$(CONFIG_MSM_JTAG) += jtag.o
 
-msm-etm-objs := cp14.o etm.o
+msm-etm-objs := etm.o
 obj-$(CONFIG_MSM_ETM) += msm-etm.o
-
-ifdef CONFIG_MSM_QDSS
-	obj-y += qdss-debug.o
-	obj-y += qdss-etb.o qdss-tpiu.o
-	obj-y += qdss-funnel.o
-	obj-y += qdss-ptm.o
-endif
+obj-$(CONFIG_MSM_QDSS) += qdss.o qdss-etb.o qdss-tpiu.o qdss-funnel.o qdss-ptm.o
 
 quiet_cmd_mkrpcsym = MKCAP   $@
       cmd_mkrpcsym = $(PERL) $(srctree)/$(src)/mkrpcsym.pl $< $@
@@ -232,10 +226,10 @@ obj-$(CONFIG_ARCH_MSM7X27) += clock-pcom-lookup.o
 obj-$(CONFIG_MACH_MSM7X27_SURF) += board-msm7x27.o devices-msm7x27.o
 obj-$(CONFIG_MACH_MSM7X27_FFA) += board-msm7x27.o devices-msm7x27.o
 obj-$(CONFIG_ARCH_MSM7X27A) += clock-pcom-lookup.o devices-msm7x27a.o
-obj-$(CONFIG_MACH_MSM7X27A_RUMI3) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o
-obj-$(CONFIG_MACH_MSM7X27A_SURF) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o
-obj-$(CONFIG_MACH_MSM7X27A_FFA) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o
-obj-$(CONFIG_MACH_MSM7627A_QRD1) += board-qrd7627a.o board-msm7627a-storage.o board-msm7627a-bt.o
+obj-$(CONFIG_MACH_MSM7X27A_RUMI3) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o board-msm7627a-camera.o
+obj-$(CONFIG_MACH_MSM7X27A_SURF) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o board-msm7627a-camera.o
+obj-$(CONFIG_MACH_MSM7X27A_FFA) += board-msm7x27a.o board-msm7627a-storage.o board-msm7627a-bt.o board-msm7627a-camera.o
+obj-$(CONFIG_MACH_MSM7627A_QRD1) += board-qrd7627a.o board-msm7627a-storage.o board-msm7627a-bt.o board-msm7627a-camera.o
 obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30.o devices-msm7x30.o memory_topology.o
 obj-$(CONFIG_ARCH_MSM7X30) += clock-local.o clock-7x30.o acpuclock-7x30.o
 obj-$(CONFIG_MACH_MSM7X25_SURF) += board-msm7x27.o devices-msm7x25.o

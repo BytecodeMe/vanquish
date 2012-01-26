@@ -46,11 +46,17 @@ static int vsync_start_y_adjust = 4;
 struct timer_list dsi_clock_timer;
 
 
+static bool dsi_panel_on;
+
 void mdp4_overlay_dsi_state_set(int state)
 {
 	unsigned long flag;
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
+
+	if ((dsi_state != ST_DSI_RESUME) && (state == ST_DSI_RESUME))
+		dsi_panel_on = false;
+
 	dsi_state = state;
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 }
@@ -585,7 +591,13 @@ void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d dsi_clk_on=%d\n",
 				__func__, current->pid, mipi_dsi_clk_on);
-		wait_for_completion(&mfd->dma->comp);
+		if (wait_for_completion_timeout(&mfd->dma->comp,
+					msecs_to_jiffies(100)) == 0) {
+			pr_err("failed to wait for DMA complete\n");
+			spin_lock_irqsave(&mdp_spin_lock, flag);
+			mfd->dma->busy = false;
+			spin_unlock_irqrestore(&mdp_spin_lock, flag);
+		}
 	}
 	pr_debug("%s: done pid=%d dsi_clk_on=%d\n",
 			 __func__, current->pid, mipi_dsi_clk_on);
@@ -654,9 +666,14 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 {
+	if (mfd == NULL) {
+		pr_err("%s:invalid mfd\n", __func__);
+		return;
+	}
+
 	mutex_lock(&mfd->dma->ov_mutex);
 
-	if (mfd && mfd->panel_power_on) {
+	if (mfd->panel_power_on) {
 		mdp4_dsi_cmd_dma_busy_wait(mfd);
 
 		if (dsi_pipe && dsi_pipe->blt_addr)
@@ -671,6 +688,27 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 			mfd->pan_waiting = FALSE;
 			complete(&mfd->pan_comp);
 		}
+
+		mdp4_dsi_panel_on(mfd);
 	}
+
 	mutex_unlock(&mfd->dma->ov_mutex);
+}
+
+void mdp4_dsi_panel_on(struct msm_fb_data_type *mfd)
+{
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	uint32 panel;
+	struct msm_fb_panel_data *pdata =
+		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+
+	if (dsi_panel_on == false) {
+		if (pdata->panel_on) {
+			panel = mdp4_overlay_panel_list();
+			pdata->panel_on(mfd->pdev);
+		}
+
+		dsi_panel_on = true;
+	}
+#endif
 }

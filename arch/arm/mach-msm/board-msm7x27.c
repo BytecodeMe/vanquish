@@ -68,7 +68,7 @@
 #include "clock.h"
 #include "acpuclock.h"
 #include "msm-keypad-devices.h"
-#include "pm.h"
+#include <mach/pm.h>
 #include "pm-boot.h"
 
 #ifdef CONFIG_ARCH_MSM7X25
@@ -242,7 +242,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 #endif
 	.ldo_init		= msm_hsusb_ldo_init,
 	.pclk_required_during_lpm = 1,
-	.pclk_src_name		= "ebi1_usb_clk",
 };
 
 #ifdef CONFIG_USB_GADGET

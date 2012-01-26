@@ -294,8 +294,12 @@ void diag_switch_logging_mode(unsigned long logging_mode)
 	mutex_lock(&driver->diagchar_mutex);
 	temp = driver->logging_mode;
 	driver->logging_mode = (int)logging_mode;
-	if (driver->logging_mode == UART_MODE)
+	if (driver->logging_mode == MEMORY_DEVICE_MODE)
+		driver->mask_check = 1;
+	if (driver->logging_mode == UART_MODE) {
+		driver->mask_check = 0;
 		driver->logging_mode = MEMORY_DEVICE_MODE;
+	}
 	driver->logging_process_id = current->tgid;
 	mutex_unlock(&driver->diagchar_mutex);
 	if (temp == MEMORY_DEVICE_MODE && driver->logging_mode
@@ -714,7 +718,7 @@ static int diagchar_write(struct file *file, const char __user *buf,
 		err = copy_from_user(driver->user_space_data, buf + 4,
 							 payload_size);
 		/* Check masks for On-Device logging */
-		if (pkt_type == USER_SPACE_LOG_TYPE) {
+		if (driver->mask_check) {
 			if (!mask_request_validate(driver->user_space_data)) {
 				pr_alert("diag: mask request Invalid\n");
 				return -EFAULT;

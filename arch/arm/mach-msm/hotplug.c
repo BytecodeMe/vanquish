@@ -13,9 +13,10 @@
 #include <asm/cacheflush.h>
 #include <asm/vfp.h>
 
+#include <mach/pm.h>
+
 #include "qdss.h"
 #include "spm.h"
-#include "pm.h"
 
 extern volatile int pen_release;
 
@@ -113,8 +114,7 @@ int msm_platform_secondary_init(unsigned int cpu)
 		init_completion(&dev->cpu_killed);
 		return 0;
 	}
-	etm_restore_reg_check();
-	msm_restore_jtag_debug();
+	msm_jtag_restore_state();
 #ifdef CONFIG_VFP
 	vfp_reinit();
 #endif

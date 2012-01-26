@@ -87,8 +87,8 @@
 #include "devices-msm8x60.h"
 #include "spm.h"
 #include "board-8960.h"
-#include "pm.h"
-#include "cpuidle.h"
+#include <mach/pm.h>
+#include <mach/cpuidle.h>
 #include "rpm_resources.h"
 #include "mpm.h"
 #include "acpuclock.h"
@@ -141,7 +141,7 @@ struct sx150x_platform_data msm8960_sx150x_data[] = {
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0xB0C000
-#define MSM_ION_SF_SIZE		0x1800000 /* 24MB */
+#define MSM_ION_SF_SIZE		0x2800000 /* (40MB) */
 #define MSM_ION_MM_SIZE		0x4000000 /* (64MB) */
 #define MSM_ION_MFC_SIZE	SZ_8K
 #define MSM_ION_HEAP_NUM	5
@@ -309,6 +309,19 @@ static int msm8960_paddr_to_memtype(unsigned int paddr)
 }
 
 #ifdef CONFIG_ION_MSM
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+static struct ion_cp_heap_pdata cp_mm_ion_pdata = {
+	.permission_type = IPT_TYPE_MM_CARVEOUT,
+};
+
+static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
+	.permission_type = IPT_TYPE_MFC_SHAREDMEM,
+};
+
+static struct ion_co_heap_pdata co_ion_pdata = {
+};
+#endif
+
 static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.heaps = {
@@ -324,20 +337,23 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_SF_HEAP_NAME,
 			.size	= MSM_ION_SF_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = &co_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MM_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MM_HEAP_NAME,
 			.size	= MSM_ION_MM_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = (void *) &cp_mm_ion_pdata,
 		},
 		{
 			.id	= ION_CP_MFC_HEAP_ID,
-			.type	= ION_HEAP_TYPE_CARVEOUT,
+			.type	= ION_HEAP_TYPE_CP,
 			.name	= ION_MFC_HEAP_NAME,
 			.size	= MSM_ION_MFC_SIZE,
 			.memory_type = ION_EBI_TYPE,
+			.extra_data = (void *) &cp_mfc_ion_pdata,
 		},
 		{
 			.id	= ION_IOMMU_HEAP_ID,
@@ -890,7 +906,6 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control		= OTG_PMIC_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
-	.pclk_src_name		= "dfab_usb_hs_clk",
 	.pmic_id_irq		= PM8921_USB_ID_IN_IRQ(PM8921_IRQ_BASE),
 	.power_budget		= 750,
 };
@@ -1363,6 +1378,8 @@ static const u8 mxt_config_data[] = {
 	/* T15 Object */
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0,
+	/* T18 Object */
+	0, 0,
 	/* T22 Object */
 	5, 0, 0, 0, 0, 0, 0, 0, 30, 0,
 	0, 0, 5, 8, 10, 13, 0,
@@ -1658,7 +1675,6 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_etb_device,
 	&msm_tpiu_device,
 	&msm_funnel_device,
-	&msm_debug_device,
 	&msm_ptm_device,
 #endif
 	&msm_device_dspcrashd_8960,

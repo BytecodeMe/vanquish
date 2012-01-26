@@ -120,8 +120,8 @@
 #include "spm.h"
 #include "board-8960.h"
 #include "board-mmi.h"
-#include "pm.h"
-#include "cpuidle.h"
+#include <mach/pm.h>
+#include <mach/cpuidle.h>
 #include "rpm_resources.h"
 #include "mpm.h"
 #include "acpuclock.h"
@@ -216,7 +216,7 @@ static struct pm8xxx_mpp_init pm8921_mpps[] __initdata = {
 	PM8XXX_MPP_INIT(PM8XXX_AMUX_MPP_8, A_INPUT, PM8XXX_MPP_AIN_AMUX_CH8,
 								DOUT_CTRL_LOW),
 	PM8XXX_MPP_INIT(11, D_BI_DIR, PM8921_MPP_DIG_LEVEL_S4, BI_PULLUP_1KOHM),
-	PM8XXX_MPP_INIT(12, D_BI_DIR, PM8921_MPP_DIG_LEVEL_L17, BI_PULLUP_OPEN),
+	PM8XXX_MPP_INIT(12, D_BI_DIR, PM8921_MPP_DIG_LEVEL_L17, BI_PULLUP_1KOHM),
 };
 
 static u32 fdt_start_address; /* flattened device tree address */
@@ -225,7 +225,10 @@ static struct pm8xxx_gpio_init *pm8921_gpios = pm8921_gpios_vanquish;
 static unsigned pm8921_gpios_size = ARRAY_SIZE(pm8921_gpios_vanquish);
 static struct pm8xxx_keypad_platform_data *keypad_data = &mmi_keypad_data;
 static int keypad_mode = MMI_KEYPAD_RESET;
-/* Ulpi register setting  to increase eye digram strength for qinara HW */
+/* Motorola ULPI default register settings
+ * TXPREEMPAMPTUNE[5:4] = 11 (3x preemphasis current)
+ * TXVREFTUNE[3:0] = 1111 increasing the DC level
+ */
 static int phy_settings[] = {0x34, 0x82, 0x3f, 0x81, -1};
 
 bool camera_single_mclk;
@@ -567,6 +570,29 @@ static char panel_name[PANEL_NAME_MAX_LEN + 1] = DEFAULT_PANEL_NAME;
 
 static int is_smd(void) {
 	return !strncmp(panel_name, "mipi_mot_video_smd_hd_465", PANEL_NAME_MAX_LEN);
+}
+
+static __init void load_panel_name_from_dt(void)
+{
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "panel_name", &len);
+	if (prop && len) {
+		strlcpy(panel_name, (const char *)prop,
+				len > PANEL_NAME_MAX_LEN + 1
+				? PANEL_NAME_MAX_LEN + 1 : len);
+	}
+
+	of_node_put(chosen);
+
+out:
+	return;
 }
 
 static bool dsi_power_on;
@@ -1159,30 +1185,6 @@ static struct lm3556_platform_data camera_flash_3556 = {
 
 #ifdef CONFIG_MSM_CAMERA
 
-#ifdef CONFIG_MOTSOC1
-static struct msm_camera_sensor_flash_data flash_motsoc1 = {
-	.flash_type = MSM_CAMERA_FLASH_NONE,
-};
-
-static struct msm_camera_sensor_platform_info sensor_board_info_motsoc1 = {
-	.mount_angle  = 90,
-	.sensor_reset = 0,
-	.sensor_pwd   = 0,
-	.vcm_pwd      = 0,
-	.vcm_enable   = 0,
-};
-
-static struct msm_camera_sensor_info msm_camera_sensor_motsoc1_data = {
-	.sensor_name          = "motsoc1",
-	.pdata                = &msm_camera_csi_device_data[0],
-	.flash_data           = &flash_motsoc1,
-	.sensor_platform_info = &sensor_board_info_motsoc1,
-	.gpio_conf            = &msm_camif_gpio_conf_mclk0,
-	.csi_if               = 1,
-	.camera_type          = BACK_CAMERA_2D,
-};
-
-#endif
 #ifdef CONFIG_MT9M114
 static struct msm_camera_sensor_flash_data flash_mt9m114 = {
 	.flash_type = MSM_CAMERA_FLASH_NONE,
@@ -1249,18 +1251,42 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov8820_data = {
 
 #endif
 
+#ifdef CONFIG_OV7736
+static struct msm_camera_sensor_flash_data flash_ov7736 = {
+	.flash_type = MSM_CAMERA_FLASH_NONE,
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_ov7736 = {
+	.mount_angle  = 0,
+	.sensor_reset = 0,
+	.sensor_pwd   = 0,
+	.vcm_pwd      = 0,
+	.vcm_enable   = 0,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_ov7736_data = {
+	.sensor_name          = "ov7736",
+	.pdata                = &msm_camera_csi_device_data[1],
+	.flash_data           = &flash_ov7736,
+	.sensor_platform_info = &sensor_board_info_ov7736,
+	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
+	.csi_if               = 1,
+	.camera_type          = FRONT_CAMERA_2D,
+};
+#endif
+
 void __init msm8960_init_cam(void)
 {
 	int i;
 	struct msm_camera_sensor_info *cam_data[] = {
-#ifdef CONFIG_MOTSOC1
-		&msm_camera_sensor_motsoc1_data,
-#endif
 #ifdef CONFIG_MT9M114
 		&msm_camera_sensor_mt9m114_data,
 #endif
 #ifdef CONFIG_OV8820
 		&msm_camera_sensor_ov8820_data,
+#endif
+#ifdef CONFIG_OV7736
+		&msm_camera_sensor_ov7736_data,
 #endif
 	};
 
@@ -1595,6 +1621,26 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 
 #endif /* CONFIG_I2C */
 
+static __init void config_emu_det_from_dt(void)
+{
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "disable_emu_detection", &len);
+	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+		otg_control_data = NULL;
+
+	of_node_put(chosen);
+
+out:
+	return;
+}
+
 static __init u16 dt_get_u16_or_die(struct device_node *node, const char *name)
 {
 	int len = 0;
@@ -1780,11 +1826,6 @@ static __init void register_i2c_devices_from_dt(int bus)
 		if (prop && (len == sizeof(u32))) {
 			/* must match type identifiers defined in DT schema */
 			switch (*(u32 *)prop) {
-			case 0x00000019: /* Generic_Motsoc1 */
-				info.platform_data =
-					&msm_camera_sensor_motsoc1_data;
-				break;
-
 			case 0x00040002: /* Cypress_CYTTSP3 */
 				info.platform_data = &ts_platform_data_cyttsp3;
 				mot_setup_touch_cyttsp3();
@@ -1840,6 +1881,10 @@ static __init void register_i2c_devices_from_dt(int bus)
 			case 0x00290000: /* Omnivision_OV8820 */
 				info.platform_data =
 					&msm_camera_sensor_ov8820_data;
+				break;
+			case 0x00290001: /* Omnivision_OV7736 */
+				info.platform_data =
+					&msm_camera_sensor_ov7736_data;
 				break;
 			}
 		}
@@ -2124,6 +2169,8 @@ static void __init msm8960_mmi_init(void)
 {
 	struct msm_watchdog_pdata *mmi_watchdog_pdata;
 
+	msm_otg_pdata.phy_init_seq = phy_settings;
+
 	if (mbm_protocol_version == 0)
 		pr_err("ERROR: ATAG MBM_PROTOCOL_VERSION is not present."
 			" Bootloader update is required\n");
@@ -2134,6 +2181,9 @@ static void __init msm8960_mmi_init(void)
 		pr_err("meminfo_init() failed!\n");
 
 	msm8960_init_rpm();
+
+	/* load panel_name from device tree, if present */
+	load_panel_name_from_dt();
 
 	pmic_reset_irq = PM8921_IRQ_BASE + PM8921_RESOUT_IRQ;
 	regulator_suppress_info_printing();
@@ -2182,11 +2232,11 @@ static void __init msm8960_mmi_init(void)
 	load_pm8921_gpios_from_dt();
 	pm8921_gpio_mpp_init(pm8921_gpios, pm8921_gpios_size,
 							pm8921_mpps, ARRAY_SIZE(pm8921_mpps));
+	msm8960_init_usb();
+
 #ifdef CONFIG_EMU_DETECTION
-	msm8960_init_usb();
+	config_emu_det_from_dt();
 	mot_init_emu_detection(otg_control_data);
-#else
-	msm8960_init_usb();
 #endif
 
 	platform_add_devices(mmi_devices, ARRAY_SIZE(mmi_devices));
@@ -2332,10 +2382,6 @@ MACHINE_END
 
 static __init void qinara_init(void)
 {
-	/* For qinara HW, to improve the signal strength
-	 * extra settings to ulpi_registers are needed
-	 */
-	msm_otg_pdata.phy_init_seq = phy_settings;
 #ifdef CONFIG_EMU_DETECTION
 	mot_setup_gsbi12_clk();
 	if (system_rev < HWREV_P1B2)
@@ -2444,6 +2490,18 @@ MACHINE_START(ASANTI, "Asanti")
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
 	.init_machine = asanti_init,
+	.init_early = mmi_init_early,
+	.init_very_early = msm8960_early_memory,
+MACHINE_END
+
+/* for use by products that are completely configured through device tree */
+MACHINE_START(MSM8960DT, "msm8960dt")
+	.map_io = msm8960_map_io,
+	.reserve = msm8960_reserve,
+	.init_irq = msm8960_init_irq,
+	.handle_irq = gic_handle_irq,
+	.timer = &msm_timer,
+	.init_machine = msm8960_mmi_init,
 	.init_early = mmi_init_early,
 	.init_very_early = msm8960_early_memory,
 MACHINE_END

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -87,7 +87,13 @@ struct pm8xxx_mpp_init {
 			PM_GPIO_FUNC_NORMAL, 0, 0)
 
 /* Initial pm8038 GPIO configurations */
-static struct pm8xxx_gpio_init pm8038_gpios[] __initdata = {};
+static struct pm8xxx_gpio_init pm8038_gpios[] __initdata = {
+	/* keys GPIOs */
+	PM8XXX_GPIO_INPUT(3, PM_GPIO_PULL_UP_1P5),
+	PM8XXX_GPIO_INPUT(8, PM_GPIO_PULL_UP_1P5),
+	PM8XXX_GPIO_INPUT(10, PM_GPIO_PULL_UP_1P5),
+	PM8XXX_GPIO_INPUT(11, PM_GPIO_PULL_UP_1P5),
+};
 
 /* Initial pm8038 MPP configurations */
 static struct pm8xxx_mpp_init pm8038_mpps[] __initdata = {
@@ -188,7 +194,7 @@ static struct pm8xxx_rtc_platform_data pm8xxx_rtc_pdata __devinitdata = {
 
 static struct pm8xxx_pwrkey_platform_data pm8xxx_pwrkey_pdata = {
 	.pull_up		= 1,
-	.kpd_trigger_delay_us	= 970,
+	.kpd_trigger_delay_us	= 15625,
 	.wakeup			= 1,
 };
 

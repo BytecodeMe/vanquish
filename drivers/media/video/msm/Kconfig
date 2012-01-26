@@ -37,10 +37,6 @@ config IMX074
 	default n
 	---help---
 	SONY 13.5 MP Bayer Sensor
-config MOTSOC1
-    bool "Sensor MOTSOC1 (13MP)"
-    depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
-    default n
 config MT9M114
     bool "Sensor MT9M114 (YUV 1.26M)"
     depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
@@ -193,6 +189,13 @@ config OV8820
 	default n
 	---help---
 	Omnivision 8M Bayer Sensor
+
+config OV7736
+	bool "Sensor ov7736 (Omnivision VGA)"
+	depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
+	default n
+	---help---
+		Omnivision VGA YUV Camera
 
 config VB6801
 	bool "Sensor vb6801"

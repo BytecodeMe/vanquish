@@ -15,12 +15,15 @@
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mipi_mot.h"
+#include "mdp4.h"
 
 static struct mipi_mot_panel *mot_panel;
 
 static char manufacture_id[2] = {DCS_CMD_READ_DA, 0x00}; /* DTYPE_DCS_READ */
 static char controller_ver[2] = {DCS_CMD_READ_DB, 0x00};
 static char controller_drv_ver[2] = {DCS_CMD_READ_DC, 0x00};
+static char display_on[2] = {DCS_CMD_SET_DISPLAY_ON, 0x00};
+static char get_power_mode[2] = {DCS_CMD_GET_POWER_MODE, 0x00};
 
 static struct dsi_cmd_desc mot_manufacture_id_cmd = {
 	DTYPE_DCS_READ, 1, 0, 1, 5, sizeof(manufacture_id), manufacture_id};
@@ -31,6 +34,27 @@ static struct dsi_cmd_desc mot_controller_ver_cmd = {
 static struct dsi_cmd_desc mot_controller_drv_ver_cmd = {
 	DTYPE_DCS_READ, 1, 0, 1, 5, sizeof(controller_drv_ver),
 							controller_drv_ver};
+
+static struct dsi_cmd_desc mot_display_on_cmd = {
+	DTYPE_DCS_WRITE, 1, 0, 0, 5, sizeof(display_on), display_on};
+
+static struct dsi_cmd_desc mot_get_pwr_modei_cmd = {
+	DTYPE_DCS_READ,  1, 0, 1, 1, sizeof(get_power_mode), get_power_mode};
+
+
+int mipi_mot_panel_on(struct msm_fb_data_type *mfd)
+{
+	struct dsi_buf *tp = mot_panel->mot_tx_buf;
+
+	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mipi_dsi_mdp_busy_wait(mfd);
+
+	mipi_dsi_buf_init(tp);
+	mipi_dsi_cmds_tx(mfd, tp, &mot_display_on_cmd, 1);
+
+	return 0;
+}
+
 static int get_mot_panel(void)
 {
 	mot_panel = mipi_mot_get_mot_panel();
@@ -61,6 +85,18 @@ static uint32 get_panel_info(struct msm_fb_data_type *mfd,
 	return *lp;
 }
 
+
+u8 mipi_mode_get_pwr_mode(struct msm_fb_data_type *mfd)
+{
+	struct dsi_cmd_desc *cmd;
+	u8 power_mode;
+
+	cmd = &mot_get_pwr_modei_cmd;
+	power_mode = get_panel_info(mfd, mot_panel, cmd);
+
+	pr_debug("%s: panel power mode = 0x%x\n", __func__, power_mode);
+	return power_mode;
+}
 
 u16 mipi_mot_get_manufacture_id(struct msm_fb_data_type *mfd)
 {
