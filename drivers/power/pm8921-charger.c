@@ -1121,7 +1121,8 @@ static int pm_power_get_property(struct power_supply *psy,
 			chip = container_of(psy, struct pm8921_chg_chip,
 							ac_psy);
 
-			if ((chip->emu_accessory == EMU_ACCY_CHARGER) &&
+			if (((chip->emu_accessory == EMU_ACCY_CHARGER) ||
+			     (chip->emu_accessory == EMU_ACCY_USB_DEVICE)) &&
 			    (alarm_state != PM_BATT_ALARM_SHUTDOWN))
 				val->intval = 1;
 			else
@@ -3180,8 +3181,13 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 	} else if (((enum emu_accy) status == EMU_ACCY_NONE) &&
 		   (the_chip->emu_accessory == EMU_ACCY_FACTORY)) {
 		the_chip->factory_mode = 0;
-		__pm8921_charger_vbus_draw(100);
+		__pm8921_charger_vbus_draw(0);
 		pm_chg_auto_enable(the_chip, 1);
+	} else if ((enum emu_accy) status == EMU_ACCY_USB_DEVICE) {
+		__pm8921_charger_vbus_draw(1500);
+	} else if (((enum emu_accy) status == EMU_ACCY_NONE) &&
+		   (the_chip->emu_accessory == EMU_ACCY_USB_DEVICE)) {
+		__pm8921_charger_vbus_draw(0);
 	}
 
 	the_chip->emu_accessory = (enum emu_accy) status;
