@@ -176,6 +176,10 @@ struct msm_camera_sensor_platform_info {
 	int sensor_reset_enable;
 	int sensor_reset;
 	int sensor_pwd;
+	int analog_en;
+	int digital_en;
+	char *reg_1p8;
+	char *reg_2p8;
 	int vcm_pwd;
 	int vcm_enable;
 	int privacy_light;

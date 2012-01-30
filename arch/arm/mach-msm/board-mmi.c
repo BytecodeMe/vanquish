@@ -1163,10 +1163,9 @@ static struct msm_camera_sensor_flash_data flash_mt9m114 = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_mt9m114 = {
 	.mount_angle    = 270,
-	.sensor_reset   = 0,
-	.sensor_pwd     = 0,
-	.vcm_pwd        = 0,
-	.vcm_enable     = 0,
+	.sensor_reset   = 76,
+	.analog_en      = 82,
+	.digital_en     = 89,
 };
 
 static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
@@ -1221,22 +1220,24 @@ static struct msm_camera_sensor_flash_data flash_ov8820 = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_ov8820 = {
 	.mount_angle	= 90,
-	.sensor_reset	= 0,
-	.sensor_pwd	= 0,
-	.vcm_pwd	= 0,
-	.vcm_enable	= 0,
+	.sensor_reset   = 97,
+	.sensor_pwd     = 95,
+	.analog_en      = 54,
+	.digital_en     = 58,
+	.reg_1p8        = "8921_l29",
+	.reg_2p8        = "8921_l16",
 };
 
 static struct msm_camera_sensor_info msm_camera_sensor_ov8820_data = {
-	.sensor_name	= "ov8820",
-	.pdata	= &msm_camera_csi_device_data[0],
-	.flash_data	= &flash_ov8820,
+	.sensor_name          = "ov8820",
+	.pdata                = &msm_camera_csi_device_data[0],
+	.flash_data           = &flash_ov8820,
 	.sensor_platform_info = &sensor_board_info_ov8820,
-	.gpio_conf = &msm_camif_gpio_conf_mclk0,
-	.csi_if	= 1,
-	.camera_type = BACK_CAMERA_2D,
+	.gpio_conf            = &msm_camif_gpio_conf_mclk0,
+	.csi_if               = 1,
+	.camera_type          = BACK_CAMERA_2D,
 #ifdef CONFIG_DW9714_ACT
-	.actuator_info = &dw9714_actuator_info,
+	.actuator_info        = &dw9714_actuator_info,
 #endif
 };
 
@@ -1248,11 +1249,11 @@ static struct msm_camera_sensor_flash_data flash_ov7736 = {
 };
 
 static struct msm_camera_sensor_platform_info sensor_board_info_ov7736 = {
-	.mount_angle  = 0,
-	.sensor_reset = 0,
-	.sensor_pwd   = 0,
-	.vcm_pwd      = 0,
-	.vcm_enable   = 0,
+	.mount_angle  = 90,
+	.sensor_reset = 76,
+	.sensor_pwd   = 89,
+	.analog_en    = 82,
+	.reg_1p8      = "8921_l29",
 };
 
 static struct msm_camera_sensor_info msm_camera_sensor_ov7736_data = {
@@ -2238,6 +2239,16 @@ static __init void register_i2c_devices_from_dt(int bus)
 				break;
 
 			case 0x00290000: /* Omnivision_OV8820 */
+				prop = of_get_property(child, "1p8_via_gpio",
+						&len);
+				if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+					msm_camera_sensor_ov8820_data.
+						sensor_platform_info->
+						reg_1p8 = NULL;
+				else
+					msm_camera_sensor_ov8820_data.
+						sensor_platform_info->
+						digital_en = 0;
 				info.platform_data =
 					&msm_camera_sensor_ov8820_data;
 				break;

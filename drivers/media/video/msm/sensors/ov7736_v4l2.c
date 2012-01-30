@@ -21,10 +21,6 @@
   ==============================================================*/
 #define OV7736_DEFAULT_CLOCK_RATE	24000000
 
-#define CAM2_RESET 76
-#define CAM2_ANALOG_EN 82
-#define CAM2_DIGITAL_EN_N 89
-
 DEFINE_MUTEX(ov7736_mut);
 static struct msm_sensor_ctrl_t ov7736_s_ctrl;
 
@@ -413,82 +409,86 @@ reg_off_done:
 	return rc;
 }
 
-static int32_t ov7736_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t ov7736_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
 
-	pr_info("ov7736_power_on\n");
+	pr_info("ov7736_power_up R:%d P:%d A:%d 1.8:%s\n",
+			pinfo->sensor_reset,
+			pinfo->sensor_pwd,
+			pinfo->analog_en,
+			pinfo->reg_1p8);
 
-	rc = gpio_request(CAM2_ANALOG_EN, "ov7736");
+	rc = gpio_request(pinfo->analog_en, "ov7736");
 	if (rc < 0) {
-		pr_err("ov7736: gpio request CAM1_ANALOG_ENABLE failed (%d)\n",
+		pr_err("ov7736: gpio request ANALOG_EN failed (%d)\n",
 				rc);
-		goto power_on_done;
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM2_DIGITAL_EN_N/*CAM2_PWRDWN*/, "ov7736");
+	rc = gpio_request(pinfo->sensor_pwd, "ov7736");
 	if (rc < 0) {
-		pr_err("ov7736: gpio request CAM1_PWRDWN failed (%d)\n", rc);
-		goto power_on_done;
+		pr_err("ov7736: gpio request PWRDWN failed (%d)\n", rc);
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM2_RESET, "ov7736");
+	rc = gpio_request(pinfo->sensor_reset, "ov7736");
 	if (rc < 0) {
-		pr_err("7736: gpio request CAM1_RESET failed (%d)\n", rc);
-		goto power_on_done;
+		pr_err("7736: gpio request RESET failed (%d)\n", rc);
+		goto power_up_done;
 	}
-	gpio_direction_output(CAM2_DIGITAL_EN_N, 1);
+	gpio_direction_output(pinfo->sensor_pwd, 1);
 
-	rc = ov7736_regulator_on(&reg_1p8, "8921_l29", 1800000);
+	rc = ov7736_regulator_on(&reg_1p8, pinfo->reg_1p8, 1800000);
 	if (rc < 0)
-		goto power_on_done;
+		goto power_up_done;
 	usleep_range(5000, 5000);
 
-	pr_info("ov7736 enabling AVDD\n");
-	gpio_direction_output(CAM2_ANALOG_EN, 1);
+	gpio_direction_output(pinfo->analog_en, 1);
 	usleep(20000);
 
-	pr_info("ov7736 enabling MCLK\n");
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(OV7736_DEFAULT_CLOCK_RATE);
 	usleep(5000);
 
-	pr_info("ov7736 setting PWRDWN Low\n");
-	gpio_direction_output(CAM2_DIGITAL_EN_N, 0);
+	gpio_direction_output(pinfo->sensor_pwd, 0);
 
-	pr_info("ov7736 setting Reset High\n");
-	gpio_direction_output(CAM2_RESET, 1);
+	gpio_direction_output(pinfo->sensor_reset, 1);
 	msleep(20);
 
-	pr_info("ov7736 power up sequence complete\n");
-power_on_done:
+power_up_done:
 	return rc;
 }
 
 
-static int32_t ov7736_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t ov7736_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 {
-	pr_info("ov7736_sensor_power_off\n");
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
+
+	pr_info("ov7736_power_down\n");
 
 	/* Set Reset Low */
-	gpio_direction_output(CAM2_RESET, 0);
+	gpio_direction_output(pinfo->sensor_reset, 0);
 
 	/* Disable AVDD */
-	gpio_direction_output(CAM2_ANALOG_EN, 0);
+	gpio_direction_output(pinfo->analog_en, 0);
 
 	/* Set PWRDWN Low */
-	gpio_direction_output(CAM2_DIGITAL_EN_N, 0);
+	gpio_direction_output(pinfo->sensor_pwd, 0);
 
 	/* Clean up */
-	gpio_free(CAM2_DIGITAL_EN_N);
-	gpio_free(CAM2_RESET);
-	gpio_free(CAM2_ANALOG_EN);
-	ov7736_regulator_off(reg_1p8, "8921_l29");
+	gpio_free(pinfo->sensor_pwd);
+	gpio_free(pinfo->sensor_reset);
+	gpio_free(pinfo->analog_en);
+	ov7736_regulator_off(reg_1p8, "1.8");
 
 	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
 	return 0;
 }
 
-static int32_t ov7736_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t ov7736_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 	uint16_t chipid = 0;
@@ -557,9 +557,9 @@ static struct msm_sensor_fn_t ov7736_func_tbl = {
 	.sensor_mode_init       = msm_sensor_mode_init,
 	.sensor_get_output_info = msm_sensor_get_output_info,
 	.sensor_config          = msm_sensor_config,
-	.sensor_power_up        = ov7736_sensor_power_up,
-	.sensor_power_down      = ov7736_sensor_power_down,
-	.sensor_match_id        = ov7736_sensor_match_id,
+	.sensor_power_up        = ov7736_power_up,
+	.sensor_power_down      = ov7736_power_down,
+	.sensor_match_id        = ov7736_match_id,
 };
 
 static struct msm_sensor_reg_t ov7736_regs = {

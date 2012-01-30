@@ -27,42 +27,43 @@
 DEFINE_MUTEX(mt9m114_mut);
 static struct msm_sensor_ctrl_t mt9m114_s_ctrl;
 
-#define CAM2_RESET 76
-#define CAM2_ANALOG_EN 82
-#define CAM2_DIGITAL_EN_N 89
-
 #define MT9M114_DEFAULT_MASTER_CLK_RATE 24000000
 
-static int32_t mt9m114_power_on(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t mt9m114_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
 
-	pr_info("mt9m114_power_on\n");
+	pr_info("mt9m114_power_up R:%d D:%d A:%d\n",
+			pinfo->sensor_reset,
+			pinfo->digital_en,
+			pinfo->analog_en);
 
 	/* obtain gpios */
-	rc = gpio_request(CAM2_DIGITAL_EN_N, "mt9m114");
+	rc = gpio_request(pinfo->digital_en, "mt9m114");
 	if (rc) {
-		pr_err("mt9m114: gpio request CAM2_DIGITAL_EN_N failed (%d)\n",
+		pr_err("mt9m114: gpio request DIGITAL_EN failed (%d)\n",
 				rc);
-		goto power_on_done;
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM2_ANALOG_EN, "mt9m114");
+	rc = gpio_request(pinfo->analog_en, "mt9m114");
 	if (rc) {
-		pr_err("mt9m114: gpio request CAM2_ANALOG_EN failed (%d)\n",
+		pr_err("mt9m114: gpio request ANALOG_EN failed (%d)\n",
 				rc);
-		goto power_on_done;
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM2_RESET, "mt9m114");
+	rc = gpio_request(pinfo->sensor_reset, "mt9m114");
 	if (rc) {
-		pr_err("mt9m114: gpio request CAM2_RESET failed (%d)\n", rc);
-		goto power_on_done;
+		pr_err("mt9m114: gpio request RESET failed (%d)\n", rc);
+		goto power_up_done;
 	}
 
 	/* turn on digital supply */
-	gpio_direction_output(CAM2_DIGITAL_EN_N, 0);
+	gpio_direction_output(pinfo->digital_en, 0);
 
 	/* turn on analog supply */
-	gpio_direction_output(CAM2_ANALOG_EN, 1);
+	gpio_direction_output(pinfo->analog_en, 1);
 
 	/* turn on mclk */
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
@@ -70,32 +71,35 @@ static int32_t mt9m114_power_on(struct msm_sensor_ctrl_t *s_ctrl)
 	usleep_range(1000, 2000);
 
 	/* toggle reset */
-	gpio_direction_output(CAM2_RESET, 0);
+	gpio_direction_output(pinfo->sensor_reset, 0);
 	usleep_range(5000, 6000);
-	gpio_set_value_cansleep(CAM2_RESET, 1);
+	gpio_set_value_cansleep(pinfo->sensor_reset, 1);
 	msleep(50);
 
-power_on_done:
+power_up_done:
 	return rc;
 }
 
-static int32_t mt9m114_power_off(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t mt9m114_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 {
-	pr_info("mt9m114_power_off\n");
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
+
+	pr_info("mt9m114_power_down\n");
 
 	/* assert reset */
-	gpio_direction_output(CAM2_RESET, 0);
+	gpio_direction_output(pinfo->sensor_reset, 0);
 
 	/* turn off analog supply */
-	gpio_direction_output(CAM2_ANALOG_EN, 0);
+	gpio_direction_output(pinfo->analog_en, 0);
 
 	/* turn off digital supply */
-	gpio_direction_output(CAM2_DIGITAL_EN_N, 1);
+	gpio_direction_output(pinfo->digital_en, 1);
 
 	/* free gpios */
-	gpio_free(CAM2_RESET);
-	gpio_free(CAM2_ANALOG_EN);
-	gpio_free(CAM2_DIGITAL_EN_N);
+	gpio_free(pinfo->sensor_reset);
+	gpio_free(pinfo->analog_en);
+	gpio_free(pinfo->digital_en);
 
 	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
@@ -1364,8 +1368,8 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_mode_init = msm_sensor_mode_init,
 	.sensor_get_output_info = msm_sensor_get_output_info,
 	.sensor_config = msm_sensor_config,
-	.sensor_power_up = mt9m114_power_on,
-	.sensor_power_down = mt9m114_power_off,
+	.sensor_power_up = mt9m114_power_up,
+	.sensor_power_down = mt9m114_power_down,
 	.sensor_match_id = mt9m114_match_id,
 };
 

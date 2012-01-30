@@ -20,10 +20,6 @@
 
 #define OV8820_DEFAULT_MCLK_RATE 24000000
 
-#define CAM1_PWRDWN 95
-#define CAM1_RESET 97
-#define CAM1_ANALOG_ENABLE 54
-
 DEFINE_MUTEX(ov8820_mut);
 static struct msm_sensor_ctrl_t ov8820_s_ctrl;
 
@@ -512,85 +508,111 @@ reg_off_done:
 }
 
 
-static int32_t ov8820_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
 
-	CDBG("ov8820_sensor_power_on\n");
-
-	/*Turn on VDDIO*/
-	rc = ov8820_regulator_on(&reg_1p8, "8921_l29", 1800000);
-	if (rc < 0)
-		goto power_on_done;
-
-	/*Turn on AF regulator*/
-	rc = ov8820_regulator_on(&reg_2p8, "8921_l16", 2800000);
-	if (rc < 0)
-		goto power_on_done;
+	pr_info("ov8820_power_up R:%d P:%d D:%d A:%d 1.8:%s 2.8:%s\n",
+			pinfo->sensor_reset,
+			pinfo->sensor_pwd,
+			pinfo->digital_en,
+			pinfo->analog_en,
+			(pinfo->reg_1p8 ? pinfo->reg_1p8 : "-"),
+			pinfo->reg_2p8);
 
 	/*obtain gpios*/
-	rc = gpio_request(CAM1_ANALOG_ENABLE, "ov8820");
+	rc = gpio_request(pinfo->analog_en, "ov8820");
 	if (rc < 0) {
-		pr_err("ov8820: gpio request CAM1_ANALOG_ENABLE failed (%d)\n",
+		pr_err("ov8820: gpio request ANALOG_EN failed (%d)\n",
 				rc);
-		goto power_on_done;
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM1_PWRDWN, "ov8820");
+	rc = gpio_request(pinfo->sensor_pwd, "ov8820");
 	if (rc < 0) {
-		pr_err("ov8820: gpio request CAM1_PWRDWN failed (%d)\n", rc);
-		goto power_on_done;
+		pr_err("ov8820: gpio request PWRDWN failed (%d)\n", rc);
+		goto power_up_done;
 	}
-	rc = gpio_request(CAM1_RESET, "ov8820");
+	rc = gpio_request(pinfo->sensor_reset, "ov8820");
 	if (rc < 0) {
-		pr_err("ov8820: gpio request CAM1_RESET failed (%d)\n", rc);
-		goto power_on_done;
+		pr_err("ov8820: gpio request RESET failed (%d)\n", rc);
+		goto power_up_done;
 	}
+	if (pinfo->digital_en) {
+		rc = gpio_request(pinfo->digital_en, "ov8820");
+		if (rc < 0) {
+			pr_err("ov8820: gpio request DIG_EN failed (%d)\n",
+					rc);
+			goto power_up_done;
+		}
+	}
+
+	/*Turn on VDDIO*/
+	if (pinfo->digital_en) {
+		gpio_direction_output(pinfo->digital_en, 1);
+	} else {
+		rc = ov8820_regulator_on(&reg_1p8, pinfo->reg_1p8, 1800000);
+		if (rc < 0)
+			goto power_up_done;
+	}
+
+	/*Turn on AF regulator*/
+	rc = ov8820_regulator_on(&reg_2p8, pinfo->reg_2p8, 2800000);
+	if (rc < 0)
+		goto power_up_done;
 
 	/* Enable AVDD supply*/
-	pr_info("ov8820 enabling AVDD\n");
-	gpio_direction_output(CAM1_ANALOG_ENABLE, 1);
+	gpio_direction_output(pinfo->analog_en, 1);
 
 	/*Enable MCLK*/
-	pr_info("ov8820 enabling MCLK\n");
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(OV8820_DEFAULT_MCLK_RATE);
 	usleep(5000);
 
 	/*set PWRDWN high*/
-	pr_info("ov8820 setting PWRDWN high\n");
-	gpio_direction_output(CAM1_PWRDWN, 1);
+	gpio_direction_output(pinfo->sensor_pwd, 1);
 	usleep_range(1000, 2000);
 
 	/*Set Reset high*/
-	pr_info("ov8820 setting Reset High\n");
-	gpio_direction_output(CAM1_RESET, 1);
+	gpio_direction_output(pinfo->sensor_reset, 1);
 	usleep(20000);
 
-	pr_info("ov8820 power up sequence complete\n");
-power_on_done:
+power_up_done:
 	return rc;
 }
 
-static int32_t ov8820_sensor_power_off(
+static int32_t ov8820_power_down(
 		struct msm_sensor_ctrl_t *s_ctrl)
 {
-	pr_info("ov8820_sensor_power_off\n");
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
+
+	pr_info("ov8820_power_down\n");
 
 	/*Set Reset Low*/
-	gpio_direction_output(CAM1_RESET, 0);
-
-	/*Disable AVDD*/
-	gpio_direction_output(CAM1_ANALOG_ENABLE, 0);
+	gpio_direction_output(pinfo->sensor_reset, 0);
 
 	/*Set PWRDWN Low*/
-	gpio_direction_output(CAM1_PWRDWN, 0);
+	gpio_direction_output(pinfo->sensor_pwd, 0);
+
+	/*Disable AVDD*/
+	gpio_direction_output(pinfo->analog_en, 0);
+
+	/*Disable VDDIO*/
+	if (pinfo->digital_en)
+		gpio_direction_output(pinfo->digital_en, 0);
+	else
+		ov8820_regulator_off(reg_1p8, "1.8");
+
+	ov8820_regulator_off(reg_2p8, "2.8");
 
 	/*Clean up*/
-	gpio_free(CAM1_PWRDWN);
-	gpio_free(CAM1_RESET);
-	gpio_free(CAM1_ANALOG_ENABLE);
-	ov8820_regulator_off(reg_2p8, "2.8");
-	ov8820_regulator_off(reg_1p8, "1.8");
+	if (pinfo->digital_en)
+		gpio_free(pinfo->digital_en);
+	gpio_free(pinfo->sensor_pwd);
+	gpio_free(pinfo->sensor_reset);
+	gpio_free(pinfo->analog_en);
 	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
 	return 0;
@@ -651,62 +673,59 @@ static struct v4l2_subdev_video_ops ov8820_subdev_video_ops = {
 
 static struct v4l2_subdev_ops ov8820_subdev_ops = {
 	.core = &ov8820_subdev_core_ops,
-	.video  = &ov8820_subdev_video_ops,
+	.video = &ov8820_subdev_video_ops,
 };
 
 static struct msm_sensor_fn_t ov8820_func_tbl = {
-	.sensor_start_stream = msm_sensor_start_stream,
-	.sensor_stop_stream = msm_sensor_stop_stream,
-	.sensor_group_hold_on = msm_sensor_group_hold_on,
-	.sensor_group_hold_off = msm_sensor_group_hold_off,
-	.sensor_set_fps = msm_sensor_set_fps,
-	.sensor_write_exp_gain = ov8820_write_exp_gain,
+	.sensor_start_stream            = msm_sensor_start_stream,
+	.sensor_stop_stream             = msm_sensor_stop_stream,
+	.sensor_group_hold_on           = msm_sensor_group_hold_on,
+	.sensor_group_hold_off          = msm_sensor_group_hold_off,
+	.sensor_set_fps                 = msm_sensor_set_fps,
+	.sensor_write_exp_gain          = ov8820_write_exp_gain,
 	.sensor_write_snapshot_exp_gain = ov8820_write_exp_gain,
-	.sensor_setting = msm_sensor_setting,
-	.sensor_set_sensor_mode = msm_sensor_set_sensor_mode,
-	.sensor_mode_init = msm_sensor_mode_init,
-	.sensor_get_output_info = msm_sensor_get_output_info,
-	.sensor_config = msm_sensor_config,
-	.sensor_power_up = ov8820_sensor_power_up,
-	/*.sensor_power_up = msm_sensor_power_up,*/
-	/*.sensor_power_down = msm_sensor_power_down,*/
-	.sensor_power_down = ov8820_sensor_power_off,
-	.sensor_match_id = ov8820_match_id,
+	.sensor_setting                 = msm_sensor_setting,
+	.sensor_set_sensor_mode         = msm_sensor_set_sensor_mode,
+	.sensor_mode_init               = msm_sensor_mode_init,
+	.sensor_get_output_info         = msm_sensor_get_output_info,
+	.sensor_config                  = msm_sensor_config,
+	.sensor_power_up                = ov8820_power_up,
+	.sensor_power_down              = ov8820_power_down,
+	.sensor_match_id                = ov8820_match_id,
 };
 
 static struct msm_sensor_reg_t ov8820_regs = {
-	.default_data_type = MSM_CAMERA_I2C_BYTE_DATA,
-	.start_stream_conf = ov8820_start_settings,
-	.start_stream_conf_size = ARRAY_SIZE(ov8820_start_settings),
-	.stop_stream_conf = ov8820_stop_settings,
-	.stop_stream_conf_size = ARRAY_SIZE(ov8820_stop_settings),
-	.group_hold_on_conf = ov8820_groupon_settings,
-	.group_hold_on_conf_size = ARRAY_SIZE(ov8820_groupon_settings),
-	.group_hold_off_conf = ov8820_groupoff_settings,
-	.group_hold_off_conf_size =
-		ARRAY_SIZE(ov8820_groupoff_settings),
-	.init_settings = &ov8820_init_conf[0],
-	.init_size = ARRAY_SIZE(ov8820_init_conf),
-	.mode_settings = &ov8820_confs[0],
-	.output_settings = &ov8820_dimensions[0],
-	.num_conf = ARRAY_SIZE(ov8820_confs),
+	.default_data_type        = MSM_CAMERA_I2C_BYTE_DATA,
+	.start_stream_conf        = ov8820_start_settings,
+	.start_stream_conf_size   = ARRAY_SIZE(ov8820_start_settings),
+	.stop_stream_conf         = ov8820_stop_settings,
+	.stop_stream_conf_size    = ARRAY_SIZE(ov8820_stop_settings),
+	.group_hold_on_conf       = ov8820_groupon_settings,
+	.group_hold_on_conf_size  = ARRAY_SIZE(ov8820_groupon_settings),
+	.group_hold_off_conf      = ov8820_groupoff_settings,
+	.group_hold_off_conf_size = ARRAY_SIZE(ov8820_groupoff_settings),
+	.init_settings            = &ov8820_init_conf[0],
+	.init_size                = ARRAY_SIZE(ov8820_init_conf),
+	.mode_settings            = &ov8820_confs[0],
+	.output_settings          = &ov8820_dimensions[0],
+	.num_conf                 = ARRAY_SIZE(ov8820_confs),
 };
 
 static struct msm_sensor_ctrl_t ov8820_s_ctrl = {
-	.msm_sensor_reg = &ov8820_regs,
-	.sensor_i2c_client = &ov8820_sensor_i2c_client,
-	.sensor_i2c_addr = 0x6C,
-	.sensor_output_reg_addr = &ov8820_reg_addr,
-	.sensor_id_info = &ov8820_id_info,
-	.sensor_exp_gain_info = &ov8820_exp_gain_info,
-	.cam_mode = MSM_SENSOR_MODE_INVALID,
-	.csi_params = &ov8820_csi_params_array[0],
-	.msm_sensor_mutex = &ov8820_mut,
-	.sensor_i2c_driver = &ov8820_i2c_driver,
-	.sensor_v4l2_subdev_info = ov8820_subdev_info,
+	.msm_sensor_reg               = &ov8820_regs,
+	.sensor_i2c_client            = &ov8820_sensor_i2c_client,
+	.sensor_i2c_addr              = 0x6C,
+	.sensor_output_reg_addr       = &ov8820_reg_addr,
+	.sensor_id_info               = &ov8820_id_info,
+	.sensor_exp_gain_info         = &ov8820_exp_gain_info,
+	.cam_mode                     = MSM_SENSOR_MODE_INVALID,
+	.csi_params                   = &ov8820_csi_params_array[0],
+	.msm_sensor_mutex             = &ov8820_mut,
+	.sensor_i2c_driver            = &ov8820_i2c_driver,
+	.sensor_v4l2_subdev_info      = ov8820_subdev_info,
 	.sensor_v4l2_subdev_info_size = ARRAY_SIZE(ov8820_subdev_info),
-	.sensor_v4l2_subdev_ops = &ov8820_subdev_ops,
-	.func_tbl = &ov8820_func_tbl,
+	.sensor_v4l2_subdev_ops       = &ov8820_subdev_ops,
+	.func_tbl                     = &ov8820_func_tbl,
 };
 
 module_init(msm_sensor_init_module);
