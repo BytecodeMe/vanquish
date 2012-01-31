@@ -256,6 +256,7 @@ obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-mmi-sensors.o \
 	board-mmi-keypad.o \
 	board-mmi-pmic.o \
+	board-mmi-touch.o \
 	board-mmi-cyttsp3.o \
 	board-mmi-atmxt.o \
 	board-mmi-vibrator.o \
