@@ -272,10 +272,9 @@ struct pm8921_chg_chip {
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	unsigned int			step_charge_current;
 	unsigned int			step_charge_voltage;
-	unsigned int			force_shutdown;
-	unsigned int			is_batt_ov;
 	unsigned int			batt_alarm_delta;
 	unsigned int			lower_battery_threshold;
+	int64_t				batt_valid;
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);
@@ -296,6 +295,7 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *,
 static struct notifier_block alarm_notifier = {
 	.notifier_call = pm8921_battery_gauge_alarm_notify,
 };
+static enum pm8921_btm_state btm_state = BTM_NORM;
 #endif
 #ifdef CONFIG_EMU_DETECTION
 static int pm8921_chg_accy_notify(struct notifier_block *,
@@ -424,6 +424,11 @@ static int pm_chg_auto_enable(struct pm8921_chg_chip *chip, int enable)
 {
 	if (chip->factory_mode)
 		return 0;
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	if (!chip->batt_valid)
+		enable = 0;
+#endif
 
 	return pm_chg_masked_write(chip, CHG_CNTRL_3, CHG_EN_BIT,
 				enable ? CHG_EN_BIT : 0);
@@ -870,12 +875,6 @@ static int update_batt_alarm_settings(int64_t min_voltage, int64_t max_voltage,
 update_fail:
 	return rc;
 }
-
-static void update_batt_alarm_flags(int batt_ov, int shutdown)
-{
-	the_chip->is_batt_ov = batt_ov;
-	the_chip->force_shutdown = shutdown;
-}
 #endif
 
 static int64_t read_battery_id(struct pm8921_chg_chip *chip)
@@ -960,6 +959,7 @@ static int is_battery_valid(struct pm8921_chg_chip *chip)
 				chip->step_charge_voltage);
 			pm8921_chg_hw_config(chip);
 		}
+		chip->batt_valid = batt_vld;
 		return batt_vld;
 	}
 #endif
@@ -1214,10 +1214,10 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 	int percent_soc = pm8921_bms_get_percent_charge();
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if (chip->force_shutdown)
+	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
+	    !(the_chip->factory_mode))
 		return 0;
-	else if (!(chip->force_shutdown) &&
-		 (percent_soc <= 0))
+	else if (percent_soc <= 0)
 		return 1;
 #endif
 
@@ -1262,8 +1262,17 @@ static int get_prop_batt_health(struct pm8921_chg_chip *chip)
 	int temp;
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if (chip->is_batt_ov)
-		return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
+	    !(the_chip->factory_mode))
+		return POWER_SUPPLY_HEALTH_DEAD;
+	else if (alarm_state == PM_BATT_ALARM_OV)
+		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+	else if (btm_state == BTM_COLD)
+		return POWER_SUPPLY_HEALTH_COLD;
+	else if (btm_state == BTM_HOT)
+		return POWER_SUPPLY_HEALTH_OVERHEAT;
+	else
+		return POWER_SUPPLY_HEALTH_GOOD;
 #endif
 
 	temp = pm_chg_get_rt_status(chip, BATTTEMP_HOT_IRQ);
@@ -1287,7 +1296,7 @@ static int get_prop_charge_type(struct pm8921_chg_chip *chip)
 	int temp;
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if (chip->force_shutdown)
+	if (alarm_state == PM_BATT_ALARM_SHUTDOWN)
 		return POWER_SUPPLY_CHARGE_TYPE_NONE;
 #endif
 
@@ -1323,9 +1332,9 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 #endif
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if (chip->force_shutdown)
+	if (alarm_state == PM_BATT_ALARM_SHUTDOWN)
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
-	if (chip->is_batt_ov)
+	if ((alarm_state == PM_BATT_ALARM_OV) || !(chip->batt_valid))
 		return POWER_SUPPLY_STATUS_UNKNOWN;
 #endif
 
@@ -1350,8 +1359,11 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 	}
 	return batt_state;
 }
-
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+#define MAX_TOLERABLE_BATT_TEMP_DDC	800
+#else
 #define MAX_TOLERABLE_BATT_TEMP_DDC	680
+#endif
 static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 {
 	int rc;
@@ -1365,9 +1377,14 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 	}
 	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
 						result.measurement);
+
 	if (result.physical > MAX_TOLERABLE_BATT_TEMP_DDC)
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+		result.physical = 800;
+#else
 		pr_err("BATT_TEMP= %d > 68degC, device will be shutdown\n",
 							(int) result.physical);
+#endif
 
 	return (int)result.physical;
 }
@@ -2361,10 +2378,8 @@ static void update_heartbeat(struct work_struct *work)
 			(chip->lower_battery_threshold +
 			 chip->batt_alarm_delta),
 			PM8XXX_BATT_ALARM_HOLD_TIME_0p25_MS);
-		if (!rc) {
-			update_batt_alarm_flags(0, 0);
+		if (!rc)
 			alarm_state = PM_BATT_ALARM_WARNING;
-		}
 	} else if ((percent_soc > 5) &&
 		   (alarm_state == PM_BATT_ALARM_WARNING)) {
 		rc = update_batt_alarm_settings(
@@ -2372,10 +2387,8 @@ static void update_heartbeat(struct work_struct *work)
 			(the_chip->max_voltage_mv +
 			 the_chip->batt_alarm_delta),
 			PM8XXX_BATT_ALARM_HOLD_TIME_16_MS);
-		if (!rc) {
-			update_batt_alarm_flags(0, 0);
+		if (!rc)
 			alarm_state = PM_BATT_ALARM_NORMAL;
-		}
 	}
 
 	if (pdata->temp_range_cb) {
@@ -2385,7 +2398,7 @@ static void update_heartbeat(struct work_struct *work)
 		data.cool_bat_voltage = chip->cool_bat_voltage;
 		data.warm_bat_voltage = chip->warm_bat_voltage;
 		retval = pdata->temp_range_cb(batt_temp, batt_mvolt,
-					      &data, &enable);
+					      &data, &enable, &btm_state);
 		if (retval == 1) {
 			pm_chg_vddmax_set(chip, data.max_voltage);
 			pm_chg_vbatdet_set(chip,
@@ -2400,10 +2413,8 @@ static void update_heartbeat(struct work_struct *work)
 			pr_debug("Config BTM Low = %d dC, High = %d dC\n",
 				btm_config.low_thr_temp,
 				btm_config.high_thr_temp);
+			pr_info("Temperature State = %d\n", btm_state);
 			schedule_work(&btm_config_work);
-		} else if (retval == 2) {
-			chip->force_shutdown = 1;
-			pr_err("Temperature Out of Bounds Force Shutdown\n");
 		}
 	}
 
@@ -3238,16 +3249,13 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 				(the_chip->lower_battery_threshold +
 				the_chip->batt_alarm_delta),
 				PM8XXX_BATT_ALARM_HOLD_TIME_0p25_MS);
-			if (!rc) {
-				update_batt_alarm_flags(0, 0);
+			if (!rc)
 				alarm_state = PM_BATT_ALARM_WARNING;
-			}
 			break;
 		case PM_BATT_ALARM_WARNING:
-			update_batt_alarm_flags(0, 1);
 			alarm_state = PM_BATT_ALARM_SHUTDOWN;
 			break;
-		case PM_BATT_ALARM_INVALID:
+		case PM_BATT_ALARM_OV:
 			rc = update_batt_alarm_settings(
 				the_chip->lower_battery_threshold,
 				(the_chip->max_voltage_mv +
@@ -3255,10 +3263,8 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 				PM8XXX_BATT_ALARM_HOLD_TIME_16_MS);
 			rc = pm8xxx_batt_alarm_enable(
 				PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
-			if (!rc) {
-				update_batt_alarm_flags(0, 0);
+			if (!rc)
 				alarm_state = PM_BATT_ALARM_NORMAL;
-			}
 		default:
 			break;
 		}
@@ -3275,10 +3281,8 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 				(the_chip->max_voltage_mv +
 				the_chip->batt_alarm_delta),
 				PM8XXX_BATT_ALARM_HOLD_TIME_16_MS);
-			if (!rc) {
-				update_batt_alarm_flags(1, 0);
-				alarm_state = PM_BATT_ALARM_INVALID;
-			}
+			if (!rc)
+				alarm_state = PM_BATT_ALARM_OV;
 			break;
 		case PM_BATT_ALARM_WARNING:
 			rc = update_batt_alarm_settings(
@@ -3286,10 +3290,8 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 				(the_chip->max_voltage_mv +
 				 the_chip->batt_alarm_delta),
 				PM8XXX_BATT_ALARM_HOLD_TIME_16_MS);
-			if (!rc) {
-				update_batt_alarm_flags(0, 0);
+			if (!rc)
 				alarm_state = PM_BATT_ALARM_NORMAL;
-			}
 		default:
 			break;
 		}
@@ -3298,7 +3300,7 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 		pr_err("%s: error received\n", __func__);
 	};
 
-	pr_debug("%s: alarm_state: %d\n", __func__, alarm_state);
+	pr_info("%s: alarm_state: %d\n", __func__, alarm_state);
 	power_supply_changed(&the_chip->batt_psy);
 
 	return 0;
@@ -3695,9 +3697,6 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	the_chip = chip;
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	chip->force_shutdown = 0;
-	chip->is_batt_ov = 0;
-
 	if (!chip->factory_mode) {
 		chip->batt_alarm_delta = pdata->batt_alarm_delta;
 		chip->lower_battery_threshold =	pdata->lower_battery_threshold;
