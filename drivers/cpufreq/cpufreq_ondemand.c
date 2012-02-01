@@ -808,6 +808,11 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		mutex_lock(&dbs_mutex);
 		mutex_destroy(&this_dbs_info->timer_mutex);
 		dbs_enable--;
+		for_each_cpu(j, policy->cpus) {
+			struct cpu_dbs_info_s *j_dbs_info;
+			j_dbs_info = &per_cpu(od_cpu_dbs_info, j);
+			j_dbs_info->cur_policy = NULL;
+		}
 		if (!cpu)
 			input_unregister_handler(&dbs_input_handler);
 		mutex_unlock(&dbs_mutex);
