@@ -395,6 +395,8 @@ static irqreturn_t armpmu_platform_irq(int irq, void *dev)
 	return plat->handle_irq(irq, dev, armpmu->handle_irq);
 }
 
+static struct arm_pmu_platdata __percpu **percpu_pdata;
+
 static int
 armpmu_reserve_hardware(void)
 {
@@ -421,30 +423,36 @@ armpmu_reserve_hardware(void)
 		return -ENODEV;
 	}
 
+	percpu_pdata = alloc_percpu(struct arm_pmu_platdata *);
+	if (!percpu_pdata) {
+		pr_err("%s: memory allocation failed for percpu data\n",
+				__func__);
+		return -ENOMEM;
+	}
+	*__this_cpu_ptr(percpu_pdata) = plat;
+
 	for (i = 0; i < pmu_device->num_resources; ++i) {
 		irq = platform_get_irq(pmu_device, i);
 		if (irq < 0)
 			continue;
 
-		err = request_irq(irq, handle_irq,
-				  IRQF_DISABLED | IRQF_NOBALANCING,
-				  "armpmu", NULL);
+		err = request_percpu_irq(irq, handle_irq,
+				  "armpmu", percpu_pdata);
+
 		if (err) {
+			free_percpu(percpu_pdata);
 			pr_warning("unable to request IRQ%d for ARM perf "
 				"counters\n", irq);
 			break;
-#ifdef CONFIG_SMP
-		} else if (armpmu->secondary_enable) {
-			armpmu->secondary_enable(irq);
-#endif
-		}
+		} else
+			enable_percpu_irq(irq, 0);
 	}
 
 	if (err) {
 		for (i = i - 1; i >= 0; --i) {
 			irq = platform_get_irq(pmu_device, i);
 			if (irq >= 0)
-				free_irq(irq, NULL);
+				free_percpu_irq(irq, percpu_pdata);
 		}
 		release_pmu(pmu_device);
 		pmu_device = NULL;
@@ -461,11 +469,9 @@ armpmu_release_hardware(void)
 	for (i = pmu_device->num_resources - 1; i >= 0; --i) {
 		irq = platform_get_irq(pmu_device, i);
 		if (irq >= 0) {
-			free_irq(irq, NULL);
-#ifdef CONFIG_SMP
-			if (armpmu->secondary_disable)
-				armpmu->secondary_disable(irq);
-#endif
+			disable_percpu_irq(irq);
+			free_percpu_irq(irq, percpu_pdata);
+			free_percpu(percpu_pdata);
 		}
 	}
 	armpmu->stop();
