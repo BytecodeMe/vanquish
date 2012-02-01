@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-12, Code Aurora Forum. All rights reserved
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -97,6 +97,7 @@ struct iris_device {
 	struct hci_fm_riva_poke   riva_data_req;
 	struct hci_fm_ssbi_req    ssbi_data_accs;
 	struct hci_fm_ssbi_peek   ssbi_peek_reg;
+	struct hci_fm_sig_threshold_rsp sig_th;
 };
 
 static struct video_device *priv_videodev;
@@ -1587,13 +1588,11 @@ static void hci_cc_sig_threshold_rsp(struct radio_hci_dev *hdev,
 {
 	struct hci_fm_sig_threshold_rsp  *rsp = (void *)skb->data;
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
-	struct v4l2_control *v4l_ctl = radio->g_ctl;
 
 	if (rsp->status)
 		return;
 
-	v4l_ctl->value = rsp->sig_threshold;
-
+	memcpy(&radio->sig_th, rsp, sizeof(struct hci_fm_sig_threshold_rsp));
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
@@ -2034,10 +2033,8 @@ static inline void hci_ev_radio_text(struct radio_hci_dev *hdev,
 
 	iris_q_event(radio, IRIS_EVT_NEW_RT_RDS);
 
-	while (skb->data[len+RDS_OFFSET] != 0x0d)
+	while ((skb->data[len+RDS_OFFSET] != 0x0d) && (len < RX_RT_DATA_LENGTH))
 		len++;
-	len++;
-
 	data = kmalloc(len+RDS_OFFSET, GFP_ATOMIC);
 	if (!data) {
 		FMDERR("Failed to allocate memory");
@@ -2088,7 +2085,8 @@ static void hci_ev_service_available(struct radio_hci_dev *hdev,
 	struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
-	if (radio->fm_st_rsp.station_rsp.serv_avble)
+	u8 serv_avble = skb->data[0];
+	if (serv_avble)
 		iris_q_event(radio, IRIS_EVT_ABOVE_TH);
 	else
 		iris_q_event(radio, IRIS_EVT_BELOW_TH);
@@ -2434,6 +2432,11 @@ static int iris_vidioc_g_ctrl(struct file *file, void *priv,
 		break;
 	case V4L2_CID_PRIVATE_IRIS_SIGNAL_TH:
 		retval = hci_cmd(HCI_FM_GET_SIGNAL_TH_CMD, radio->fm_hdev);
+		if (retval < 0) {
+			FMDERR("Error in get signal threshold %d\n", retval);
+			return retval;
+		}
+		ctrl->value = radio->sig_th.sig_threshold;
 		break;
 	case V4L2_CID_PRIVATE_IRIS_SRCH_PTY:
 		ctrl->value = radio->srch_rds.srch_pty;
@@ -3255,7 +3258,7 @@ static int __init iris_probe(struct platform_device *pdev)
 		if ((i == IRIS_BUF_RAW_RDS) || (i == IRIS_BUF_PEEK))
 			kfifo_alloc_rc = kfifo_alloc(&radio->data_buf[i],
 				rds_buf*3, GFP_KERNEL);
-		else if (i == IRIS_BUF_CAL_DATA)
+		else if ((i == IRIS_BUF_CAL_DATA) || (i == IRIS_BUF_RT_RDS))
 			kfifo_alloc_rc = kfifo_alloc(&radio->data_buf[i],
 				STD_BUF_SIZE*2, GFP_KERNEL);
 		else
