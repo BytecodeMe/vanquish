@@ -162,15 +162,15 @@ int pm8921_bms_get_percent_charge(void);
 int pm8921_bms_get_fcc(void);
 
 /**
- * pm8921_bms_get_cc_mas - returns cc_mas in milli_ampere_seconds of
+ * pm8921_bms_get_cc_uah - returns cc_uah in microampere_hour of
 			    the battery
  *
- * @result:	The pointer where the cc_mas will be updated.
+ * @result:	The pointer where the cc_uah will be updated.
  *
  * RETURNS:	Error code if there was a problem reading, Zero otherwise
  *              The result won't be updated in case of an error.
  */
-int pm8921_bms_get_cc_mas(int64_t *result);
+int pm8921_bms_get_cc_uah(int *result);
 
 /**
  * pm8921_bms_get_aged_capacity - returns percentage of full battery capacity taking

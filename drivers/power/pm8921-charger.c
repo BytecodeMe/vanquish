@@ -1392,16 +1392,16 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 static int get_prop_batt_charge_counter(struct pm8921_chg_chip *chip)
 {
 	int rc;
-	int64_t cc_mas;
+	int uah;
 
-	rc = pm8921_bms_get_cc_mas(&cc_mas);
+	rc = pm8921_bms_get_cc_uah(&uah);
 
 	if (rc) {
 		pr_err("error reading cc_mas rc = %d\n", rc);
 		return rc;
 	}
 
-	return ((int)cc_mas) * 1000 / 3600;	/* mAs to uAh */
+	return uah;
 }
 
 static int get_prop_cycle_count(struct pm8921_chg_chip *chip)

@@ -991,12 +991,11 @@ static int msm_pm_enter(suspend_state_t state)
 	int64_t time = msm_timer_get_sclk_time(&period);
 #ifdef CONFIG_PM8921_BMS
 	int rc;
+	int uah = 0, e_uah = 0;
 	int64_t mAs;
 	int64_t time_in_ms;
 
-	rc = pm8921_bms_get_cc_mas(&mAs);
-	if (rc)
-		mAs = 0;
+	rc = pm8921_bms_get_cc_uah(&uah);
 #endif
 #endif
 
@@ -1073,14 +1072,9 @@ static int msm_pm_enter(suspend_state_t state)
 		}
 
 #ifdef CONFIG_PM8921_BMS
-		if (mAs != 0) {
-			int64_t e_mAs;
-			rc = pm8921_bms_get_cc_mas(&e_mAs);
-			if (rc)
-				mAs = 0;
-			else
-				mAs = e_mAs - mAs;
-		}
+		rc = pm8921_bms_get_cc_uah(&e_uah);
+		pr_info ("suspend: uah=%d e_uah=%d time=%lld\n", uah, e_uah, time);
+		mAs = (e_uah - uah) * 3600 / 1000;
 		time_in_ms = time;
 		do_div(time_in_ms, NSEC_PER_MSEC);
 		if (mAs != 0 && time_in_ms > 0) {

@@ -465,11 +465,6 @@ static s64 ccmicrovolt_to_nvh(s64 cc_uv)
 			SLEEP_CLK_HZ * SECONDS_PER_HOUR);
 }
 
-static s64 ccmicrovolt_to_uvs(s64 cc_uv)
-{
-	return div_s64(cc_uv * CC_READING_TICKS, SLEEP_CLK_HZ);
-}
-
 /* returns the signed value read from the hardware */
 static int read_cc(struct pm8921_bms_chip *chip, int *result)
 {
@@ -957,23 +952,6 @@ static void calculate_cc_uah(struct pm8921_bms_chip *chip, int cc, int *val)
 	*val = cc_uah;
 }
 
-static void calculate_cc_mas(struct pm8921_bms_chip *chip, int64_t *val,
-			int *coulumb_counter)
-{
-	int rc;
-	int64_t cc_voltage_uv, cc_uvs, cc_mas;
-
-	rc = read_cc(the_chip, coulumb_counter);
-	cc_voltage_uv = (int64_t)*coulumb_counter;
-	cc_voltage_uv = cc_to_microvolt(chip, cc_voltage_uv);
-	cc_voltage_uv = pm8xxx_cc_adjust_for_gain(cc_voltage_uv);
-	pr_debug("cc_voltage_uv = %lld microvolts\n", cc_voltage_uv);
-	cc_uvs = ccmicrovolt_to_uvs(cc_voltage_uv);
-	pr_debug("cc_uvs = %lld micro_volt_seconds\n", cc_uvs);
-	cc_mas = div_s64(cc_uvs, chip->r_sense);
-	*val = cc_mas;
-}
-
 static int calculate_unusable_charge_uah(struct pm8921_bms_chip *chip,
 					struct pm8921_soc_params *raw,
 				 int fcc_uah, int batt_temp, int chargecycles)
@@ -1285,9 +1263,9 @@ int pm8921_bms_get_percent_charge(void)
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_percent_charge);
 
-int pm8921_bms_get_cc_mas(int64_t *result)
+int pm8921_bms_get_cc_uah(int *result)
 {
-	int coulumb_counter;
+	struct pm8921_soc_params raw;
 
 	if (!the_chip) {
 		pr_err("called before initialization\n");
@@ -1298,11 +1276,12 @@ int pm8921_bms_get_cc_mas(int64_t *result)
 		return -EINVAL;
 	}
 
-	calculate_cc_mas(the_chip, result, &coulumb_counter);
+	read_soc_params_raw(the_chip, &raw);
+	calculate_cc_uah(the_chip, raw.cc, result);
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pm8921_bms_get_cc_mas);
+EXPORT_SYMBOL_GPL(pm8921_bms_get_cc_uah);
 
 int pm8921_bms_get_fcc(void)
 {
