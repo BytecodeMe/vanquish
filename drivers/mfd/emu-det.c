@@ -353,17 +353,8 @@ static char *bit_names[] = BITS;
 #define SENSE_CHARGER       (test_bit(SESS_VLD_BIT, &data->sense) && \
 			     test_bit(CHG_DET_BIT, &data->sense))
 
-#define SENSE_CHARGER_IND   (test_bit(FLOAT_BIT, &data->sense) && \
-			     test_bit(DP_BIT, &data->sense) && \
-			     test_bit(SESS_VLD_BIT, &data->sense))
-
-#define SENSE_CHARGER_MASK  (test_bit(GRND_BIT, &data->sense) && \
-			     test_bit(SESS_VLD_BIT, &data->sense))
-
 #define SENSE_WHISPER_PPD   (test_bit(B_SESSEND_BIT, &data->sense) && \
 			     test_bit(PD_100K_BIT, &data->sense))
-
-#define SENSE_WHISPER_CABLE (0) /* FIXME: */
 
 #define SENSE_WHISPER_SMART (test_bit(GRND_BIT, &data->sense) && \
 			     test_bit(DP_BIT, &data->sense) && \
@@ -961,6 +952,12 @@ static int get_sense(bool do_adc)
 
 	value = gpio_get_value_cansleep(
 				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
+	if (value) {
+		msleep(25);
+		value=gpio_get_value_cansleep(
+				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
+	}
+
 	pr_emu_det(DEBUG, "EMU_SCI_OUT indicates ID %s grounded\n",
 				value ? "" : "not");
 	if (value) {
@@ -1066,21 +1063,27 @@ static int configure_hardware(enum emu_det_accy accy)
 		gsbi_ctrl_reg_restore();
 		standard_mode_enable();
 		external_5V_disable();
-
 		break;
 
 	case ACCY_CHARGER:
-		mux_ctrl_mode(MUXMODE_UART);
+		mux_ctrl_mode(MUXMODE_USB);
 		gsbi_ctrl_reg_store();
+		standard_mode_enable();
 		external_5V_disable();
-
 		break;
 
 	case ACCY_WHISPER_PPD:
-		mux_ctrl_mode(MUXMODE_UART);
+		mux_ctrl_mode(MUXMODE_USB);
 		gsbi_ctrl_reg_store();
+		standard_mode_enable();
 		external_5V_enable();
+		break;
 
+	case ACCY_USB_DEVICE:
+		mux_ctrl_mode(MUXMODE_USB);
+		gsbi_ctrl_reg_restore();
+		standard_mode_enable();
+		external_5V_enable();
 		break;
 
 	case ACCY_NONE:
@@ -1090,7 +1093,6 @@ static int configure_hardware(enum emu_det_accy accy)
 		emud->whisper_auth = AUTH_NOT_STARTED;
 		external_5V_disable();
 		emu_id_protection_on();
-
 		break;
 	default:
 		break;
@@ -1133,6 +1135,7 @@ static void notify_otg(enum emu_det_accy accy)
 		break;
 
 	case ACCY_USB_DEVICE:
+	case ACCY_WHISPER_SMART:
 		atomic_notifier_call_chain(&data->trans->notifier,
 					USB_EVENT_ID, NULL);
 		break;
@@ -1348,8 +1351,7 @@ static void detection_work(bool caused_by_irq)
 			notify_accy(ACCY_CHARGER);
 			notify_whisper_switch(ACCY_CHARGER);
 			data->state = CHARGER;
-		} else if (SENSE_WHISPER_PPD ||
-			   SENSE_WHISPER_CABLE) {
+		} else if (SENSE_WHISPER_PPD) {
 			pr_emu_det(STATUS,
 				"detection_work: PPD Identified\n");
 			emu_id_protection_off();
@@ -1357,7 +1359,8 @@ static void detection_work(bool caused_by_irq)
 			notify_whisper_switch(ACCY_WHISPER_PPD);
 			data->state = WHISPER_PPD;
 		} else if (SENSE_WHISPER_SMART ||
-			   SENSE_WHISPER_LD2) {
+			   SENSE_WHISPER_LD2 ||
+			   SENSE_USB_ADAPTER) {
 			pr_emu_det(STATUS,
 					"detection_work: IW Identified\n");
 			data->state = IDENTIFY_WHISPER_SMART;
@@ -1385,7 +1388,7 @@ static void detection_work(bool caused_by_irq)
 		if (SENSE_WHISPER_SMART || SENSE_WHISPER_LD2) {
 			pr_emu_det(STATUS,
 				"detection_work: SMART Identified\n");
-			notify_accy(ACCY_USB_DEVICE);
+			notify_accy(ACCY_WHISPER_SMART);
 			if (SENSE_WHISPER_SMART)
 				data->state = WHISPER_SMART;
 			else {
@@ -1394,6 +1397,11 @@ static void detection_work(bool caused_by_irq)
 				data->state = WHISPER_SMART_LD2_OPEN;
 			}
 			notify_whisper_switch(ACCY_WHISPER_SMART);
+		} else if (SENSE_USB_ADAPTER) {
+			pr_emu_det(STATUS,
+				"detection_work: USB Adapter Identified\n");
+			notify_accy(ACCY_USB_DEVICE);
+			data->state = USB_ADAPTER;
 		} else
 			queue_delayed_work(data->wq, &data->timer_work, 0);
 		break;
@@ -1476,7 +1484,7 @@ static void detection_work(bool caused_by_irq)
 		last_irq = get_sense(true);
 
 		if (data->whisper_auth == AUTH_FAILED &&
-			data->accy == ACCY_USB_DEVICE &&
+			data->accy == ACCY_WHISPER_SMART &&
 			test_bit(SESS_VLD_BIT, &data->sense)) {
 			notify_accy(ACCY_CHARGER);
 			pr_emu_det(STATUS, "SMART: failed authentication\n");
@@ -1497,11 +1505,11 @@ static void detection_work(bool caused_by_irq)
 	case USB_ADAPTER:
 		last_irq = get_sense(true);
 
-		if (0)
-			notify_accy(ACCY_USB_DEVICE);
-		else {
+		if (!test_bit(GRND_BIT, &data->sense)) {
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->timer_work, 0);
+		} else {
+			data->state = USB_ADAPTER;
 		}
 		break;
 
@@ -1510,7 +1518,7 @@ static void detection_work(bool caused_by_irq)
 		last_irq = get_sense(true);
 
 		if (data->whisper_auth == AUTH_FAILED &&
-			data->accy == ACCY_USB_DEVICE &&
+			data->accy == ACCY_WHISPER_SMART &&
 			!test_bit(SESS_VLD_BIT, &data->sense)) {
 			notify_accy(ACCY_CHARGER);
 		}
@@ -1550,7 +1558,7 @@ static void detection_work(bool caused_by_irq)
 			notify_whisper_switch(ACCY_WHISPER_SMART);
 			if (data->whisper_auth == AUTH_PASSED)
 				switch_set_state(&data->edsdev, MOBILE_DOCK);
-			notify_accy(ACCY_USB_DEVICE);
+			notify_accy(ACCY_WHISPER_SMART);
 		} else
 			data->state = WHISPER_SMART_LD2_CLOSE;
 		break;
@@ -1696,7 +1704,7 @@ struct emu_det_irq_init_data {
 static struct emu_det_irq_init_data emu_det_irq_data[] = {
 	EMU_DET_IRQ(SEMU_PPD_DET_IRQ, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
 			| IRQF_DISABLED, emu_det_irq_handler),
-	EMU_DET_IRQ(EMU_SCI_OUT_IRQ, IRQF_TRIGGER_RISING, emu_det_irq_handler),
+	EMU_DET_IRQ(EMU_SCI_OUT_IRQ, IRQF_TRIGGER_FALLING, emu_det_irq_handler),
 	EMU_DET_IRQ(PHY_USB_IRQ, IRQF_SHARED, emu_det_irq_handler),
 };
 
@@ -2078,7 +2086,7 @@ static ssize_t mode_show(struct device *dev,
 
 static ssize_t mode_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
- {
+{
 	int value = (int)simple_strtoul(buf, NULL, 0);
 	switch (value) {
 	case MODE_F_USB:
