@@ -284,6 +284,7 @@ struct msmsdcc_pio_data {
 	struct scatterlist	*sg;
 	unsigned int		sg_len;
 	unsigned int		sg_off;
+	struct sg_mapping_iter	sg_miter;
 };
 
 struct msmsdcc_curr_req {

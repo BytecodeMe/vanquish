@@ -1072,17 +1072,23 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 
 	/* Is data transfer in PIO mode required? */
 	if (!(datactrl & MCI_DPSM_DMAENABLE)) {
+		int flags = SG_MITER_ATOMIC;
 		host->pio.sg = data->sg;
 		host->pio.sg_len = data->sg_len;
 		host->pio.sg_off = 0;
 
 		if (data->flags & MMC_DATA_READ) {
+			flags |= SG_MITER_TO_SG;
 			pio_irqmask = MCI_RXFIFOHALFFULLMASK;
 			if (host->curr.xfer_remain < MCI_FIFOSIZE)
 				pio_irqmask |= MCI_RXDATAAVLBLMASK;
-		} else
+		} else {
+			flags |= SG_MITER_FROM_SG;
 			pio_irqmask = MCI_TXFIFOHALFEMPTYMASK |
 					MCI_TXFIFOEMPTYMASK;
+		}
+		sg_miter_start(&host->pio.sg_miter, data->sg,
+			data->sg_len, flags);
 	}
 
 	if (data->flags & MMC_DATA_READ)
@@ -1274,10 +1280,9 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 
 		/* Map the current scatter buffer */
 		local_irq_save(flags);
-		buffer = kmap_atomic(sg_page(host->pio.sg),
-				     KM_BIO_SRC_IRQ) + host->pio.sg->offset;
-		buffer += host->pio.sg_off;
-		remain = host->pio.sg->length - host->pio.sg_off;
+		BUG_ON(!sg_miter_next(&host->pio.sg_miter));
+		buffer = host->pio.sg_miter.addr;
+		remain = min(host->pio.sg_miter.length, host->curr.xfer_remain);
 
 		len = 0;
 		if (status & MCI_RXACTIVE)
@@ -1289,10 +1294,12 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 			len = remain;
 
 		/* Unmap the buffer */
-		kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+		host->pio.sg_miter.consumed = len;
+		if (status & MCI_RXACTIVE && host->curr.user_pages)
+			flush_dcache_page(host->pio.sg_miter.page);
+		sg_miter_stop(&host->pio.sg_miter);
 		local_irq_restore(flags);
 
-		host->pio.sg_off += len;
 		host->curr.xfer_remain -= len;
 		host->curr.data_xfered += len;
 		remain -= len;
@@ -1300,17 +1307,10 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		if (remain) /* Done with this page? */
 			break; /* Nope */
 
-		if (status & MCI_RXACTIVE && host->curr.user_pages)
-			flush_dcache_page(sg_page(host->pio.sg));
-
-		if (!--host->pio.sg_len) {
+		if (!host->curr.xfer_remain) {
 			memset(&host->pio, 0, sizeof(host->pio));
 			break;
 		}
-
-		/* Advance to next sg */
-		host->pio.sg++;
-		host->pio.sg_off = 0;
 
 		status = readl_relaxed(base + MMCISTATUS);
 	} while (1);
