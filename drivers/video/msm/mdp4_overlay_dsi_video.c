@@ -420,7 +420,7 @@ static void mdp4_dsi_video_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
  * INTR_DMA_P_DONE and INTR_PRIMARY_VSYNC event only
  * no INTR_OVERLAY0_DONE event allowed.
  */
-static void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
+void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
 						int intr_done)
 {
 	unsigned long flag;

@@ -58,7 +58,14 @@
 #define DCS_CMD_READ_DC              0xDC
 #define DCS_CMD_RDDSDR               0x0F
 
-#define INVALID_VALUE   0xFFF
+#define INVALID_VALUE   -1
+
+/* ESD spec require 10ms, select 8ms */
+#define MOT_PANEL_ESD_CHECK_PERIOD   msecs_to_jiffies(8000)
+#define MOT_PANEL_ESD_NUM_TRY_MAX	1
+
+#define MOT_PANEL_OFF     0x0
+#define MOT_PANEL_ON      0x1
 
 struct mipi_mot_panel {
 
@@ -70,11 +77,17 @@ struct mipi_mot_panel {
 	boolean acl_support_present;
 	boolean acl_enabled;
 
+	atomic_t state;
+	bool esd_enabled;
+	bool esd_detection_run;
+	struct workqueue_struct *esd_wq;
+	struct delayed_work esd_work;
+
 	int (*panel_enable) (struct msm_fb_data_type *mfd);
 	int (*panel_disable) (struct msm_fb_data_type *mfd);
 	int (*panel_on)(struct msm_fb_data_type *mfd);
 	int (*panel_off)(struct msm_fb_data_type *mfd);
-	int (*esd_run) (struct msm_fb_data_type *mfd);
+	void (*esd_run) (void);
 	void (*set_backlight)(struct msm_fb_data_type *mfd);
 	u16 (*get_manufacture_id)(struct msm_fb_data_type *mfd);
 	u16 (*get_controller_ver)(struct msm_fb_data_type *mfd);
@@ -86,6 +99,7 @@ int mipi_mot_device_register(struct msm_panel_info *pinfo, u32 channel,
 								u32 panel);
 
 struct mipi_mot_panel *mipi_mot_get_mot_panel(void);
+void mipi_mot_set_mot_panel(struct mipi_mot_panel *mot_panel_ptr);
 
 
 u16 mipi_mot_get_manufacture_id(struct msm_fb_data_type *mfd);
@@ -93,5 +107,6 @@ u16 mipi_mot_get_controller_ver(struct msm_fb_data_type *mfd);
 u16 mipi_mot_get_controller_drv_ver(struct msm_fb_data_type *mfd);
 int mipi_mot_panel_on(struct msm_fb_data_type *mfd);
 u8 mipi_mode_get_pwr_mode(struct msm_fb_data_type *mfd);
+void mipi_mot_esd_work(void);
 
 #endif /* MIPI_MOT_PANEL_H */

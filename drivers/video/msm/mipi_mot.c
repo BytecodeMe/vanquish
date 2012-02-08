@@ -16,6 +16,7 @@
 #include "mipi_dsi.h"
 #include "mipi_mot.h"
 #include "mdp4.h"
+#include <linux/atomic.h>
 
 static struct mipi_dsi_panel_platform_data *mipi_mot_pdata;
 
@@ -28,9 +29,9 @@ unsigned short display_hw_rev_txt_manufacturer;
 unsigned short display_hw_rev_txt_controller;
 unsigned short display_hw_rev_txt_controller_drv;
 
-static u16 get_manufacture_id(struct msm_fb_data_type *mfd)
+static int get_manufacture_id(struct msm_fb_data_type *mfd)
 {
-	static u16 manufacture_id = INVALID_VALUE;
+	static int manufacture_id = INVALID_VALUE;
 	display_hw_rev_txt_manufacturer = 0;
 
 	if (manufacture_id == INVALID_VALUE) {
@@ -42,17 +43,23 @@ static u16 get_manufacture_id(struct msm_fb_data_type *mfd)
 			goto end;
 		}
 
-		pr_info(" MIPI panel Manufacture_id = 0x%x\n", manufacture_id);
-		display_hw_rev_txt_manufacturer = manufacture_id;
+		if (manufacture_id == -1)
+			pr_err("%s: failed to retrieve manufacture_id\n",
+								__func__);
+		else {
+			pr_info(" MIPI panel Manufacture_id = 0x%x\n",
+							manufacture_id);
+			display_hw_rev_txt_manufacturer = manufacture_id;
+		}
 	}
 
 end:
 	return manufacture_id;
 }
 
-static u16 get_controller_ver(struct msm_fb_data_type *mfd)
+static int get_controller_ver(struct msm_fb_data_type *mfd)
 {
-	static u16 controller_ver = INVALID_VALUE;
+	static int controller_ver = INVALID_VALUE;
 	display_hw_rev_txt_controller = 0;
 
 	if (controller_ver == INVALID_VALUE) {
@@ -64,17 +71,23 @@ static u16 get_controller_ver(struct msm_fb_data_type *mfd)
 			goto end;
 		}
 
-		pr_info(" MIPI panel Controller_ver = 0x%x\n", controller_ver);
-		display_hw_rev_txt_controller = controller_ver;
+		if (controller_ver == -1)
+			pr_err("%s: failed to retrieve controller_ver\n",
+								__func__);
+		else {
+			pr_info(" MIPI panel Controller_ver = 0x%x\n",
+								controller_ver);
+			display_hw_rev_txt_controller = controller_ver;
+		}
 	}
 end:
 	return controller_ver;
 }
 
 
-static u16 get_controller_drv_ver(struct msm_fb_data_type *mfd)
+static int get_controller_drv_ver(struct msm_fb_data_type *mfd)
 {
-	static u16 controller_drv_ver = INVALID_VALUE;
+	static int controller_drv_ver = INVALID_VALUE;
 	display_hw_rev_txt_controller_drv = 0;
 
 	if (controller_drv_ver == INVALID_VALUE) {
@@ -87,9 +100,14 @@ static u16 get_controller_drv_ver(struct msm_fb_data_type *mfd)
 			goto end;
 		}
 
-		pr_info(" MIPI panel Controller_drv_ver = 0x%x\n",
+		if (controller_drv_ver == -1)
+			pr_err("%s: failed to retrieve controller_drv_ver\n",
+								__func__);
+		else {
+			pr_info(" MIPI panel Controller_drv_ver = 0x%x\n",
 							controller_drv_ver);
-		display_hw_rev_txt_controller_drv = controller_drv_ver;
+			display_hw_rev_txt_controller_drv = controller_drv_ver;
+		}
 	}
 
 end:
@@ -203,8 +221,6 @@ static int panel_enable(struct platform_device *pdev)
 		goto err;
 	}
 
-	mipi_mode_get_pwr_mode(mfd);
-
 	pr_info("%s completed\n", __func__);
 
 	return 0;
@@ -225,19 +241,32 @@ static int panel_disable(struct platform_device *pdev)
 	if (ret != 0)
 		goto err;
 
+	atomic_set(&mot_panel.state, MOT_PANEL_OFF);
+	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == true)) {
+		cancel_delayed_work(&mot_panel.esd_work);
+		mot_panel.esd_detection_run = false;
+	}
+
 	if (mot_panel.panel_disable)
 		mot_panel.panel_disable(mfd);
 	else {
 		pr_err("%s: no panel support\n", __func__);
 		ret = -ENODEV;
-		goto err;
+		goto err1;
 	}
 
 	pr_info("%s completed\n", __func__);
 
 	return 0;
-
+err1:
+	atomic_set(&mot_panel.state, MOT_PANEL_ON);
+	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == false)) {
+		queue_delayed_work(mot_panel.esd_wq, &mot_panel.esd_work,
+						MOT_PANEL_ESD_CHECK_PERIOD);
+		mot_panel.esd_detection_run = true;
+	}
 err:
+	pr_err("%s: failed to disable panel\n", __func__);
 	return ret;
 }
 
@@ -257,9 +286,23 @@ static int panel_on(struct platform_device *pdev)
 		pr_info("MIPI MOT Panel is ON\n");
 	}
 
+	atomic_set(&mot_panel.state, MOT_PANEL_ON);
+	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == false)) {
+		queue_delayed_work(mot_panel.esd_wq, &mot_panel.esd_work,
+						MOT_PANEL_ESD_CHECK_PERIOD);
+		mot_panel.esd_detection_run = true;
+	}
 	return 0;
 err:
 	return ret;
+}
+
+static void mot_panel_esd_work(struct work_struct *work)
+{
+	if (mot_panel.esd_run)
+		mot_panel.esd_run();
+	else
+		pr_err("%s: no panel support for ESD\n", __func__);
 }
 
 static int __devinit mipi_mot_lcd_probe(struct platform_device *pdev)
@@ -274,14 +317,15 @@ static int __devinit mipi_mot_lcd_probe(struct platform_device *pdev)
 	if (!lcd_dev)
 		pr_err("%s: Failed to add lcd device\n", __func__);
 
+	mot_panel.mfd = platform_get_drvdata(lcd_dev);
+	if (!mot_panel.mfd) {
+		pr_err("%s: invalid mfd\n", __func__);
+		ret = -ENODEV;
+		goto err;
+	}
+
 	mutex_init(&mot_panel.lock);
 	if (mot_panel.acl_support_present == TRUE) {
-		mot_panel.mfd = platform_get_drvdata(lcd_dev);
-		if (!mot_panel.mfd) {
-			pr_err("%s: invalid mfd\n", __func__);
-			ret = -ENODEV;
-			goto err;
-		}
 		ret = sysfs_create_group(&mot_panel.mfd->fbi->dev->kobj,
                                                        &acl_attr_group);
 		if (ret < 0) {
@@ -363,6 +407,26 @@ int mipi_mot_device_register(struct msm_panel_info *pinfo,
 		goto err_device_put;
 	}
 
+	if (mot_panel.esd_enabled) {
+		mot_panel.esd_wq =
+				create_singlethread_workqueue("mot_panel_esd");
+		if (mot_panel.esd_wq == NULL) {
+			pr_err("%s: failed to create ESD work queue\n",
+								__func__);
+			goto err_device_put;
+		}
+
+		INIT_DELAYED_WORK_DEFERRABLE(&mot_panel.esd_work,
+							mot_panel_esd_work);
+	} else
+		pr_info("MIPI MOT PANEL ESD detection is disable\n");
+
+#ifdef FB_MSM_BOOTLOADER_INIT
+	atomic_set(&mot_panel.state, MOT_PANEL_ON);
+#else
+	atomic_set(&mot_panel.state, MOT_PANEL_OFF);
+#endif
+
 	return 0;
 
 err_device_put:
@@ -378,9 +442,11 @@ static int __init mipi_mot_lcd_init(void)
 	mot_panel.mot_tx_buf = &mot_tx_buf;
 	mot_panel.mot_rx_buf = &mot_rx_buf;
 
+	mipi_mot_set_mot_panel(&mot_panel);
 	mot_panel.get_manufacture_id = mipi_mot_get_manufacture_id;
 	mot_panel.get_controller_ver = mipi_mot_get_controller_ver;
 	mot_panel.get_controller_drv_ver = mipi_mot_get_controller_drv_ver;
+	mot_panel.esd_run = mipi_mot_esd_work;
 
 	mot_panel.panel_on = mipi_mot_panel_on;
 

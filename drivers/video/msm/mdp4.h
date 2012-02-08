@@ -635,6 +635,8 @@ void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_dsi_blt_dmap_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe);
+void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
+					int intr_done);
 #else
 static inline void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 {
@@ -646,6 +648,11 @@ static inline void mdp4_dsi_blt_dmap_busy_wait(struct msm_fb_data_type *mfd)
 }
 static inline void mdp4_overlay_dsi_video_vsync_push(
 	struct msm_fb_data_type *mfd, struct mdp4_overlay_pipe *pipe)
+{
+	/* empty */
+}
+static inline void mdp4_overlay_dsi_video_wait4event(
+	struct msm_fb_data_type *mfd, int intr_done)
 {
 	/* empty */
 }
