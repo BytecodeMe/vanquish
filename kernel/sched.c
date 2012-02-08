@@ -9443,3 +9443,28 @@ struct cgroup_subsys cpuacct_subsys = {
 };
 #endif	/* CONFIG_CGROUP_CPUACCT */
 
+void show_cpu_current_stack_mem(void)
+{
+	struct rq *rq;
+	struct task_struct *curr;
+	int cpu;
+
+	touch_softlockup_watchdog();
+
+	for_each_possible_cpu(cpu) {
+
+		if (cpu == smp_processor_id())
+			continue;
+
+		rq = cpu_rq(cpu);
+		curr = rq->curr;
+		printk(KERN_DEBUG "++++ CPU%d Current Task(%s,%d) Stack ++++\n",
+					cpu, curr->comm, curr->pid);
+		sched_show_task(curr);
+
+		show_process_mem((unsigned long)curr->stack,
+				 THREAD_SIZE, "stack");
+
+		printk(KERN_DEBUG "\n+++++++++ End of Stack Dump +++++++++++\n");
+	}
+}

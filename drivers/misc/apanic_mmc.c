@@ -568,6 +568,7 @@ static void apanic_mmc_logbuf_dump(void)
 
 	/* Trick to call sysrq_sched_debug_show() */
 	show_state_filter(0x80000000);
+	show_cpu_current_stack_mem();
 	rc = apanic_write_console_mmc(threads_offset + threads_len);
 	if (rc < 0) {
 		pr_emerg("Error writing threads to panic log! (%d)\n", rc);
