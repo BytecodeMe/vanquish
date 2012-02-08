@@ -86,6 +86,7 @@ static const char longname[] = "Gadget Android";
 #define DEFAULT_CDROM_PRODUCT_ID	0x4320
 #define DEFAULT_CDROM2_PRODUCT_ID	0x41CE
 #define DEFAULT_USBNETMTP_PRODUCT_ID	0x2E32
+#define DEFAULT_USBNETMTP_ADB_PRODUCT_ID	0x2E33
 
 struct android_usb_function {
 	char *name;
@@ -190,6 +191,11 @@ static struct usb_configuration android_config_driver = {
 
 static int cable_connected;
 
+#define PC_COMMAND_ADB_ON 1
+#define PC_COMMAND_ADB_OFF 2
+static int pc_command_adb;
+static u16 ctrl_adb_pid;
+
 void android_usb_set_connected(int connected)
 {
 	cable_connected = connected;
@@ -254,6 +260,8 @@ static void android_work(struct work_struct *data)
 }
 
 static int android_enable_function(struct android_dev *dev, char *name);
+static void android_disable_function(struct android_dev *dev, char *name);
+static int android_find_function(struct android_dev *dev, char *name);
 
 static char *get_function_name(struct android_dev *dev)
 {
@@ -279,19 +287,29 @@ static char *get_function_name(struct android_dev *dev)
 		break;
 	case USBNETMTP:
 		/* usbnetmtp */
-		device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+		if (pc_command_adb == PC_COMMAND_ADB_ON) {
+			device_desc.idProduct = DEFAULT_USBNETMTP_ADB_PRODUCT_ID;
+			strncpy(function_name, "mtp,usbnet,adb", sizeof(function_name));
+		} else {
+			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
+		}
 		device_desc.bDeviceClass = USB_CLASS_VENDOR_SPEC;
 		device_desc.bDeviceSubClass = USB_CLASS_VENDOR_SPEC;
 		device_desc.bDeviceProtocol = USB_CLASS_VENDOR_SPEC;
-		strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		break;
 	default:
 		/* usbnetmtp */
-		device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+		if (pc_command_adb == PC_COMMAND_ADB_ON) {
+			device_desc.idProduct = DEFAULT_USBNETMTP_ADB_PRODUCT_ID;
+			strncpy(function_name, "mtp,usbnet,adb", sizeof(function_name));
+		} else {
+			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
+		}
 		device_desc.bDeviceClass = USB_CLASS_VENDOR_SPEC;
 		device_desc.bDeviceSubClass = USB_CLASS_VENDOR_SPEC;
 		device_desc.bDeviceProtocol = USB_CLASS_VENDOR_SPEC;
-		strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		break;
 	}
 	return function_name;
@@ -1404,6 +1422,30 @@ static int android_enable_function(struct android_dev *dev, char *name)
 	return -EINVAL;
 }
 
+static void android_disable_function(struct android_dev *dev, char *name)
+{
+	struct android_usb_function *f;
+
+	list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
+		if(!strcmp(name, f->name)) {
+			list_del(&f->enabled_list);
+			break;
+		}
+	}
+}
+
+static int android_find_function(struct android_dev *dev, char *name)
+{
+	struct android_usb_function *f;
+
+	list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
+		if (!strcmp(name, f->name))
+			return 1;
+	}
+
+	return 0;
+}
+
 /*-------------------------------------------------------------------------*/
 /* /sys/class/android_usb/android%d/ interface */
 
@@ -1514,9 +1556,22 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 	struct android_dev *dev = dev_get_drvdata(pdev);
 	struct usb_composite_dev *cdev = dev->cdev;
 	int enabled = 0;
+	int adb_enabled = 0;
 
 	sscanf(buff, "%d", &enabled);
 	if (enabled && !dev->enabled) {
+		if (pc_command_adb && ctrl_adb_pid) {
+			adb_enabled = android_find_function(dev, "adb");
+			if (adb_enabled && (pc_command_adb == PC_COMMAND_ADB_OFF)) {
+				android_disable_function(dev, "adb");
+				device_desc.idProduct = ctrl_adb_pid;
+			} else if (!adb_enabled && (pc_command_adb == PC_COMMAND_ADB_ON)) {
+				android_enable_function(dev, "adb");
+				device_desc.idProduct = ctrl_adb_pid;
+			}
+		} else if (pc_command_adb)
+			pr_warning("ctrl_adb not supported for this USB mode\n");
+
 		/* update values in composite driver's copy of device descriptor */
 		cdev->desc.idVendor = device_desc.idVendor;
 		cdev->desc.idProduct = device_desc.idProduct;
@@ -1531,6 +1586,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		usb_gadget_connect(cdev->gadget);
 		dev->enabled = true;
 	} else if (!enabled && dev->enabled) {
+		ctrl_adb_pid = 0;
 		usb_gadget_disconnect(cdev->gadget);
 		usb_remove_config(cdev, &android_config_driver);
 		dev->enabled = false;
@@ -1560,6 +1616,38 @@ static ssize_t state_show(struct device *pdev, struct device_attribute *attr,
 	spin_unlock_irqrestore(&cdev->lock, flags);
 out:
 	return snprintf(buf, PAGE_SIZE, "%s\n", state);
+}
+
+static ssize_t
+pc_command_adb_store(struct device *pdev, struct device_attribute *attr,
+			       const char *buff, size_t size)
+{
+	if (!strcmp(buff, "adb"))
+		pc_command_adb = PC_COMMAND_ADB_ON;
+	else
+		pc_command_adb = PC_COMMAND_ADB_OFF;
+
+	return size;
+}
+
+static ssize_t
+ctrl_adb_pid_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%04x", ctrl_adb_pid);
+}
+
+static ssize_t
+ctrl_adb_pid_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int value;
+	if (sscanf(buf, "%04x", &value) == 1) {
+		ctrl_adb_pid = value;
+		return size;
+	}
+
+	return -1;
 }
 
 #define DESCRIPTOR_ATTR(field, format_string)				\
@@ -1620,6 +1708,8 @@ static DEVICE_ATTR(state, S_IRUGO, state_show, NULL);
 static DEVICE_ATTR(remote_wakeup, S_IRUGO | S_IWUSR,
 		remote_wakeup_show, remote_wakeup_store);
 static DEVICE_ATTR(smversion, S_IRUGO | S_IWUSR, smversion_show, smversion_store);
+static DEVICE_ATTR(pc_command_adb, S_IWUSR, NULL, pc_command_adb_store);
+static DEVICE_ATTR(ctrl_adb_pid, S_IRUGO | S_IWUSR, ctrl_adb_pid_show, ctrl_adb_pid_store);
 
 static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_idVendor,
@@ -1637,6 +1727,8 @@ static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_enable,
 	&dev_attr_state,
 	&dev_attr_remote_wakeup,
+	&dev_attr_pc_command_adb,
+	&dev_attr_ctrl_adb_pid,
 	NULL
 };
 
@@ -1894,6 +1986,8 @@ static int __init init(void)
 	struct android_dev *dev;
 	int ret;
 
+	pc_command_adb = 0;
+	ctrl_adb_pid = 0;
 	android_class = class_create(THIS_MODULE, "android_usb");
 	if (IS_ERR(android_class))
 		return PTR_ERR(android_class);
