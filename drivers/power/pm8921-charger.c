@@ -3474,6 +3474,7 @@ static void create_debugfs_entries(struct pm8921_chg_chip *chip)
 	}
 }
 
+#define CHG_SHOW_MAX_SIZE 50
 static ssize_t force_chg_usb_suspend_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
@@ -3530,12 +3531,280 @@ static ssize_t force_chg_usb_suspend_show(struct device *dev,
 	state = (CHG_USB_SUSPEND_BIT & value) ? 1 : 0;
 
 end:
-	return sprintf(buf, "%d\n", state);
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
 }
 
-static DEVICE_ATTR(force_chg_usb_suspend, 0644,
+static DEVICE_ATTR(force_chg_usb_suspend, 0664,
 		force_chg_usb_suspend_show,
 		force_chg_usb_suspend_store);
+
+static ssize_t force_chg_auto_enable_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long mode;
+
+	r = strict_strtoul(buf, 0, &mode);
+	if (r) {
+		pr_err("Invalid auto enable value = %lu\n", mode);
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+
+	if (!the_chip->factory_mode) {
+		pr_err("Only allowed in factory mode\n");
+		r = -EPERM;
+		return r;
+	}
+
+	r = pm_chg_masked_write(the_chip, CHG_CNTRL_3, CHG_EN_BIT,
+				mode ? CHG_EN_BIT : 0);
+
+	return r ? r : count;
+}
+
+static ssize_t force_chg_auto_enable_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	int state;
+	int ret;
+	u8 value;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		state = -ENODEV;
+		goto end;
+	}
+
+	ret = pm8xxx_readb(the_chip->dev->parent, CHG_CNTRL_3, &value);
+	if (ret) {
+		pr_err("pm8xxx_readb CHG_CNTRL_3 failed ret = %d\n", ret);
+		state = -EFAULT;
+		goto end;
+	}
+
+	state = (CHG_EN_BIT & value) ? 1 : 0;
+
+end:
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
+static DEVICE_ATTR(force_chg_auto_enable, 0664,
+		   force_chg_auto_enable_show,
+		   force_chg_auto_enable_store);
+
+static ssize_t force_chg_ibatt_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long chg_current;
+
+	r = strict_strtoul(buf, 0, &chg_current);
+	if (r) {
+		pr_err("Invalid ibatt value = %lu\n", chg_current);
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+
+	if (!the_chip->factory_mode) {
+		pr_err("Only allowed in factory mode\n");
+		r = -EPERM;
+		return r;
+	}
+
+	r = pm_chg_ibatmax_set(the_chip, chg_current);
+
+	return r ? r : count;
+}
+
+static ssize_t force_chg_ibatt_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	int state;
+	int ret;
+	u8 value;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		state = -ENODEV;
+		goto end;
+	}
+
+	ret = pm8xxx_readb(the_chip->dev->parent, CHG_IBAT_MAX, &value);
+	if (ret) {
+		pr_err("pm8xxx_readb CHG_IBAT_MAX failed ret = %d\n", ret);
+		state = -EFAULT;
+		goto end;
+	}
+
+	state = ((value & PM8921_CHG_I_MASK) * PM8921_CHG_I_STEP_MA);
+	state += PM8921_CHG_I_MIN_MA;
+
+end:
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
+static DEVICE_ATTR(force_chg_ibatt, 0664,
+		force_chg_ibatt_show,
+		force_chg_ibatt_store);
+
+static ssize_t force_chg_iusb_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long usb_curr;
+	u8 temp;
+	int i;
+
+	r = strict_strtoul(buf, 0, &usb_curr);
+	if (r) {
+		pr_err("Invalid iusb value = %lu\n", usb_curr);
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+
+	if (!the_chip->factory_mode) {
+		pr_err("Only allowed in factory mode\n");
+		r = -EPERM;
+		return r;
+	}
+	for (i = ARRAY_SIZE(usb_ma_table) - 1; i >= 0; i--) {
+		if (usb_ma_table[i].usb_ma <= usb_curr)
+			break;
+	}
+	if (i < 0)
+		i = 0;
+
+	if (usb_ma_table[i].chg_iusb_value < PM8921_CHG_IUSB_MIN ||
+	    usb_ma_table[i].chg_iusb_value > PM8921_CHG_IUSB_MAX) {
+		pr_err("bad mA=%d asked to set\n",
+		       usb_ma_table[i].chg_iusb_value);
+		return -EINVAL;
+	}
+	temp = usb_ma_table[i].chg_iusb_value << 2;
+	r = pm_chg_masked_write(the_chip, PBL_ACCESS2, PM8921_CHG_IUSB_MASK,
+				temp);
+
+	return r ? r : count;
+}
+
+static ssize_t force_chg_iusb_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	int state;
+	int ret;
+	u8 value;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		state = -ENODEV;
+		goto end;
+	}
+
+	ret = pm8xxx_readb(the_chip->dev->parent, PBL_ACCESS2, &value);
+	if (ret) {
+		pr_err("pm8xxx_readb PBL_ACCESS2 failed ret = %d\n", ret);
+		state = -EFAULT;
+		goto end;
+	}
+
+	state = ((value & PM8921_CHG_I_MASK) >> 2) & 0x7;
+	state = usb_ma_table[state].usb_ma;
+
+end:
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
+static DEVICE_ATTR(force_chg_iusb, 0664,
+		   force_chg_iusb_show,
+		   force_chg_iusb_store);
+
+static ssize_t force_chg_itrick_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long trick_curr;
+
+	r = strict_strtoul(buf, 0, &trick_curr);
+	if (r) {
+		pr_err("Invalid itrick value = %lu\n", trick_curr);
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+
+	if (!the_chip->factory_mode) {
+		pr_err("Only allowed in factory mode\n");
+		r = -EPERM;
+		return r;
+	}
+
+	r = pm_chg_itrkl_set(the_chip, trick_curr);
+
+	return r ? r : count;
+}
+
+static ssize_t force_chg_itrick_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	int state;
+	int ret;
+	u8 value;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		state = -ENODEV;
+		goto end;
+	}
+
+	ret = pm8xxx_readb(the_chip->dev->parent, CHG_ITRICKLE, &value);
+	if (ret) {
+		pr_err("pm8xxx_readb PBL_ACCESS2 failed ret = %d\n", ret);
+		state = -EFAULT;
+		goto end;
+	}
+
+	state = ((value & PM8921_CHG_ITRKL_MASK) * PM8921_CHG_ITRKL_STEP_MA);
+	state += PM8921_CHG_ITRKL_MIN_MA;
+
+end:
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
+static DEVICE_ATTR(force_chg_itrick, 0664,
+		   force_chg_itrick_show,
+		   force_chg_itrick_store);
 
 static int pm8921_charger_resume(struct device *dev)
 {
@@ -3643,6 +3912,34 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 				&dev_attr_force_chg_usb_suspend);
 	if (rc) {
 		pr_err("couldn't create force_chg_usb_suspend\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_force_chg_auto_enable);
+	if (rc) {
+		pr_err("couldn't create force_chg_auto_enable\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_force_chg_ibatt);
+	if (rc) {
+		pr_err("couldn't create force_chg_auto_ibatt\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_force_chg_iusb);
+	if (rc) {
+		pr_err("couldn't create force_chg_iusb\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_force_chg_itrick);
+	if (rc) {
+		pr_err("couldn't create force_chg_itrick\n");
 		goto free_chip;
 	}
 
