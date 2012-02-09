@@ -477,14 +477,6 @@ static int pm_chg_charge_dis(struct pm8921_chg_chip *chip, int disable)
 				disable ? CHG_CHARGE_DIS_BIT : 0);
 }
 
-static bool pm_is_chg_charge_dis_bit_set(struct pm8921_chg_chip *chip)
-{
-	u8 temp = 0;
-
-	pm8xxx_readb(chip->dev->parent, CHG_CNTRL, &temp);
-	return !!(temp & CHG_CHARGE_DIS_BIT);
-}
-
 #define PM8921_CHG_V_MIN_MV	3240
 #define PM8921_CHG_V_STEP_MV	20
 #define PM8921_CHG_V_STEP_10_MV_BIT	BIT(7)
@@ -1212,18 +1204,21 @@ static int pm_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (pm_is_chg_charge_dis_bit_set(the_chip) ||
+		val->intval = 0;
+		if (charging_disabled)
+			return 0;
+
 #ifdef CONFIG_EMU_DETECTION
-				(alarm_state == PM_BATT_ALARM_SHUTDOWN))
-#else
-				!is_usb_chg_plugged_in(the_chip))
+		if (alarm_state == PM_BATT_ALARM_SHUTDOWN)
+			return 0;		
 #endif
-			val->intval = 0;
-		else if (psy->type == POWER_SUPPLY_TYPE_USB ||
+
+		/* USB charging */
+		if (psy->type == POWER_SUPPLY_TYPE_USB ||
 				psy->type == POWER_SUPPLY_TYPE_USB_DCP ||
 				psy->type == POWER_SUPPLY_TYPE_USB_CDP ||
 				psy->type == POWER_SUPPLY_TYPE_USB_ACA) {
-			val->intval = 1;
+			val->intval = is_usb_chg_plugged_in(the_chip);
 #ifdef CONFIG_EMU_DETECTION
 			if ((the_chip->emu_accessory == EMU_ACCY_USB) ||
 			    (the_chip->emu_accessory == EMU_ACCY_FACTORY))
@@ -1231,12 +1226,11 @@ static int pm_power_get_property(struct power_supply *psy,
 			else if (the_chip->emu_accessory != EMU_ACCY_UNKNOWN)
 				val->intval = 0;
 #endif
-		} else if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
-			pm_chg_iusbmax_get(the_chip, &current_max);
-			if (current_max > USB_WALL_THRESHOLD_MA)
-				val->intval = 1;
-			else
-				val->intval = 0;
+			return 0;
+		}
+
+		/* DC charging */
+		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
 #ifdef CONFIG_EMU_DETECTION
 			if (((the_chip->emu_accessory == EMU_ACCY_CHARGER) ||
 			     (the_chip->emu_accessory ==
@@ -1245,11 +1239,21 @@ static int pm_power_get_property(struct power_supply *psy,
 				val->intval = 1;
 			else
 				val->intval = 0;
+#else
+			/* external charger is connected */
+			if (the_chip->dc_present || is_ext_charging(the_chip)) {
+				val->intval = 1;
+				return 0;
+			}
+			/* USB with max current greater than 500 mA connected */
+			pm_chg_iusbmax_get(the_chip, &current_max);
+			if (current_max > USB_WALL_THRESHOLD_MA)
+				val->intval = is_usb_chg_plugged_in(the_chip);
 #endif
-		} else {
-			val->intval = 0;
-			pr_err("Unkown POWER_SUPPLY_TYPE %d\n", psy->type);
+			return 0;
 		}
+
+		pr_err("Unkown POWER_SUPPLY_TYPE %d\n", psy->type);
 		break;
 	default:
 		return -EINVAL;
@@ -1884,6 +1888,7 @@ int pm8921_set_usb_power_supply_type(enum power_supply_type type)
 
 	the_chip->usb_psy.type = type;
 	power_supply_changed(&the_chip->usb_psy);
+	power_supply_changed(&the_chip->dc_psy);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(pm8921_set_usb_power_supply_type);
@@ -1944,6 +1949,7 @@ static void handle_stop_ext_chg(struct pm8921_chg_chip *chip)
 	power_supply_set_charge_type(chip->ext_psy,
 					POWER_SUPPLY_CHARGE_TYPE_NONE);
 	pm8921_disable_source_current(false); /* release BATFET */
+	power_supply_changed(&chip->dc_psy);
 	chip->ext_charging = false;
 	chip->ext_charge_done = false;
 	bms_notify_check(chip);
@@ -1991,8 +1997,10 @@ static void handle_start_ext_chg(struct pm8921_chg_chip *chip)
 		return;
 	}
 
+	power_supply_set_online(chip->ext_psy, dc_present);
 	power_supply_set_charge_type(chip->ext_psy,
 					POWER_SUPPLY_CHARGE_TYPE_FAST);
+	power_supply_changed(&chip->dc_psy);
 	chip->ext_charging = true;
 	chip->ext_charge_done = false;
 	bms_notify_check(chip);
@@ -2073,6 +2081,7 @@ static irqreturn_t vbatdet_low_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	return IRQ_HANDLED;
 }
@@ -2124,6 +2133,7 @@ static irqreturn_t chgdone_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	bms_notify_check(chip);
 
@@ -2146,6 +2156,7 @@ static irqreturn_t chgfail_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 	return IRQ_HANDLED;
 }
 
@@ -2156,6 +2167,7 @@ static irqreturn_t chgstate_irq_handler(int irq, void *data)
 	pr_debug("state_changed_to=%d\n", pm_chg_get_fsm_state(data));
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	bms_notify_check(chip);
 
