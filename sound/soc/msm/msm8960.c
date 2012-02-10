@@ -1194,6 +1194,10 @@ static struct platform_device *msm8960_snd_device;
 
 static int msm8960_configure_headset_mic_gpios(void)
 {
+/******************************************************************************
+ * FIXME: Headset GPIOs must be passed to as parameters to ensure no conflicts
+ *	For instance, Teufel P1 has PM GPIO 35 assigned to SEMU_PPD_DET
+ ******************************************************************************
 	int ret;
 	struct pm_gpio param = {
 		.direction      = PM_GPIO_DIR_OUT,
@@ -1218,10 +1222,7 @@ static int msm8960_configure_headset_mic_gpios(void)
 			PM8921_GPIO_PM_TO_SYS(23));
 	else
 		gpio_direction_output(PM8921_GPIO_PM_TO_SYS(23), 0);
-/******************************************************************************
- * FIXME: Headset GPIOs must be passed to as parameters to ensure no conflicts
- *	For instance, Teufel P1 has PM GPIO 35 assigned to SEMU_PPD_DET
- ******************************************************************************
+
 	ret = gpio_request(PM8921_GPIO_PM_TO_SYS(35), "US_EURO_SWITCH");
 	if (ret) {
 		pr_err("%s: Failed to request gpio %d\n", __func__,
@@ -1236,9 +1237,9 @@ static int msm8960_configure_headset_mic_gpios(void)
 	else
 		gpio_direction_output(PM8921_GPIO_PM_TO_SYS(35), 0);
 */
-	pr_err("%s: US_EURO_SWITCH gpio is not configured!!!\n", __func__);
+	pr_err("%s: US_EURO_SWITCH and AV_SWITCH gpios not configured!!!\n", __func__);
 
-	return 0;
+	return -1;
 }
 static void msm8960_free_headset_mic_gpios(void)
 {

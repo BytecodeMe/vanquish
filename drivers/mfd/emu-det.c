@@ -104,6 +104,8 @@
 #define PRINT_ERROR	(1U << 0)
 #define PRINT_PARANOIC	(1U << 4)
 
+#define hasHoneyBadger() (the_emud->emu_gpio[DMB_PPD_DET_GPIO] >= 0)
+
 #undef DEF
 #define LIMITS { \
 	DEF(FACTORY,	2500, 2680), \
@@ -298,6 +300,7 @@ enum emu_det_gpios {
 	SEMU_PPD_DET_GPIO,
 	SEMU_ALT_MODE_EN_GPIO,
 	EMU_ID_GPIO,
+	DMB_PPD_DET_GPIO,
 
 	EMU_DET_MAX_GPIOS,
 };
@@ -393,7 +396,7 @@ struct emu_det_data {
 	short whisper_auth;
 	u8 retries;
 	unsigned char power_up;
-	unsigned emu_gpio[EMU_DET_MAX_GPIOS];
+	signed emu_gpio[EMU_DET_MAX_GPIOS];
 	unsigned emu_irq[EMU_DET_MAX_INTS];
 	atomic_t in_lpm, last_irq;
 	int async_int;
@@ -644,6 +647,12 @@ static bool dcd_check(void)
 static void emu_id_protection_setup(bool on)
 {
 	struct emu_det_data *emud = the_emud;
+
+	if (hasHoneyBadger()) {
+		pr_emu_det(DEBUG, "No neccessary action\n");
+		return;
+	}
+
 	if (on == emud->protection_forced_off) {
 		if (emu_pdata && emu_pdata->id_protect) {
 			emu_pdata->id_protect(on);
@@ -843,7 +852,7 @@ static void sense_emu_id(unsigned long *lsense)
 	}
 }
 
-static int get_sense(bool do_adc)
+static int get_sense(void)
 {
 	struct emu_det_data *emud = the_emud;
 	struct otg_transceiver *otg = emud->trans;
@@ -857,14 +866,16 @@ static int get_sense(bool do_adc)
 
 	value = gpio_get_value_cansleep(
 				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
-	pr_emu_det(DEBUG, "SEMU_PPD_DET indicates ID %s floating\n",
-				value ? "not" : "");
-	if (value) {
-		clear_bit(FLOAT_BIT, &lsense);
-	} else {
-		set_bit(FLOAT_BIT, &lsense);
-		clear_bit(GRND_BIT, &lsense);
+	if (!hasHoneyBadger()) {
+		/* Discrete logic has inverse polarity */
+		value = !value;
 	}
+	pr_emu_det(DEBUG, "SEMU_PPD_DET indicates ID %s floating\n",
+				value ? "" : "not");
+	if (value)
+		set_bit(FLOAT_BIT, &lsense);
+	else
+		clear_bit(FLOAT_BIT, &lsense);
 
 	if ((debug_mask & PRINT_PARANOIC)) {
 		value = gpio_get_value_cansleep(
@@ -883,10 +894,9 @@ static int get_sense(bool do_adc)
 
 	pr_emu_det(DEBUG, "EMU_SCI_OUT indicates ID %s grounded\n",
 				value ? "" : "not");
-	if (value) {
+	if (value)
 		set_bit(GRND_BIT, &lsense);
-		clear_bit(FLOAT_BIT, &lsense);
-	} else
+	else
 		clear_bit(GRND_BIT, &lsense);
 
 	if ((debug_mask & PRINT_PARANOIC)) {
@@ -963,7 +973,28 @@ static int get_sense(bool do_adc)
 			clear_bit(DM_BIT, &lsense);
 	}
 
-	if (do_adc)
+	if (hasHoneyBadger()) {
+		clear_bit(FACTORY_BIT, &lsense);
+		if (test_bit(GRND_BIT, &lsense) &&
+		    test_bit(FLOAT_BIT, &lsense)) {
+			set_bit(FACTORY_BIT, &lsense);
+		}
+
+		clear_bit(PD_100K_BIT, &lsense);
+		clear_bit(PD_200K_BIT, &lsense);
+		if (!test_bit(GRND_BIT, &lsense) &&
+		    !test_bit(FLOAT_BIT, &lsense)) {
+			value = gpio_get_value_cansleep(
+					emud->emu_gpio[DMB_PPD_DET_GPIO]);
+			pr_emu_det(DEBUG, "ID %s present\n",
+				   value ? "200K" : "100K");
+			if (value)
+				set_bit(PD_200K_BIT, &lsense);
+			else
+				set_bit(PD_100K_BIT, &lsense);
+		} else
+			pr_emu_det(DEBUG, "No need to check DMB_PPD_DET_N\n");
+	} else
 		sense_emu_id(&lsense);
 
 	emud->sense = lsense;
@@ -1217,7 +1248,7 @@ static void detection_work(bool caused_by_irq)
 
 	case SAMPLE:
 		data->prev_sense = data->sense;
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (test_bit(CHG_DET_BIT, &data->sense)) {
 			clear_bit(CHG_DET_BIT, &data->sense);
@@ -1242,7 +1273,7 @@ static void detection_work(bool caused_by_irq)
 
 	case CHG_DET:
 		data->prev_sense = data->sense;
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		tmout = ++data->retries == MAX_RETRIES;
 		if (tmout || test_bit(CHG_DET_BIT, &data->sense)) {
@@ -1257,7 +1288,7 @@ static void detection_work(bool caused_by_irq)
 
 	case IDENTIFY:
 		data->state = CONFIG;
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (SENSE_FACTORY) {
 			data->state = FACTORY;
@@ -1330,7 +1361,7 @@ static void detection_work(bool caused_by_irq)
 		break;
 
 	case USB:
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
@@ -1339,7 +1370,7 @@ static void detection_work(bool caused_by_irq)
 		break;
 
 	case FACTORY:
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
@@ -1348,7 +1379,7 @@ static void detection_work(bool caused_by_irq)
 		break;
 
 	case CHARGER:
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense) &&
 		    !test_bit(FLOAT_BIT, &data->sense) &&
@@ -1373,7 +1404,7 @@ static void detection_work(bool caused_by_irq)
 
 	case WHISPER_PPD:
 		pr_emu_det(STATUS, "detection_work: PPD\n");
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (test_bit(FLOAT_BIT, &data->sense)) {
 			data->state = CONFIG;
@@ -1404,7 +1435,7 @@ static void detection_work(bool caused_by_irq)
 		break;
 	case WHISPER_SMART:
 		pr_emu_det(STATUS, "detection_work: SMART\n");
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (data->whisper_auth == AUTH_FAILED &&
 			data->accy == ACCY_WHISPER_SMART &&
@@ -1426,7 +1457,7 @@ static void detection_work(bool caused_by_irq)
 		break;
 
 	case USB_ADAPTER:
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (!test_bit(GRND_BIT, &data->sense)) {
 			data->state = CONFIG;
@@ -1438,7 +1469,7 @@ static void detection_work(bool caused_by_irq)
 
 	case WHISPER_SMART_LD2_OPEN:
 		pr_emu_det(STATUS, "detection_work: SMART_LD2_OPEN\n");
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (data->whisper_auth == AUTH_FAILED &&
 			data->accy == ACCY_WHISPER_SMART &&
@@ -1467,7 +1498,7 @@ static void detection_work(bool caused_by_irq)
 
 	case WHISPER_SMART_LD2_CLOSE:
 		pr_emu_det(STATUS, "detection_work: SMART_LD2_CLOSE\n");
-		last_irq = get_sense(true);
+		last_irq = get_sense();
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
@@ -1638,28 +1669,34 @@ struct emu_det_gpio_init_data {
 	char	*name;
 	int	direction;
 	int	value;
+	int	required;
 };
 
 #define SKIP		0
 #define DIR_INPUT	1
 #define DIR_OUTPUT	2
 
-#define DECLARE_GPIO(_id, _dir, _val) \
+#define GPIO_OPTIONAL	0
+#define GPIO_REQUIRED	1
+
+#define DECLARE_GPIO(_id, _dir, _val, _req)		\
 { \
 	.idx		= _id, \
 	.name		= #_id, \
 	.direction	= _dir, \
 	.value		= _val, \
+	.required	= _req, \
 }
 
 struct emu_det_gpio_init_data emu_det_gpio_data[] = {
-	DECLARE_GPIO(EMU_SCI_OUT_GPIO,      DIR_INPUT,  -1),
-	DECLARE_GPIO(EMU_ID_EN_GPIO,        DIR_INPUT,  -1),
-	DECLARE_GPIO(EMU_MUX_CTRL0_GPIO,    DIR_OUTPUT,  1),
-	DECLARE_GPIO(EMU_MUX_CTRL1_GPIO,    DIR_OUTPUT,  0),
-	DECLARE_GPIO(SEMU_PPD_DET_GPIO,     DIR_INPUT,  -1),
-	DECLARE_GPIO(SEMU_ALT_MODE_EN_GPIO, SKIP,       -1),
-	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1),
+	DECLARE_GPIO(EMU_SCI_OUT_GPIO,      DIR_INPUT,  -1, GPIO_REQUIRED),
+	DECLARE_GPIO(EMU_ID_EN_GPIO,        DIR_INPUT,  -1, GPIO_OPTIONAL),
+	DECLARE_GPIO(EMU_MUX_CTRL0_GPIO,    DIR_OUTPUT,  1, GPIO_REQUIRED),
+	DECLARE_GPIO(EMU_MUX_CTRL1_GPIO,    DIR_OUTPUT,  0, GPIO_REQUIRED),
+	DECLARE_GPIO(SEMU_PPD_DET_GPIO,     DIR_INPUT,  -1, GPIO_REQUIRED),
+	DECLARE_GPIO(SEMU_ALT_MODE_EN_GPIO, SKIP,       -1, GPIO_REQUIRED),
+	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1, GPIO_OPTIONAL),
+	DECLARE_GPIO(DMB_PPD_DET_GPIO,      DIR_INPUT,  -1, GPIO_OPTIONAL),
 };
 
 static void free_gpios(void)
@@ -1668,7 +1705,7 @@ static void free_gpios(void)
 	int i;
 
 	for (i = 0; i < EMU_DET_MAX_GPIOS; i++)
-		if (emud->emu_gpio[i]) {
+		if (emud->emu_gpio[i] > 0) {
 			gpio_free(emud->emu_gpio[i]);
 			pr_emu_det(DEBUG, "free-ed gpio %d\n",
 						emud->emu_gpio[i]);
@@ -1686,9 +1723,16 @@ static int __devinit request_gpios(struct platform_device *pdev)
 		res = platform_get_resource_byname(pdev, IORESOURCE_IO,
 				emu_det_gpio_data[i].name);
 		if (res == NULL) {
-			pr_err("couldn't find %s\n",
-				emu_det_gpio_data[i].name);
-			goto err_out;
+			if (emu_det_gpio_data[i].required) {
+				pr_err("couldn't find REQUIRED %s\n",
+				       emu_det_gpio_data[i].name);
+				goto err_out;
+			} else {
+				pr_emu_det(DEBUG, "couldn't find OPTIONAL %s\n",
+				       emu_det_gpio_data[i].name);
+				emud->emu_gpio[emu_det_gpio_data[i].idx] = -1;
+				continue;
+			}
 		}
 
 		emud->emu_gpio[emu_det_gpio_data[i].idx] = res->start;
@@ -1806,8 +1850,6 @@ static void create_debugfs_entries(void)
 		return;
 	}
 
-	debugfs_create_file("emu_id", 0444, dent,
-			    (void *)NULL, &emu_id_debugfs_fops);
 	debugfs_create_file("vbus", 0444, dent,
 			    (void *)NULL, &vbus_debugfs_fops);
 	debugfs_create_file("detection", 0222, dent,
@@ -1816,8 +1858,13 @@ static void create_debugfs_entries(void)
 			    (void *)NULL, &accy_debugfs_fops);
 	debugfs_create_file("semu_ppd_det", 0444, dent,
 			    (void *)NULL, &semu_ppd_det_debugfs_fops);
-	debugfs_create_file("emu_id_en", 0644, dent,
-			    (void *)NULL, &emu_id_en_debugfs_fops);
+
+	if (!hasHoneyBadger()) {
+		debugfs_create_file("emu_id", 0444, dent,
+				    (void *)NULL, &emu_id_debugfs_fops);
+		debugfs_create_file("emu_id_en", 0644, dent,
+				    (void *)NULL, &emu_id_en_debugfs_fops);
+	}
 }
 #else
 static inline void create_debugfs_entries(void)

@@ -253,6 +253,7 @@ static struct platform_device emu_det_device;
 static bool core_power_init, enable_5v_init;
 
 #define EMU_DET_ID_GPIO		PM8921_MPP_PM_TO_SYS(10)
+#define EMU_DET_DMB_PPD_GPIO	PM8921_MPP_PM_TO_SYS(10)
 #define EMU_DET_ID_EN_GPIO	PM8921_MPP_PM_TO_SYS(9)
 #define EMU_DET_PPD_DET_GPIO	PM8921_GPIO_PM_TO_SYS(35)
 #define EMU_DET_ALT_MODE_GPIO	PM8921_GPIO_PM_TO_SYS(17)
@@ -272,6 +273,11 @@ static struct pm8xxx_mpp_config_data emu_det_pm_mpp_config[] = {
 		.type           = PM8XXX_MPP_TYPE_D_OUTPUT,
 		.level          = PM8921_MPP_DIG_LEVEL_L17,
 		.control        = PM8XXX_MPP_DOUT_CTRL_LOW,
+	},
+	{	/* DMB_PPD_DET */
+		.type		= PM8XXX_MPP_TYPE_D_INPUT,
+		.level		= PM8921_MPP_DIG_LEVEL_L17,
+		.control	= PM8XXX_MPP_DIN_TO_INT,
 	},
 };
 
@@ -305,6 +311,17 @@ static struct pm_gpio emu_det_pm_gpio_config[] = {
 		.pull		= PM_GPIO_PULL_NO,
 		.vin_sel	= PM_GPIO_VIN_L17,
 		.out_strength	= PM_GPIO_STRENGTH_HIGH,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* PM GPIO 23 - EMU_SCI_OUT */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
 		.function	= PM_GPIO_FUNC_NORMAL,
 		.inv_int_pol	= 0,
 		.disable_pin	= 0,
@@ -357,13 +374,6 @@ static struct msm_gpiomux_config emu_det_msm_gpio_configs[] = {
 		},
 	},
 	{
-		.gpio      = 90,	/* EMU_SCI_OUT */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &emu_det_sci_out,
-			[GPIOMUX_ACTIVE] = &emu_det_sci_out,
-		}
-	},
-	{
 		.gpio      = 107,	/* EMU_MUX_CTRL0 */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &emu_det_mux_ctrl0,
@@ -386,6 +396,13 @@ static struct msm_gpiomux_config emu_det_msm_gpio_alt_configs[] = {
 			[GPIOMUX_SUSPENDED] = &emu_det_id_en,
 			[GPIOMUX_ACTIVE] = &emu_det_id_en,
 		},
+	},
+	{
+		.gpio      = 90,	/* EMU_SCI_OUT */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_sci_out,
+			[GPIOMUX_ACTIVE] = &emu_det_sci_out,
+		}
 	},
 };
 
@@ -694,16 +711,36 @@ static __init void emu_det_gpio_init(void)
 	msm_gpiomux_install(emu_det_msm_gpio_configs,
 			    ARRAY_SIZE(emu_det_msm_gpio_configs));
 
-	pm8xxx_mpp_config(EMU_DET_ID_GPIO, &emu_det_pm_mpp_config[0]);
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "EMU_ID_GPIO");
+	if (res)
+		pm8xxx_mpp_config(res->start, &emu_det_pm_mpp_config[0]);
+
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "DMB_PPD_DET_GPIO");
+	if (res)
+		pm8xxx_mpp_config(res->start, &emu_det_pm_mpp_config[3]);
 
 	res = platform_get_resource_byname(&emu_det_device,
 					   IORESOURCE_IO, "EMU_ID_EN_GPIO");
+	if (res) {
+		if (res->start > NR_MSM_GPIOS) {
+			pm8xxx_mpp_config(res->start,
+					  &emu_det_pm_mpp_config[1]);
+		} else {
+			emu_det_msm_gpio_alt_configs[0].gpio = res->start;
+			msm_gpiomux_install(&emu_det_msm_gpio_alt_configs[0], 1);
+		}
+	}
+
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "EMU_SCI_OUT_GPIO");
 	if (res && (res->start > NR_MSM_GPIOS)) {
-		pm8xxx_mpp_config(EMU_DET_ID_EN_GPIO,
-				  &emu_det_pm_mpp_config[1]);
+		pm8xxx_gpio_config(res->start,
+				   &emu_det_pm_gpio_config[3]);
 	} else {
-		emu_det_msm_gpio_alt_configs[0].gpio = res->start;
-		msm_gpiomux_install(&emu_det_msm_gpio_alt_configs[0], 1);
+		emu_det_msm_gpio_alt_configs[1].gpio = res->start;
+		msm_gpiomux_install(&emu_det_msm_gpio_alt_configs[1], 1);
 	}
 
 	pm8xxx_gpio_config(EMU_DET_PPD_DET_GPIO, &emu_det_pm_gpio_config[0]);
