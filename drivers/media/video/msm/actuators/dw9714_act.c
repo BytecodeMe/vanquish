@@ -273,6 +273,7 @@ static struct msm_actuator_ctrl_t dw9714_act_t = {
 		.actuator_write_focus = msm_actuator_write_focus,
 		.actuator_i2c_write = dw9714_wrapper_i2c_write,
 		.actuator_set_default_focus = msm_actuator_set_default_focus,
+		.actuator_set_lens_mode =  msm_actuator_set_lens_mode,
 	},
 
 };

@@ -12,6 +12,8 @@
 
 #include "msm_actuator.h"
 
+static uint8_t lens_mode;
+
 int32_t msm_actuator_write_focus(
 	struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t curr_lens_pos,
@@ -71,6 +73,11 @@ int32_t msm_actuator_move_focus(
 		__func__,
 		dir,
 		num_steps);
+
+	if (lens_mode) {
+		pr_info("%s - Test Mode X", __func__);
+		return rc;
+	}
 
 	/* Determine sign direction */
 	if (dir == MOVE_NEAR)
@@ -150,6 +157,17 @@ int32_t msm_actuator_move_focus(
 	return rc;
 }
 
+int32_t msm_actuator_set_lens_mode(
+	struct msm_actuator_ctrl_t *a_ctrl,
+	uint8_t mode)
+{
+	int32_t rc = 0;
+
+	pr_info("set lens mode %d", mode);
+	lens_mode = mode;
+
+	return rc;
+}
 int32_t msm_actuator_init_table(
 	struct msm_actuator_ctrl_t *a_ctrl)
 {
@@ -159,6 +177,8 @@ int32_t msm_actuator_init_table(
 	int16_t step_index = 0, region_index = 0;
 	uint16_t step_boundary = 0;
 	LINFO("%s called\n", __func__);
+
+	lens_mode = 0;
 
 	if (a_ctrl->func_tbl.actuator_set_params)
 		a_ctrl->func_tbl.actuator_set_params(a_ctrl);
@@ -202,6 +222,11 @@ int32_t msm_actuator_set_default_focus(
 {
 	int32_t rc = 0;
 	LINFO("%s called\n", __func__);
+
+	if (lens_mode) {
+		pr_info("%s - Test Mode X", __func__);
+		return rc;
+	}
 
 	if (!a_ctrl->step_position_table)
 		a_ctrl->func_tbl.actuator_init_table(a_ctrl);
@@ -266,6 +291,13 @@ int32_t msm_actuator_config(
 		rc = a_ctrl->func_tbl.actuator_move_focus(a_ctrl,
 			cdata.cfg.move.dir,
 			cdata.cfg.move.num_steps);
+		if (rc < 0)
+			LERROR("%s move focus failed %d\n", __func__, rc);
+		break;
+
+	case CFG_SET_LENS_MODE:
+		rc = a_ctrl->func_tbl.actuator_set_lens_mode(a_ctrl,
+			cdata.cfg.lens_mode);
 		if (rc < 0)
 			LERROR("%s move focus failed %d\n", __func__, rc);
 		break;

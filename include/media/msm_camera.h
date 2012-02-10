@@ -716,7 +716,8 @@ struct msm_snapshot_pp_status {
 #define CFG_GET_EEPROM_DATA		33
 #define CFG_SET_ACTUATOR_INFO		34
 #define CFG_GET_ACTUATOR_INFO		35
-#define CFG_MAX			36
+#define CFG_SET_LENS_MODE		36
+#define CFG_MAX			37
 
 
 #define MOVE_NEAR	0
@@ -1087,6 +1088,7 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_move_params_t move;
 		struct msm_actuator_set_info_t set_info;
 		struct msm_actuator_get_info_t get_info;
+		uint8_t lens_mode;
 	} cfg;
 };
 
