@@ -25,5 +25,6 @@ struct mmi_emu_det_platform_data {
 };
 
 void emu_det_register_notify(struct notifier_block *nb);
+int emu_det_get_accy(void);
 
 #endif  /* __MMI_EMU_DETECTION_H__ */

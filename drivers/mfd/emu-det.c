@@ -1974,6 +1974,17 @@ err_out:
 	return -EINVAL;
 }
 
+int emu_det_get_accy(void)
+{
+	struct emu_det_data *emud = the_emud;
+
+	if (emud)
+		return (int)emud->accy;
+	else
+		return EMU_ACCY_UNKNOWN;
+}
+EXPORT_SYMBOL_GPL(emu_det_get_accy);
+
 #ifdef CONFIG_DEBUG_FS
 static int accy_read(void *data, u64 *val)
 {

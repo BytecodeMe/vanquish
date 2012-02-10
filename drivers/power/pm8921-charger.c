@@ -4051,6 +4051,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 #ifdef CONFIG_EMU_DETECTION
 	chip->emu_accessory = EMU_ACCY_UNKNOWN;
 	emu_det_register_notify(&accy_notifier);
+	chip->emu_accessory = emu_det_get_accy();
 #endif
 
 	wake_lock_init(&chip->eoc_wake_lock, WAKE_LOCK_SUSPEND, "pm8921_eoc");
