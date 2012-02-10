@@ -2944,12 +2944,98 @@ err_out:
 	return -EINVAL;
 }
 
+static void pm8921_chg_force_19p2mhz_clk(struct pm8921_chg_chip *chip)
+{
+	int err;
+	u8 temp;
+
+	temp  = 0xD1;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD3;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD1;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD5;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	udelay(183);
+
+	temp  = 0xD1;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD0;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+	udelay(32);
+
+	temp  = 0xD1;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD3;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+}
+
+static void pm8921_chg_set_hw_clk_switching(struct pm8921_chg_chip *chip)
+{
+	int err;
+	u8 temp;
+
+	temp  = 0xD1;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+
+	temp  = 0xD0;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	}
+}
+
 #define ENUM_TIMER_STOP_BIT	BIT(1)
 #define BOOT_DONE_BIT		BIT(6)
 #define CHG_BATFET_ON_BIT	BIT(3)
 #define CHG_VCP_EN		BIT(0)
 #define CHG_BAT_TEMP_DIS_BIT	BIT(2)
 #define SAFE_CURRENT_MA		1500
+#define VREF_BATT_THERM_FORCE_ON	BIT(7)
 static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 {
 	int rc;
@@ -3138,6 +3224,13 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 
 	/* Disable EOC FSM processing */
 	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x91);
+
+	pm8921_chg_force_19p2mhz_clk(chip);
+
+	rc = pm_chg_masked_write(chip, CHG_CNTRL, VREF_BATT_THERM_FORCE_ON,
+						VREF_BATT_THERM_FORCE_ON);
+	if (rc)
+		pr_err("Failed to Force Vref therm rc=%d\n", rc);
 
 	rc = pm_chg_charge_dis(chip, charging_disabled);
 	if (rc) {
@@ -3475,7 +3568,32 @@ static void create_debugfs_entries(struct pm8921_chg_chip *chip)
 	}
 }
 
-#define CHG_SHOW_MAX_SIZE 50
+static int pm8921_charger_suspend_noirq(struct device *dev)
+{
+	int rc;
+	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
+
+	rc = pm_chg_masked_write(chip, CHG_CNTRL, VREF_BATT_THERM_FORCE_ON, 0);
+	if (rc)
+		pr_err("Failed to Force Vref therm off rc=%d\n", rc);
+	pm8921_chg_set_hw_clk_switching(chip);
+	return 0;
+}
+
+static int pm8921_charger_resume_noirq(struct device *dev)
+{
+	int rc;
+	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
+
+	pm8921_chg_force_19p2mhz_clk(chip);
+
+	rc = pm_chg_masked_write(chip, CHG_CNTRL, VREF_BATT_THERM_FORCE_ON,
+						VREF_BATT_THERM_FORCE_ON);
+	if (rc)
+		pr_err("Failed to Force Vref therm on rc=%d\n", rc);
+	return 0;
+}
+
 static ssize_t force_chg_usb_suspend_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
@@ -3508,6 +3626,7 @@ static ssize_t force_chg_usb_suspend_store(struct device *dev,
 	return r ? r : count;
 }
 
+#define CHG_SHOW_MAX_SIZE 50
 static ssize_t force_chg_usb_suspend_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -3845,6 +3964,7 @@ static int pm8921_charger_suspend(struct device *dev)
 		pm8921_chg_enable_irq(chip, LOOP_CHANGE_IRQ);
 		enable_irq_wake(chip->pmic_chg_irq[LOOP_CHANGE_IRQ]);
 	}
+
 	return 0;
 }
 static int __devinit pm8921_charger_probe(struct platform_device *pdev)
@@ -4135,6 +4255,8 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 }
 static const struct dev_pm_ops pm8921_pm_ops = {
 	.suspend	= pm8921_charger_suspend,
+	.suspend_noirq  = pm8921_charger_suspend_noirq,
+	.resume_noirq   = pm8921_charger_resume_noirq,
 	.resume		= pm8921_charger_resume,
 };
 static struct platform_driver pm8921_charger_driver = {
