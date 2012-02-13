@@ -409,6 +409,36 @@ static ssize_t hdmi_common_wta_hpd(struct device *dev,
 	return ret;
 }
 
+#ifdef CONFIG_DEBUG_FS
+static int test_active;
+
+static ssize_t hdmi_common_rda_test(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", test_active);
+}
+
+static ssize_t hdmi_common_wta_test(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long test;
+	int rc;
+
+	rc = strict_strtoul(buf, 0, &test);
+	if (rc || test > 2)
+		return -EINVAL;
+
+	test_active = (int) test;
+
+	hdmi_msm_test( (test_active) ? 0 : 1 );
+
+	return count;
+}
+
+static DEVICE_ATTR(test, S_IRUGO | S_IWUGO, hdmi_common_rda_test,
+					    hdmi_common_wta_test);
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 /*
  * This interface for CEC feature is defined to suit
@@ -731,6 +761,9 @@ static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_cec_rd_frame.attr,
 	&dev_attr_cec_wr_frame.attr,
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT */
+#ifdef CONFIG_DEBUG_FS
+	&dev_attr_test.attr,
+#endif
 	NULL,
 };
 static struct attribute_group external_common_fs_attr_group = {

@@ -3967,6 +3967,13 @@ static void hdmi_msm_hdcp_timer(unsigned long data)
 }
 #endif
 
+#ifdef CONFIG_DEBUG_FS
+void hdmi_msm_test(int en)
+{
+	hdmi_msm_state->pd->enable_5v(en);
+}
+#endif
+
 static void hdmi_msm_hpd_read_work(struct work_struct *work)
 {
 	uint32 hpd_ctrl;
