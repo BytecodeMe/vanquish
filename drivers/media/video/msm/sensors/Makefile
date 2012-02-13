@@ -8,3 +8,4 @@ obj-$(CONFIG_MT9M114) += mt9m114_v4l2.o
 obj-$(CONFIG_OV2720) += ov2720.o
 obj-$(CONFIG_OV8820) += ov8820_v4l2.o
 obj-$(CONFIG_OV7736) += ov7736_v4l2.o
+obj-$(CONFIG_S5K5B3G) += s5k5b3g_v4l2.o

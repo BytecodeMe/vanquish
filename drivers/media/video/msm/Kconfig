@@ -43,6 +43,12 @@ config MT9M114
     default n
     ---help---
     APTINA 1.26 MP yuv Sensor
+config S5K5B3G
+    bool "Sensor S5K5B3G (BAYER 2MP 1080P)"
+    depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
+    default n
+    ---help---
+    Samsung 2 MP bayer 1080P Sensor
 config OV5640
 	bool "Sensor OV5640 (YUV 5M)"
 	depends on MSM_CAMERA && !MSM_CAMERA_V4L2

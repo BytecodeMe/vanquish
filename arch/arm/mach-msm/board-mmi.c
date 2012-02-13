@@ -1187,6 +1187,31 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
 
 #endif
 
+#ifdef CONFIG_S5K5B3G
+static struct msm_camera_sensor_flash_data flash_s5k5b3g = {
+	.flash_type = MSM_CAMERA_FLASH_NONE,
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_s5k5b3g = {
+	.mount_angle    = 90,
+	.sensor_reset   = 76,
+	.analog_en      = 82,
+	.digital_en     = 89,
+	.reg_1p2        = "8921_l12",
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_s5k5b3g_data = {
+	.sensor_name          = "s5k5b3g",
+	.pdata                = &msm_camera_csi_device_data[1],
+	.flash_data           = &flash_s5k5b3g,
+	.sensor_platform_info = &sensor_board_info_s5k5b3g,
+	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
+	.csi_if               = 1,
+	.camera_type          = FRONT_CAMERA_2D,
+};
+
+#endif
+
 #ifdef CONFIG_DW9714_ACT
 static struct i2c_board_info dw9714_actuator_i2c_info = {
 	I2C_BOARD_INFO("dw9714_act", 0x18),
@@ -1280,6 +1305,9 @@ void __init msm8960_init_cam(void)
 	struct msm_camera_sensor_info *cam_data[] = {
 #ifdef CONFIG_MT9M114
 		&msm_camera_sensor_mt9m114_data,
+#endif
+#ifdef CONFIG_S5K5B3G
+		&msm_camera_sensor_s5k5b3g_data,
 #endif
 #ifdef CONFIG_OV8820
 		&msm_camera_sensor_ov8820_data,
@@ -2293,6 +2321,10 @@ static __init void register_i2c_devices_from_dt(int bus)
 			case 0x00290001: /* Omnivision_OV7736 */
 				info.platform_data =
 					&msm_camera_sensor_ov7736_data;
+				break;
+			case 0x00090007: /* Samsung_S5K5B3G */
+				info.platform_data =
+					&msm_camera_sensor_s5k5b3g_data;
 				break;
 			}
 		}
