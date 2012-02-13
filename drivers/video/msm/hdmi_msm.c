@@ -55,6 +55,11 @@
 #define HDCP_DDC_CTRL_1		0x0124
 #define HDMI_DDC_CTRL		0x020C
 
+#define SUPPORT_ANDROID_HPD_SWITCH
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+#include <linux/switch.h>
+struct switch_dev hpd_switch;
+#endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 
@@ -802,6 +807,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			DEV_INFO("HDMI HPD: sense CONNECTED: send ONLINE\n");
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_ONLINE);
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+			switch_set_state(&hpd_switch, 1);
+#endif
 			hdmi_msm_hdcp_enable();
 #ifndef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 			/* Send Audio for HDMI Compliance Cases*/
@@ -816,6 +824,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 				);
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_OFFLINE);
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+			switch_set_state(&hpd_switch, 0);
+#endif
 		}
 	}
 
@@ -3981,6 +3992,9 @@ static void hdmi_msm_hpd_read_work(struct work_struct *work)
 		DEV_DBG("%s: sense CONNECTED: send ONLINE\n", __func__);
 		kobject_uevent(external_common_state->uevent_kobj,
 			KOBJ_ONLINE);
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+		switch_set_state(&hpd_switch, 1);
+#endif
 	}
 	hdmi_msm_hpd_off();
 	hdmi_msm_set_mode(FALSE);
@@ -4315,6 +4329,12 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	}
 
 	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
+
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+	hpd_switch.name = "hdmi";
+	switch_dev_register(&hpd_switch);
+#endif
+
 	return 0;
 
 error:
@@ -4373,6 +4393,10 @@ static int __devexit hdmi_msm_remove(struct platform_device *pdev)
 
 	kfree(hdmi_msm_state);
 	hdmi_msm_state = NULL;
+
+#ifdef SUPPORT_ANDROID_HPD_SWITCH
+	switch_dev_unregister(&hpd_switch);
+#endif
 
 	return 0;
 }

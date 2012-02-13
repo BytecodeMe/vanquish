@@ -319,17 +319,15 @@ static ssize_t hdmi_common_rda_edid_modes(struct device *dev,
 }
 
 #ifdef SUPPORT_RAW_EDID_READS
+/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
+static uint8 sysfs_edid[(0x80 * 4)];
+
 static ssize_t hdmi_common_rda_edid_data(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	uint32 ndx, start, end;
 	ssize_t ret = 0;
-	int status;
 	int block;
-
-	/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
-	uint8 edid_buf[(0x80 * 4) + 8]; /* +8 to avoid KW error */
-	memset(edid_buf, 0, sizeof(edid_buf));
 
 	/* Return no data if HDMI is not connected */
 	if (!external_common_state->hpd_state)
@@ -339,16 +337,14 @@ static ssize_t hdmi_common_rda_edid_data(struct device *dev,
 	for (block = 0; block < 4; block++) {
 		DEV_DBG("READING EDID BLOCK %d\n", block);
 		start = 0x80 * block;
-		end = start + 0x80;
-		status = external_common_state->read_edid_block(block,
-							&edid_buf[start]);
+		end = start + (0x80 - 1);
 		for (ndx = start; ndx < end; ndx += 8) {
 			ret += snprintf(buf + ret, PAGE_SIZE - ret,
 					"%02x%02x%02x%02x%02x%02x%02x%02x",
-					edid_buf[ndx+0], edid_buf[ndx+1],
-					edid_buf[ndx+2], edid_buf[ndx+3],
-					edid_buf[ndx+4], edid_buf[ndx+5],
-					edid_buf[ndx+6], edid_buf[ndx+7]);
+					sysfs_edid[ndx+0], sysfs_edid[ndx+1],
+					sysfs_edid[ndx+2], sysfs_edid[ndx+3],
+					sysfs_edid[ndx+4], sysfs_edid[ndx+5],
+					sysfs_edid[ndx+6], sysfs_edid[ndx+7]);
 		}
 	}
 
@@ -1477,6 +1473,10 @@ int hdmi_common_read_edid(void)
 
 	hdmi_edid_get_display_mode(edid_buf,
 		&external_common_state->disp_mode_list, num_og_cea_blocks);
+
+#ifdef SUPPORT_RAW_EDID_READS
+	memcpy(sysfs_edid, edid_buf, (0x80 * 4));
+#endif
 
 	return 0;
 
