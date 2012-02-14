@@ -1541,9 +1541,9 @@ static struct lm3559_platform_data camera_flash_3559 = {
 #endif /* CONFIG_LEDS_LM3559 */
 
 #ifdef CONFIG_LEDS_LM3556
-static struct lm3556_platform_data camera_flash_3556;
+static struct lm3556_platform_data cam_flash_3556;
 
-static struct lm3556_platform_data camera_flash_3556 = {
+static struct lm3556_platform_data cam_flash_3556 = {
 	.flags = (LM3556_TORCH | LM3556_FLASH |
 			LM3556_ERROR_CHECK),
 	.si_rev_filter_time_def = 0x00,
@@ -2703,9 +2703,16 @@ static __init void register_i2c_devices_from_dt(int bus)
 				prop = of_get_property(child, "enable_gpio",
 						&len);
 				if (prop && (len == sizeof(u32)))
-					camera_flash_3556.hw_enable =
+					cam_flash_3556.hw_enable =
 						*(u32 *)prop;
-				info.platform_data = &camera_flash_3556;
+
+				prop = of_get_property(child,
+						"current_cntrl_reg_val",
+						&len);
+				if (prop && (len == sizeof(u8)))
+					cam_flash_3556.current_cntrl_reg_def =
+						*(u8 *)prop;
+				info.platform_data = &cam_flash_3556;
 				break;
 
 			case 0x00250001: /* TAOS_CT406 */
