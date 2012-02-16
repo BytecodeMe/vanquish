@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/mfd/wcd9310/registers.h>
+#include <linux/mfd/wcd9310/core.h>
 #include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/soc.h>
