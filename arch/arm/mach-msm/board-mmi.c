@@ -77,7 +77,6 @@
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/rpm.h>
-#include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
@@ -1413,7 +1412,6 @@ static struct msm_camera_sensor_flash_data flash_mt9m114 = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_mt9m114 = {
 	.mount_angle    = 270,
-	.sensor_reset   = 76,
 	.analog_en      = 82,
 	.digital_en     = 89,
 };
@@ -1423,7 +1421,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9m114_data = {
 	.pdata                = &msm_camera_csi_device_data[1],
 	.flash_data           = &flash_mt9m114,
 	.sensor_platform_info = &sensor_board_info_mt9m114,
-	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
 	.csi_if               = 1,
 	.camera_type          = FRONT_CAMERA_2D,
 };
@@ -1437,7 +1434,6 @@ static struct msm_camera_sensor_flash_data flash_s5k5b3g = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_s5k5b3g = {
 	.mount_angle    = 90,
-	.sensor_reset   = 76,
 	.analog_en      = 82,
 	.digital_en     = 89,
 	.reg_1p2        = "8921_l12",
@@ -1448,7 +1444,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_s5k5b3g_data = {
 	.pdata                = &msm_camera_csi_device_data[1],
 	.flash_data           = &flash_s5k5b3g,
 	.sensor_platform_info = &sensor_board_info_s5k5b3g,
-	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
 	.csi_if               = 1,
 	.camera_type          = FRONT_CAMERA_2D,
 };
@@ -1463,8 +1458,6 @@ static struct i2c_board_info dw9714_actuator_i2c_info = {
 static struct msm_actuator_info dw9714_actuator_info = {
 	.board_info = &dw9714_actuator_i2c_info,
 	.bus_id = MSM_8960_GSBI4_QUP_I2C_BUS_ID,
-	.vcm_pwd = 0,
-	.vcm_enable = 1,
 };
 #endif
 
@@ -1495,8 +1488,6 @@ static struct msm_camera_sensor_flash_data flash_ov8820 = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_ov8820 = {
 	.mount_angle	= 90,
-	.sensor_reset   = 97,
-	.sensor_pwd     = 95,
 	.analog_en      = 54,
 	.digital_en     = 58,
 	.reg_1p8        = "8921_l29",
@@ -1508,7 +1499,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov8820_data = {
 	.pdata                = &msm_camera_csi_device_data[0],
 	.flash_data           = &flash_ov8820,
 	.sensor_platform_info = &sensor_board_info_ov8820,
-	.gpio_conf            = &msm_camif_gpio_conf_mclk0,
 	.csi_if               = 1,
 	.camera_type          = BACK_CAMERA_2D,
 #ifdef CONFIG_DW9714_ACT
@@ -1525,8 +1515,6 @@ static struct msm_camera_sensor_flash_data flash_ov7736 = {
 
 static struct msm_camera_sensor_platform_info sensor_board_info_ov7736 = {
 	.mount_angle  = 90,
-	.sensor_reset = 76,
-	.sensor_pwd   = 89,
 	.analog_en    = 82,
 	.reg_1p8      = "8921_l29",
 };
@@ -1536,7 +1524,6 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov7736_data = {
 	.pdata                = &msm_camera_csi_device_data[1],
 	.flash_data           = &flash_ov7736,
 	.sensor_platform_info = &sensor_board_info_ov7736,
-	.gpio_conf            = &msm_camif_gpio_conf_mclk1,
 	.csi_if               = 1,
 	.camera_type          = FRONT_CAMERA_2D,
 };
@@ -2549,11 +2536,14 @@ static __init void register_i2c_devices_from_dt(int bus)
 				break;
 
 			case 0x00280000: /* Aptina_MT9M114 */
+#ifdef CONFIG_MT9M114
 				info.platform_data =
 					&msm_camera_sensor_mt9m114_data;
+#endif
 				break;
 
 			case 0x00290000: /* Omnivision_OV8820 */
+#ifdef CONFIG_OV8820
 				prop = of_get_property(child, "1p8_via_gpio",
 						&len);
 				if (prop && (len == sizeof(u8)) && *(u8 *)prop)
@@ -2566,14 +2556,19 @@ static __init void register_i2c_devices_from_dt(int bus)
 						digital_en = 0;
 				info.platform_data =
 					&msm_camera_sensor_ov8820_data;
+#endif
 				break;
 			case 0x00290001: /* Omnivision_OV7736 */
+#ifdef CONFIG_OV7736
 				info.platform_data =
 					&msm_camera_sensor_ov7736_data;
+#endif
 				break;
 			case 0x00090007: /* Samsung_S5K5B3G */
+#ifdef CONFIG_S5K5B3G
 				info.platform_data =
 					&msm_camera_sensor_s5k5b3g_data;
+#endif
 				break;
 			}
 		}
