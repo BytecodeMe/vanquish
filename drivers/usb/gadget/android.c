@@ -1041,6 +1041,10 @@ struct mass_storage_function_config {
 	struct fsg_common *common;
 };
 
+/* sizes based on inquiry string requirements */
+static char ms_vendor[8];
+static char ms_product[16];
+
 static int mass_storage_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
@@ -1056,6 +1060,11 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	config->fsg.cdrom_lun_num = 0;
 	config->fsg.nluns = 1;
 	config->fsg.luns[0].removable = 1;
+	/* defaults that should be overriden by user space */
+	strncpy(ms_vendor, "Android", sizeof(ms_vendor));
+	strncpy(ms_product, "Android", sizeof(ms_product));
+	config->fsg.vendor_name = ms_vendor;
+	config->fsg.product_name = ms_product;
 
 	common = fsg_common_init(NULL, cdev, &config->fsg);
 	if (IS_ERR(common)) {
@@ -1114,8 +1123,48 @@ static DEVICE_ATTR(inquiry_string, S_IRUGO | S_IWUSR,
 					mass_storage_inquiry_show,
 					mass_storage_inquiry_store);
 
+static ssize_t mass_storage_vendor_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+
+	if ((size - 1) >= sizeof(ms_vendor))
+		return -EINVAL;
+
+	strncpy(ms_vendor, buf, sizeof(ms_vendor));
+	snprintf(config->common->inquiry_string,
+		sizeof config->common->inquiry_string,
+		"%-8s%-16s%04x", ms_vendor, ms_product, 1);
+
+	return size;
+}
+
+static DEVICE_ATTR(vendor, S_IWUSR, NULL, mass_storage_vendor_store);
+
+static ssize_t mass_storage_product_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+
+	if ((size - 1) >= sizeof(ms_product))
+		return -EINVAL;
+
+	strncpy(ms_product, buf, sizeof(ms_product));
+	snprintf(config->common->inquiry_string,
+		sizeof config->common->inquiry_string,
+		"%-8s%-16s%04x", ms_vendor, ms_product, 1);
+
+	return size;
+}
+
+static DEVICE_ATTR(product, S_IWUSR, NULL, mass_storage_product_store);
+
 static struct device_attribute *mass_storage_function_attributes[] = {
 	&dev_attr_inquiry_string,
+	&dev_attr_vendor,
+	&dev_attr_product,
 	NULL
 };
 
