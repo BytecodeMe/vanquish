@@ -287,6 +287,7 @@ struct pm8921_chg_chip {
 
 static int charging_disabled;
 static int thermal_mitigation;
+static int charge_rate;
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 static enum pm8921_alarm_state alarm_state = PM_BATT_ALARM_NORMAL;
@@ -651,6 +652,7 @@ static int pm_chg_iusbmax_set(struct pm8921_chg_chip *chip, int reg_val)
 		pr_err("bad mA=%d asked to set\n", reg_val);
 		return -EINVAL;
 	}
+	charge_rate = reg_val;
 	temp = reg_val << 2;
 	return pm_chg_masked_write(chip, PBL_ACCESS2, PM8921_CHG_IUSB_MASK,
 					 temp);
@@ -3658,6 +3660,36 @@ static DEVICE_ATTR(force_chg_usb_suspend, 0664,
 		force_chg_usb_suspend_show,
 		force_chg_usb_suspend_store);
 
+static ssize_t fsm_state_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	int fsm_state = 0;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		fsm_state = -ENODEV;
+		goto end;
+	}
+	fsm_state = pm_chg_get_fsm_state(the_chip);
+
+end:
+	return sprintf(buf, "%d\n", fsm_state);
+}
+
+static DEVICE_ATTR(fsm_state, 0444, fsm_state_show, NULL);
+
+static ssize_t charge_rate_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%d\n", charge_rate);
+}
+
+static DEVICE_ATTR(charge_rate, 0444, charge_rate_show, NULL);
+
+
+
 static ssize_t force_chg_auto_enable_store(struct device *dev,
 					   struct device_attribute *attr,
 					   const char *buf, size_t count)
@@ -4037,6 +4069,19 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	}
 
 	rc = device_create_file(&pdev->dev,
+				&dev_attr_fsm_state);
+	if (rc) {
+		pr_err("couldn't create fsm_state\n");
+		goto free_chip;
+	}
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_charge_rate);
+	if (rc) {
+		pr_err("couldn't create charge_rate\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
 				&dev_attr_force_chg_auto_enable);
 	if (rc) {
 		pr_err("couldn't create force_chg_auto_enable\n");
@@ -4246,6 +4291,8 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 	struct pm8921_chg_chip *chip = platform_get_drvdata(pdev);
 
 	device_remove_file(&pdev->dev, &dev_attr_force_chg_usb_suspend);
+	device_remove_file(&pdev->dev, &dev_attr_fsm_state);
+	device_remove_file(&pdev->dev, &dev_attr_charge_rate);
 	unregister_reboot_notifier(&pm8921_charging_reboot_notifier);
 	free_irqs(chip);
 	platform_set_drvdata(pdev, NULL);
