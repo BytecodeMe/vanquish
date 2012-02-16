@@ -964,6 +964,8 @@ static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
 	   is writing directly to fb0, the framebuffer pitch
 	   also needs to be 32 pixel aligned */
 
+	xres = xres + msm_fb_pdata->fb_xpad;
+
 	if (fb_index == 0)
 		return ALIGN(xres, 32) * bpp;
 	else
@@ -973,7 +975,7 @@ static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
 static int msm_fb_register(struct msm_fb_data_type *mfd)
 {
 	int ret = -ENODEV;
-	int bpp;
+	int bpp, fb_size, fb_esize;
 	struct msm_panel_info *panel_info = &mfd->panel_info;
 	struct fb_info *fbi = mfd->fbi;
 	struct fb_fix_screeninfo *fix;
@@ -1117,16 +1119,16 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fix->line_length = msm_fb_line_length(mfd->index, panel_info->xres,
 					      bpp);
 	/* calculate smem_len based on max size of two supplied modes */
-	fix->smem_len = roundup(MAX(msm_fb_line_length(mfd->index,
-					       panel_info->xres,
-					       bpp) *
-			    panel_info->yres * mfd->fb_page,
-			    msm_fb_line_length(mfd->index,
-					       panel_info->mode2_xres,
-					       bpp) *
-			    panel_info->mode2_yres * mfd->fb_page), PAGE_SIZE);
 
+	fb_size  = (msm_fb_line_length(mfd->index, panel_info->xres, bpp) *
+			(panel_info->yres + msm_fb_pdata->fb_ypad) *
+			mfd->fb_page);
+	fb_esize = (msm_fb_line_length(mfd->index, panel_info->mode2_xres, bpp) *
+			(panel_info->mode2_yres + msm_fb_pdata->fb_ypad) *
+			mfd->fb_page);
 
+	fix->smem_len = roundup(MAX(fb_size, fb_esize), PAGE_SIZE);
+	var->yoffset = (panel_info->yres + msm_fb_pdata->fb_ypad);
 
 	mfd->var_xres = panel_info->xres;
 	mfd->var_yres = panel_info->yres;
