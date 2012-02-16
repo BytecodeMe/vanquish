@@ -86,6 +86,8 @@ DEFINE_MUTEX(hdmi_msm_state_mutex);
 EXPORT_SYMBOL(hdmi_msm_state_mutex);
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
 
+static void hdmi_msm_dump_regs(const char *prefix);
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_enable(void);
 #else
@@ -797,6 +799,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		DEV_INFO("HDMI HPD: QDSP OFF\n");
 		kobject_uevent_env(external_common_state->uevent_kobj,
 				   KOBJ_CHANGE, envp);
+		switch_set_state(&external_common_state->sdev, 0);
+		DEV_INFO("Hdmi state switch to %d: %s\n",
+			external_common_state->sdev.state,  __func__);
 		if (hpd_state) {
 			hdmi_msm_read_edid();
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
@@ -818,6 +823,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 				KOBJ_CHANGE, envp);
+			switch_set_state(&external_common_state->sdev, 1);
+			DEV_INFO("Hdmi state switch to %d: %s\n",
+				external_common_state->sdev.state, __func__);
 #endif
 		} else {
 			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n"
@@ -827,6 +835,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 #ifdef SUPPORT_ANDROID_HPD_SWITCH
 			switch_set_state(&hpd_switch, 0);
 #endif
+			switch_set_state(&external_common_state->sdev, 0);
+			DEV_INFO("Hdmi state switch to %d: %s\n",
+				external_common_state->sdev.state,  __func__);
 		}
 	}
 
@@ -1081,6 +1092,9 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 			DEV_INFO("HDMI HPD:QDSP OFF\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 			KOBJ_CHANGE, envp);
+			switch_set_state(&external_common_state->sdev, 0);
+			DEV_INFO("Hdmi state switch to %d: %s\n",
+				external_common_state->sdev.state,  __func__);
 			mutex_lock(&hdcp_auth_state_mutex);
 			hdmi_msm_state->full_auth_done = FALSE;
 			mutex_unlock(&hdcp_auth_state_mutex);
@@ -2936,8 +2950,12 @@ static void hdmi_msm_hdcp_enable(void)
 	uint32 found_repeater = 0x0;
 	char *envp[2];
 
-	if (!hdmi_msm_has_hdcp())
+	if (!hdmi_msm_has_hdcp()) {
+		switch_set_state(&external_common_state->sdev, 1);
+		DEV_INFO("Hdmi state switch to %d: %s\n",
+			external_common_state->sdev.state, __func__);
 		return;
+	}
 
 	mutex_lock(&hdmi_msm_state_mutex);
 	hdmi_msm_state->hdcp_activating = TRUE;
@@ -3012,6 +3030,9 @@ static void hdmi_msm_hdcp_enable(void)
 		kobject_uevent_env(external_common_state->uevent_kobj,
 		    KOBJ_CHANGE, envp);
 	}
+	switch_set_state(&external_common_state->sdev, 1);
+	DEV_INFO("Hdmi state switch to %d: %s\n",
+		external_common_state->sdev.state, __func__);
 	return;
 
 error:
@@ -3031,6 +3052,9 @@ error:
 			queue_work(hdmi_work_queue,
 			    &hdmi_msm_state->hdcp_reauth_work);
 	}
+	switch_set_state(&external_common_state->sdev, 0);
+	DEV_INFO("Hdmi state switch to %d: %s\n",
+		external_common_state->sdev.state, __func__);
 }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
@@ -3345,14 +3369,23 @@ int hdmi_audio_packet_enable(bool on)
 }
 EXPORT_SYMBOL(hdmi_audio_packet_enable);
 
-static void hdmi_msm_audio_info_setup(boolean enabled, int num_of_channels,
-	int level_shift, boolean down_mix)
+
+/* TO-DO: return -EINVAL when num_of_channels and channel_allocation
+ *  does not match CEA 861-D spec.
+*/
+int hdmi_msm_audio_info_setup(bool enabled, u32 num_of_channels,
+	u32 channel_allocation, u32 level_shift, bool down_mix)
 {
-	uint32 channel_allocation = 0;	/* Default to FR,FL */
 	uint32 channel_count = 1;	/* Default to 2 channels
 					   -> See Table 17 in CEA-D spec */
 	uint32 check_sum, audio_info_0_reg, audio_info_1_reg;
 	uint32 audio_info_ctrl_reg;
+	u32 aud_pck_ctrl_2_reg;
+	u32 layout;
+
+	layout = (MSM_HDMI_AUDIO_CHANNEL_2 == num_of_channels) ? 0 : 1;
+	aud_pck_ctrl_2_reg = 1 | (layout << 1);
+	HDMI_OUTP(0x00044, aud_pck_ctrl_2_reg);
 
 	/* Please see table 20 Audio InfoFrame in HDMI spec
 	   FL  = front left
@@ -3375,6 +3408,7 @@ static void hdmi_msm_audio_info_setup(boolean enabled, int num_of_channels,
 	if (enabled) {
 		switch (num_of_channels) {
 		case MSM_HDMI_AUDIO_CHANNEL_2:
+			channel_allocation = 0;	/* Default to FR,FL */
 			break;
 		case MSM_HDMI_AUDIO_CHANNEL_4:
 			channel_count = 3;
@@ -3392,6 +3426,9 @@ static void hdmi_msm_audio_info_setup(boolean enabled, int num_of_channels,
 			channel_allocation = 0x1f;
 			break;
 		default:
+			pr_err("%s(): Unsupported num_of_channels = %u\n",
+					__func__, num_of_channels);
+			return -EINVAL;
 			break;
 		}
 
@@ -3447,7 +3484,14 @@ static void hdmi_msm_audio_info_setup(boolean enabled, int num_of_channels,
 	}
 	/* HDMI_INFOFRAME_CTRL0[0x002C] */
 	HDMI_OUTP(0x002C, audio_info_ctrl_reg);
+
+
+	hdmi_msm_dump_regs("HDMI-AUDIO-ON: ");
+
+	return 0;
+
 }
+EXPORT_SYMBOL(hdmi_msm_audio_info_setup);
 
 static void hdmi_msm_en_gc_packet(boolean av_mute_is_requested)
 {
@@ -3553,7 +3597,7 @@ static void hdmi_msm_audio_setup(void)
 	hdmi_msm_audio_acr_setup(TRUE,
 		external_common_state->video_resolution,
 		msm_hdmi_sample_rate, channels);
-	hdmi_msm_audio_info_setup(TRUE, channels, 0, FALSE);
+	hdmi_msm_audio_info_setup(TRUE, channels, 0, 0, FALSE);
 
 	/* Turn on Audio FIFO and SAM DROP ISR */
 	HDMI_OUTP(0x02CC, HDMI_INP(0x02CC) | BIT(1) | BIT(3));
@@ -3584,7 +3628,7 @@ static int hdmi_msm_audio_off(void)
 			return -ETIMEDOUT;
 		}
 	}
-	hdmi_msm_audio_info_setup(FALSE, 0, 0, FALSE);
+	hdmi_msm_audio_info_setup(FALSE, 0, 0, 0, FALSE);
 	hdmi_msm_audio_acr_setup(FALSE, 0, 0, 0);
 	DEV_INFO("HDMI Audio: Disabled\n");
 	return 0;
@@ -4117,7 +4161,7 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 			return rc;
 		}
 	}
-	hdmi_msm_audio_info_setup(TRUE, 0, 0, FALSE);
+	hdmi_msm_audio_info_setup(TRUE, 0, 0, 0, FALSE);
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	hdmi_msm_state->panel_power_on = TRUE;
@@ -4341,6 +4385,10 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	hpd_switch.name = "hdmi";
 	switch_dev_register(&hpd_switch);
 #endif
+	/* Initialize hdmi node and register with switch driver */
+	external_common_state->sdev.name = "hdmi";
+	if (switch_dev_register(&external_common_state->sdev) < 0)
+		DEV_ERR("Hdmi switch registration failed\n");
 
 	return 0;
 
@@ -4374,6 +4422,10 @@ static int __devexit hdmi_msm_remove(struct platform_device *pdev)
 	DEV_INFO("HDMI device: remove\n");
 
 	DEV_INFO("HDMI HPD: OFF\n");
+
+	/* Unregister hdmi node from switch driver */
+	switch_dev_unregister(&external_common_state->sdev);
+
 	hdmi_msm_hpd_off();
 	free_irq(hdmi_msm_state->irq, NULL);
 
@@ -4413,10 +4465,13 @@ static int hdmi_msm_hpd_feature(int on)
 	int rc = 0;
 
 	DEV_INFO("%s: %d\n", __func__, on);
-	if (on)
+	if (on) {
 		rc = hdmi_msm_hpd_on(true);
-	else
+	} else {
 		hdmi_msm_hpd_off();
+		/* Set HDMI switch node to 0 on HPD feature disable */
+		switch_set_state(&external_common_state->sdev, 0);
+	}
 
 	return rc;
 }

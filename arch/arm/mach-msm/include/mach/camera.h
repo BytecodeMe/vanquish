@@ -19,6 +19,7 @@
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
 #include <linux/wakelock.h>
+#include <linux/regulator/consumer.h>
 #include "linux/types.h"
 
 #include <mach/board.h>
@@ -74,7 +75,7 @@ enum vfe_resp_msg {
 	VFE_MSG_STATS_AEC,
 	VFE_MSG_STATS_AF,
 	VFE_MSG_STATS_AWB,
-	VFE_MSG_STATS_RS,
+	VFE_MSG_STATS_RS, /* 10 */
 	VFE_MSG_STATS_CS,
 	VFE_MSG_STATS_IHIST,
 	VFE_MSG_STATS_SKIN,
@@ -84,9 +85,13 @@ enum vfe_resp_msg {
 	VFE_MSG_SYNC_TIMER2,
 	VFE_MSG_COMMON,
 	VFE_MSG_V32_START,
-	VFE_MSG_V32_START_RECORDING,
+	VFE_MSG_V32_START_RECORDING, /* 20 */
 	VFE_MSG_V32_CAPTURE,
 	VFE_MSG_OUTPUT_IRQ,
+	VFE_MSG_V2X_PREVIEW,
+	VFE_MSG_V2X_CAPTURE,
+	VFE_MSG_OUTPUT_PRIMARY,
+	VFE_MSG_OUTPUT_SECONDARY,
 };
 
 enum vpe_resp_msg {
@@ -676,7 +681,15 @@ void msm_isp_sync_free(void *ptr);
 
 int msm_cam_clk_enable(struct device *dev, struct msm_cam_clk_info *clk_info,
 		struct clk **clk_ptr, int num_clk, int enable);
-int msm_sensor_probe_on(struct device *);
-int msm_sensor_probe_off(struct device *);
 int msm_cam_core_reset(void);
+
+int msm_camera_config_vreg(struct device *dev, struct camera_vreg_t *cam_vreg,
+		int num_vreg, struct regulator **reg_ptr, int config);
+int msm_camera_enable_vreg(struct device *dev, struct camera_vreg_t *cam_vreg,
+		int num_vreg, struct regulator **reg_ptr, int enable);
+
+int msm_camera_config_gpio_table
+	(struct msm_camera_sensor_info *sinfo, int gpio_en);
+int msm_camera_request_gpio_table
+	(struct msm_camera_sensor_info *sinfo, int gpio_en);
 #endif
