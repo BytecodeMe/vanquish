@@ -23,6 +23,7 @@
 #include <linux/suspend.h>
 #include <linux/percpu.h>
 #include <linux/interrupt.h>
+#include <linux/nmi.h>
 #include <mach/msm_iomap.h>
 #include <asm/mach-types.h>
 #include <mach/scm.h>
@@ -133,8 +134,21 @@ static int panic_wdog_handler(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
+static int touch_nmi_wdog_handler(struct notifier_block *this,
+		unsigned long event, void *ptr)
+{
+	if (!enable)
+		return NOTIFY_DONE;
+	__raw_writel(1, msm_tmr0_base + WDT0_RST);
+	return NOTIFY_DONE;
+}
+
 static struct notifier_block panic_blk = {
 	.notifier_call	= panic_wdog_handler,
+};
+
+static struct notifier_block touch_nmi_blk = {
+	.notifier_call  = touch_nmi_wdog_handler,
 };
 
 static int wdog_enable_set(const char *val, struct kernel_param *kp)
@@ -167,6 +181,9 @@ static int wdog_enable_set(const char *val, struct kernel_param *kp)
 			enable = 0;
 			atomic_notifier_chain_unregister(&panic_notifier_list,
 			       &panic_blk);
+			atomic_notifier_chain_unregister(
+					&touch_watchdog_notifier_head,
+					&touch_nmi_blk);
 			cancel_delayed_work(&dogwork_struct);
 			/* may be suspended after the first write above */
 			__raw_writel(0, msm_tmr0_base + WDT0_EN);
@@ -315,6 +332,8 @@ static void init_watchdog_work(struct work_struct *work)
 	__raw_writel(1, msm_tmr0_base + WDT0_EN);
 	__raw_writel(1, msm_tmr0_base + WDT0_RST);
 	last_pet = sched_clock();
+	atomic_notifier_chain_register(&touch_watchdog_notifier_head,
+			&touch_nmi_blk);
 
 	printk(KERN_INFO "MSM Watchdog Initialized\n");
 
