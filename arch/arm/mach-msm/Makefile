@@ -147,20 +147,11 @@ obj-$(CONFIG_MSM_QDSP6) += qdsp6/
 obj-$(CONFIG_MSM8X60_AUDIO) += qdsp6v2/
 obj-$(CONFIG_MSM_AUDIO_QDSP6) += qdsp6v2/
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
-ifdef CONFIG_PM
-	obj-$(CONFIG_ARCH_MSM8960) += pm-8x60.o
-	obj-$(CONFIG_ARCH_MSM8X60) += pm-8x60.o
-	obj-$(CONFIG_ARCH_MSM9615) += pm-8x60.o
-	obj-$(CONFIG_ARCH_QSD8X50) += pm2.o
-	obj-$(CONFIG_ARCH_MSM7X30) += pm2.o
-	obj-$(CONFIG_ARCH_MSM7X27) += pm2.o
-	obj-$(CONFIG_ARCH_MSM7X27A) += pm2.o
-	obj-$(CONFIG_ARCH_MSM7X25) += pm.o
-	obj-$(CONFIG_ARCH_MSM7X01A) += pm.o
-	obj-y += pm-boot.o
-else
-	obj-y += no-pm.o
-endif
+obj-$(CONFIG_PM) += pm-boot.o
+obj-$(CONFIG_MSM_PM8X60) += pm-8x60.o
+obj-$(CONFIG_MSM_PM2) += pm2.o
+obj-$(CONFIG_MSM_PM) += pm.o
+obj-$(CONFIG_MSM_NOPM) += no-pm.o
 
 obj-$(CONFIG_MSM_SPM_V1) += spm.o
 obj-$(CONFIG_MSM_SPM_V2) += spm-v2.o spm_devices.o
@@ -244,7 +235,7 @@ obj-$(CONFIG_ARCH_MSM8960) += devices-8960.o
 obj-$(CONFIG_ARCH_APQ8064) += devices-8960.o devices-8064.o
 board-8960-all-objs += board-8960.o board-8960-camera.o board-8960-display.o board-8960-pmic.o board-8960-storage.o board-8960-gpiomux.o
 board-8930-all-objs += board-8930.o board-8930-camera.o board-8930-display.o board-8930-pmic.o board-8930-storage.o board-8930-gpiomux.o
-board-8064-all-objs += board-8064.o board-8064-pmic.o board-8064-storage.o board-8064-gpiomux.o
+board-8064-all-objs += board-8064.o board-8064-pmic.o board-8064-storage.o board-8064-gpiomux.o board-8064-camera.o
 obj-$(CONFIG_MACH_MSM8960_SIM) += board-8960-all.o board-8960-regulator.o
 obj-$(CONFIG_MACH_MSM8960_RUMI3) += board-8960-all.o board-8960-regulator.o
 obj-$(CONFIG_MACH_MSM8960_CDP) += board-8960-all.o board-8960-regulator.o
@@ -322,7 +313,8 @@ obj-y	+= gpio.o
 endif
 endif
 
-obj-$(CONFIG_MSM_SLEEP_STATS) += msm_rq_stats.o idle_stats.o idle_stats_device.o
+obj-$(CONFIG_MSM_SLEEP_STATS) += msm_rq_stats.o idle_stats.o
+obj-$(CONFIG_MSM_SLEEP_STATS_DEVICE) += idle_stats_device.o
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ) += msm_show_resume_irq.o
 obj-$(CONFIG_BT_MSM_PINTEST)  += btpintest.o
 obj-$(CONFIG_MSM_FAKE_BATTERY) += fish_battery.o
