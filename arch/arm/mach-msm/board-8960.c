@@ -87,7 +87,7 @@
 #include "devices-msm8x60.h"
 #include "spm.h"
 #include "board-8960.h"
-#include <mach/pm.h>
+#include "pm.h"
 #include <mach/cpuidle.h>
 #include "rpm_resources.h"
 #include "mpm.h"
@@ -1529,6 +1529,12 @@ static struct msm_rpm_platform_data msm_rpm_data = {
 	.msm_apps_ipc_rpm_val = 4,
 };
 
+static struct msm_pm_sleep_status_data msm_pm_slp_sts_data = {
+	.base_addr = MSM_ACC0_BASE + 0x08,
+	.cpu_offset = MSM_ACC1_BASE - MSM_ACC0_BASE,
+	.mask = 1UL << 13,
+};
+
 static struct ks8851_pdata spi_eth_pdata = {
 	.irq_gpio = KS8851_IRQ_GPIO,
 	.rst_gpio = KS8851_RST_GPIO,
@@ -1574,14 +1580,6 @@ static struct tsens_platform_data msm_tsens_pdata  = {
 		.tsens_factor		= 1000,
 		.hw_type		= MSM_8960,
 		.tsens_num_sensor	= 5,
-};
-
-static struct platform_device msm_tsens_device = {
-	.name	= "tsens8960-tm",
-	.id	= -1,
-	.dev	= {
-		.platform_data = &msm_tsens_pdata,
-	},
 };
 
 #ifdef CONFIG_MSM_FAKE_BATTERY
@@ -1732,6 +1730,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
 	&msm_pcm,
+	&msm_multi_ch_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
 	&msm_cpudai1,
@@ -1783,6 +1782,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_device_hsusb_host,
 	&android_usb_device,
 	&msm_pcm,
+	&msm_multi_ch_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
 	&msm_cpudai1,
@@ -1821,7 +1821,6 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_bus_mm_fabric,
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
-	&msm_tsens_device,
 };
 
 static void __init msm8960_i2c_init(void)
@@ -2186,6 +2185,7 @@ static void __init msm8960_sim_init(void)
 		&msm8960_device_watchdog.dev.platform_data;
 
 	wdog_pdata->bark_time = 15000;
+	msm_tsens_early_init(&msm_tsens_pdata);
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
@@ -2218,10 +2218,12 @@ static void __init msm8960_sim_init(void)
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
+	msm_pm_init_sleep_status_data(&msm_pm_slp_sts_data);
 }
 
 static void __init msm8960_rumi3_init(void)
 {
+	msm_tsens_early_init(&msm_tsens_pdata);
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
@@ -2249,6 +2251,7 @@ static void __init msm8960_rumi3_init(void)
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
+	msm_pm_init_sleep_status_data(&msm_pm_slp_sts_data);
 }
 
 static void __init msm8960_cdp_init(void)
@@ -2256,6 +2259,7 @@ static void __init msm8960_cdp_init(void)
 	if (meminfo_init(SYS_MEMORY, SZ_256M) < 0)
 		pr_err("meminfo_init() failed!\n");
 
+	msm_tsens_early_init(&msm_tsens_pdata);
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
@@ -2324,6 +2328,7 @@ static void __init msm8960_cdp_init(void)
 				msm_pm_data);
 	change_memory_power = &msm8960_change_memory_power;
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
+	msm_pm_init_sleep_status_data(&msm_pm_slp_sts_data);
 	if (PLATFORM_IS_CHARM25())
 		platform_add_devices(mdm_devices, ARRAY_SIZE(mdm_devices));
 }

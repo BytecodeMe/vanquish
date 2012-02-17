@@ -843,6 +843,33 @@ skip_phy_resume:
 }
 #endif
 
+static int msm_otg_notify_chg_type(struct msm_otg *motg)
+{
+	static int charger_type;
+	/*
+	 * TODO
+	 * Unify OTG driver charger types and power supply charger types
+	 */
+	if (charger_type == motg->chg_type)
+		return 0;
+
+	if (motg->chg_type == USB_SDP_CHARGER)
+		charger_type = POWER_SUPPLY_TYPE_USB;
+	else if (motg->chg_type == USB_CDP_CHARGER)
+		charger_type = POWER_SUPPLY_TYPE_USB_CDP;
+	else if (motg->chg_type == USB_DCP_CHARGER)
+		charger_type = POWER_SUPPLY_TYPE_USB_DCP;
+	else if ((motg->chg_type == USB_ACA_DOCK_CHARGER ||
+		motg->chg_type == USB_ACA_A_CHARGER ||
+		motg->chg_type == USB_ACA_B_CHARGER ||
+		motg->chg_type == USB_ACA_C_CHARGER))
+		charger_type = POWER_SUPPLY_TYPE_USB_ACA;
+	else
+		charger_type = POWER_SUPPLY_TYPE_BATTERY;
+
+	return pm8921_set_usb_power_supply_type(charger_type);
+}
+
 static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 {
 	if ((motg->chg_type == USB_ACA_DOCK_CHARGER ||
@@ -851,6 +878,11 @@ static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 		motg->chg_type == USB_ACA_C_CHARGER) &&
 			mA > IDEV_ACA_CHG_LIMIT)
 		mA = IDEV_ACA_CHG_LIMIT;
+
+	if (msm_otg_notify_chg_type(motg))
+		dev_err(motg->otg.dev,
+			"Failed notifying %d charger type to PMIC\n",
+							motg->chg_type);
 
 	if (motg->cur_power == mA)
 		return;
@@ -1815,7 +1847,6 @@ static void msm_otg_sm_work(struct work_struct *w)
 					otg->state = OTG_STATE_B_PERIPHERAL;
 					break;
 				case USB_SDP_CHARGER:
-					msm_otg_notify_charger(motg, IUNIT);
 					msm_otg_start_peripheral(otg, 1);
 					otg->state = OTG_STATE_B_PERIPHERAL;
 					break;
@@ -2519,7 +2550,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		goto free_regs;
 	}
 
-	motg->xo_handle = msm_xo_get(MSM_XO_TCXO_D0, "usb");
+	motg->xo_handle = msm_xo_get(MSM_XO_CXO, "usb");
 	if (IS_ERR(motg->xo_handle)) {
 		dev_err(&pdev->dev, "%s not able to get the handle "
 			"to vote for TCXO D0 buffer\n", __func__);

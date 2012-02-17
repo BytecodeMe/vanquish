@@ -634,6 +634,7 @@ static struct clk_ops clk_ops_rcg_8960 = {
 	.reset = rcg_clk_reset,
 	.is_local = local_clk_is_local,
 	.get_parent = rcg_clk_get_parent,
+	.set_flags = rcg_clk_set_flags,
 };
 
 static struct clk_ops clk_ops_branch = {
@@ -649,6 +650,7 @@ static struct clk_ops clk_ops_branch = {
 	.get_parent = branch_clk_get_parent,
 	.set_parent = branch_clk_set_parent,
 	.handoff = branch_clk_handoff,
+	.set_flags = branch_clk_set_flags,
 };
 
 static struct clk_ops clk_ops_reset = {
@@ -663,6 +665,8 @@ static struct branch_clk gmem_axi_clk = {
 		.en_mask = BIT(24),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 6,
+		.retain_reg = MAXI_EN2_REG,
+		.retain_mask = BIT(21),
 	},
 	.c = {
 		.dbg_name = "gmem_axi_clk",
@@ -699,6 +703,8 @@ static struct branch_clk imem_axi_clk = {
 		.reset_mask = BIT(10),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 7,
+		.retain_reg = MAXI_EN2_REG,
+		.retain_mask = BIT(10),
 	},
 	.c = {
 		.dbg_name = "imem_axi_clk",
@@ -729,6 +735,8 @@ static struct branch_clk vcodec_axi_b_clk = {
 		.hwcg_mask = BIT(22),
 		.halt_reg = DBG_BUS_VEC_I_REG,
 		.halt_bit = 25,
+		.retain_reg = MAXI_EN4_REG,
+		.retain_mask = BIT(21),
 	},
 	.c = {
 		.dbg_name = "vcodec_axi_b_clk",
@@ -745,6 +753,8 @@ static struct branch_clk vcodec_axi_a_clk = {
 		.hwcg_mask = BIT(24),
 		.halt_reg = DBG_BUS_VEC_I_REG,
 		.halt_bit = 26,
+		.retain_reg = MAXI_EN4_REG,
+		.retain_mask = BIT(10),
 	},
 	.c = {
 		.dbg_name = "vcodec_axi_a_clk",
@@ -764,6 +774,8 @@ static struct branch_clk vcodec_axi_clk = {
 		.reset_mask = BIT(4)|BIT(5)|BIT(7),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 3,
+		.retain_reg = MAXI_EN2_REG,
+		.retain_mask = BIT(28),
 	},
 	.c = {
 		.dbg_name = "vcodec_axi_clk",
@@ -799,6 +811,8 @@ static struct branch_clk mdp_axi_clk = {
 		.reset_mask = BIT(13),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 8,
+		.retain_reg = MAXI_EN_REG,
+		.retain_mask = BIT(0),
 	},
 	.c = {
 		.dbg_name = "mdp_axi_clk",
@@ -817,6 +831,8 @@ static struct branch_clk rot_axi_clk = {
 		.reset_mask = BIT(6),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 2,
+		.retain_reg = MAXI_EN3_REG,
+		.retain_mask = BIT(10),
 	},
 	.c = {
 		.dbg_name = "rot_axi_clk",
@@ -835,6 +851,9 @@ static struct branch_clk vpe_axi_clk = {
 		.reset_mask = BIT(15),
 		.halt_reg = DBG_BUS_VEC_E_REG,
 		.halt_bit = 1,
+		.retain_reg = MAXI_EN3_REG,
+		.retain_mask = BIT(21),
+
 	},
 	.c = {
 		.dbg_name = "vpe_axi_clk",
@@ -1205,6 +1224,8 @@ static struct branch_clk vfe_p_clk = {
 		.reset_mask = BIT(0),
 		.halt_reg = DBG_BUS_VEC_F_REG,
 		.halt_bit = 14,
+		.retain_reg = AHB_EN2_REG,
+		.retain_mask = BIT(0),
 	},
 	.c = {
 		.dbg_name = "vfe_p_clk",
@@ -3138,6 +3159,8 @@ static struct rcg_clk dsi1_byte_clk = {
 		.reset_mask = BIT(7),
 		.halt_reg = DBG_BUS_VEC_B_REG,
 		.halt_bit = 21,
+		.retain_reg = DSI1_BYTE_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = DSI1_BYTE_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3160,6 +3183,8 @@ static struct rcg_clk dsi2_byte_clk = {
 		.reset_mask = BIT(25),
 		.halt_reg = DBG_BUS_VEC_B_REG,
 		.halt_bit = 20,
+		.retain_reg = DSI2_BYTE_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = DSI2_BYTE_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3267,6 +3292,8 @@ static struct rcg_clk gfx2d0_clk = {
 		.reset_mask = BIT(14),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 9,
+		.retain_reg = GFX2D0_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = GFX2D0_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3309,6 +3336,8 @@ static struct rcg_clk gfx2d1_clk = {
 		.reset_mask = BIT(13),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 14,
+		.retain_reg = GFX2D1_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = GFX2D1_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3433,6 +3462,8 @@ static struct rcg_clk gfx3d_clk = {
 		.reset_mask = BIT(12),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 4,
+		.retain_reg = GFX3D_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = GFX3D_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3573,6 +3604,8 @@ static struct rcg_clk ijpeg_clk = {
 		.reset_mask = BIT(9),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 24,
+		.retain_reg = IJPEG_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = IJPEG_NS_REG,
 	.md_reg = IJPEG_MD_REG,
@@ -3615,6 +3648,8 @@ static struct rcg_clk jpegd_clk = {
 		.reset_mask = BIT(19),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 19,
+		.retain_reg = JPEGD_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = JPEGD_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3691,6 +3726,8 @@ static struct rcg_clk mdp_clk = {
 		.reset_mask = BIT(21),
 		.halt_reg = DBG_BUS_VEC_C_REG,
 		.halt_bit = 10,
+		.retain_reg = MDP_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = MDP_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3713,6 +3750,8 @@ static struct branch_clk lut_mdp_clk = {
 		.en_mask = BIT(0),
 		.halt_reg = DBG_BUS_VEC_I_REG,
 		.halt_bit = 13,
+		.retain_reg = MDP_LUT_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.parent = &mdp_clk.c,
 	.c = {
@@ -3799,6 +3838,8 @@ static struct rcg_clk rot_clk = {
 		.reset_mask = BIT(2),
 		.halt_reg = DBG_BUS_VEC_C_REG,
 		.halt_bit = 15,
+		.retain_reg = ROT_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = ROT_NS_REG,
 	.root_en_mask = BIT(2),
@@ -3909,6 +3950,8 @@ static struct rcg_clk tv_src_clk = {
 	.b = {
 		.ctl_reg = TV_CC_REG,
 		.halt_check = NOCHECK,
+		.retain_reg = TV_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.md_reg = TV_MD_REG,
 	.root_en_mask = BIT(2),
@@ -3965,6 +4008,8 @@ static struct branch_clk mdp_tv_clk = {
 		.reset_mask = BIT(4),
 		.halt_reg = DBG_BUS_VEC_D_REG,
 		.halt_bit = 12,
+		.retain_reg = TV_CC2_REG,
+		.retain_mask = BIT(10),
 	},
 	.parent = &tv_src_clk.c,
 	.c = {
@@ -4054,6 +4099,8 @@ static struct rcg_clk vcodec_clk = {
 		.reset_mask = BIT(6),
 		.halt_reg = DBG_BUS_VEC_C_REG,
 		.halt_bit = 29,
+		.retain_reg = VCODEC_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = VCODEC_NS_REG,
 	.root_en_mask = BIT(2),
@@ -4098,6 +4145,8 @@ static struct rcg_clk vpe_clk = {
 		.reset_mask = BIT(17),
 		.halt_reg = DBG_BUS_VEC_A_REG,
 		.halt_bit = 28,
+		.retain_reg = VPE_CC_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = VPE_NS_REG,
 	.root_en_mask = BIT(2),
@@ -4166,6 +4215,8 @@ static struct rcg_clk vfe_clk = {
 		.halt_reg = DBG_BUS_VEC_B_REG,
 		.halt_bit = 6,
 		.en_mask = BIT(0),
+		.retain_reg = VFE_CC2_REG,
+		.retain_mask = BIT(31),
 	},
 	.ns_reg = VFE_NS_REG,
 	.md_reg = VFE_MD_REG,
@@ -4873,6 +4924,8 @@ static struct measure_clk measure_clk = {
 
 static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("cxo",		cxo_clk.c,		NULL),
+	CLK_LOOKUP("cxo",		cxo_clk.c,		"wcnss_wlan.0"),
+	CLK_LOOKUP("cxo",		cxo_clk.c,		"pil_riva"),
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),
@@ -5110,6 +5163,8 @@ static struct clk_lookup msm_clocks_8064[] = {
 
 static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
 	CLK_LOOKUP("cxo",		cxo_clk.c,		NULL),
+	CLK_LOOKUP("cxo",		cxo_clk.c,		"wcnss_wlan.0"),
+	CLK_LOOKUP("cxo",		cxo_clk.c,		"pil_riva"),
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),

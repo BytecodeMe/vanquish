@@ -15,9 +15,9 @@
 #include <asm/cacheflush.h>
 #include <asm/vfp.h>
 
-#include <mach/pm.h>
 #include <mach/msm_rtb.h>
 
+#include "pm.h"
 #include "qdss.h"
 #include "spm.h"
 
@@ -71,8 +71,13 @@ int platform_cpu_kill(unsigned int cpu)
 {
 	struct completion *killed =
 		&per_cpu(msm_hotplug_devices, cpu).cpu_killed;
+	int ret;
 
-	return wait_for_completion_timeout(killed, HZ * 5);
+	ret = wait_for_completion_timeout(killed, HZ * 5);
+	if (ret)
+		return ret;
+
+	return msm_pm_wait_cpu_shutdown(cpu);
 }
 
 /*

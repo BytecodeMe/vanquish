@@ -47,6 +47,7 @@
 #include <asm/hardware/gic.h>
 #include <asm/mach/mmc.h>
 
+#include <linux/gpio.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_spi.h>
@@ -59,7 +60,6 @@
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/rpm.h>
-#include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
@@ -88,7 +88,7 @@
 #include "spm.h"
 #include "board-8960.h"
 
-#include <mach/pm.h>
+#include "pm.h"
 #include <mach/cpuidle.h>
 #include "rpm_resources.h"
 #include "mpm.h"
@@ -528,45 +528,6 @@ static struct msm_gpiomux_config msm8960_cam_common_configs[] = {
 			[GPIOMUX_SUSPENDED] = &cam_settings[0],
 		},
 	},
-};
-
-static uint16_t msm_cam_gpio_2d_tbl_mclk0[] = {
-	5, /*CAMIF_MCLK*/
-};
-
-static uint16_t msm_cam_gpio_2d_tbl_mclk1[] = {
-	4, /*CAMIF_MCLK*/
-};
-
-static struct msm_gpiomux_config msm8960_cam_2d_configs[] = {
-	{
-		.gpio = 18,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[3],
-			[GPIOMUX_SUSPENDED] = &cam_settings[8],
-		},
-	},
-	{
-		.gpio = 19,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[3],
-			[GPIOMUX_SUSPENDED] = &cam_settings[8],
-		},
-	},
-};
-
-struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk0 = {
-	.cam_gpiomux_conf_tbl = msm8960_cam_2d_configs,
-	.cam_gpiomux_conf_tbl_size = ARRAY_SIZE(msm8960_cam_2d_configs),
-	.cam_gpio_tbl = msm_cam_gpio_2d_tbl_mclk0,
-	.cam_gpio_tbl_size = ARRAY_SIZE(msm_cam_gpio_2d_tbl_mclk0),
-};
-
-struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk1 = {
-	.cam_gpiomux_conf_tbl = msm8960_cam_2d_configs,
-	.cam_gpiomux_conf_tbl_size = ARRAY_SIZE(msm8960_cam_2d_configs),
-	.cam_gpio_tbl = msm_cam_gpio_2d_tbl_mclk1,
-	.cam_gpio_tbl_size = ARRAY_SIZE(msm_cam_gpio_2d_tbl_mclk1),
 };
 #endif
 
@@ -1486,15 +1447,19 @@ static struct msm_bus_scale_pdata cam_bus_client_pdata = {
 
 struct msm_camera_device_platform_data msm_camera_csi_device_data[] = {
 	{
-		.ioclk.mclk_clk_rate = 24000000,
-		.ioclk.vfe_clk_rate  = 228570000,
 		.csid_core = 0,
+		.is_csiphy = 1,
+		.is_csid   = 1,
+		.is_ispif  = 1,
+		.is_vpe    = 1,
 		.cam_bus_scale_table = &cam_bus_client_pdata,
 	},
 	{
-		.ioclk.mclk_clk_rate = 24000000,
-		.ioclk.vfe_clk_rate  = 228570000,
 		.csid_core = 1,
+		.is_csiphy = 1,
+		.is_csid   = 1,
+		.is_ispif  = 1,
+		.is_vpe    = 1,
 		.cam_bus_scale_table = &cam_bus_client_pdata,
 	},
 };
@@ -2562,6 +2527,12 @@ struct msm_rpm_platform_data msm_rpm_data = {
 	.msm_apps_ipc_rpm_val = 4,
 };
 
+static struct msm_pm_sleep_status_data msm_pm_slp_sts_data = {
+	.base_addr = MSM_ACC0_BASE + 0x08,
+	.cpu_offset = MSM_ACC1_BASE - MSM_ACC0_BASE,
+	.mask = 1UL << 13,
+};
+
 static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 	{
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
@@ -2752,13 +2723,10 @@ static struct tsens_platform_data msm_tsens_pdata  = {
 		.tsens_num_sensor	= 5,
 };
 
-struct platform_device msm_tsens_device = {
-	.name	= "tsens8960-tm",
-	.id	= -1,
-	.dev	= {
-		.platform_data = &msm_tsens_pdata,
-	},
-};
+void __init msm8960_init_tsens(void)
+{
+	msm_tsens_early_init(&msm_tsens_pdata);
+}
 
 void __init msm8960_init_usb(void)
 {
@@ -2996,6 +2964,11 @@ void __init msm8960_init_rpm(void)
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
+}
+
+void __init msm8960_init_sleep_status(void)
+{
+	msm_pm_init_sleep_status_data(&msm_pm_slp_sts_data);
 }
 
 void __init msm8960_init_regulators(void)
