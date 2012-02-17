@@ -26,6 +26,7 @@ struct diag_tty_data {
 };
 
 static struct diag_tty_data diag_tty[DIAG_TTY_MINOR_COUNT];
+static int diag_packet_incomplete;
 
 static int diag_tty_open(struct tty_struct *tty, struct file *f)
 {
@@ -105,8 +106,28 @@ static int diag_tty_write(struct tty_struct *tty,
 		return -EMSGSIZE;
 	}
 
-	d_req_ptr->actual = len;
-	memcpy(d_req_ptr->buf, buf, len);
+	/* Check whether fresh packet */
+	if (!diag_packet_incomplete) {
+		memcpy(d_req_ptr->buf, buf, len);
+		d_req_ptr->actual = len;
+	} else {
+		if (d_req_ptr->actual + len > d_req_ptr->length) {
+			d_req_ptr->actual = 0;
+			diag_packet_incomplete = 0;
+			return -EMSGSIZE;
+		} else {
+			memcpy(d_req_ptr->buf + d_req_ptr->actual, buf, len);
+			d_req_ptr->actual += len;
+		}
+	}
+
+	/* Check if packet is now complete */
+	if (d_req_ptr->buf[d_req_ptr->actual - 1] != 0x7E) {
+		diag_packet_incomplete = 1;
+		mutex_unlock(&diag_tty_lock);
+		return len;
+	} else
+		diag_packet_incomplete = 0;
 
 	/* Set active tty for responding */
 	legacy_ch.priv_channel = tty_data;
@@ -248,6 +269,7 @@ static int __init diag_tty_init(void)
 	legacy_ch.notify = NULL;
 	legacy_ch.priv = NULL;
 	legacy_ch.priv_channel = NULL;
+	diag_packet_incomplete = 0;
 
 	diag_tty_driver = alloc_tty_driver(DIAG_TTY_MINOR_COUNT);
 	if (diag_tty_driver == NULL)
