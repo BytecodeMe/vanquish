@@ -47,7 +47,6 @@
 #include <asm/hardware/gic.h>
 #include <asm/mach/mmc.h>
 
-#include <linux/gpio.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_spi.h>
@@ -60,6 +59,7 @@
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/rpm.h>
+#include <mach/gpio.h>
 #include <mach/gpiomux.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
@@ -528,6 +528,45 @@ static struct msm_gpiomux_config msm8960_cam_common_configs[] = {
 			[GPIOMUX_SUSPENDED] = &cam_settings[0],
 		},
 	},
+};
+
+static uint16_t msm_cam_gpio_2d_tbl_mclk0[] = {
+	5, /*CAMIF_MCLK*/
+};
+
+static uint16_t msm_cam_gpio_2d_tbl_mclk1[] = {
+	4, /*CAMIF_MCLK*/
+};
+
+static struct msm_gpiomux_config msm8960_cam_2d_configs[] = {
+	{
+		.gpio = 18,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &cam_settings[8],
+		},
+	},
+	{
+		.gpio = 19,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &cam_settings[8],
+		},
+	},
+};
+
+struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk0 = {
+	.cam_gpiomux_conf_tbl = msm8960_cam_2d_configs,
+	.cam_gpiomux_conf_tbl_size = ARRAY_SIZE(msm8960_cam_2d_configs),
+	.cam_gpio_tbl = msm_cam_gpio_2d_tbl_mclk0,
+	.cam_gpio_tbl_size = ARRAY_SIZE(msm_cam_gpio_2d_tbl_mclk0),
+};
+
+struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk1 = {
+	.cam_gpiomux_conf_tbl = msm8960_cam_2d_configs,
+	.cam_gpiomux_conf_tbl_size = ARRAY_SIZE(msm8960_cam_2d_configs),
+	.cam_gpio_tbl = msm_cam_gpio_2d_tbl_mclk1,
+	.cam_gpio_tbl_size = ARRAY_SIZE(msm_cam_gpio_2d_tbl_mclk1),
 };
 #endif
 
@@ -1447,19 +1486,15 @@ static struct msm_bus_scale_pdata cam_bus_client_pdata = {
 
 struct msm_camera_device_platform_data msm_camera_csi_device_data[] = {
 	{
+		.ioclk.mclk_clk_rate = 24000000,
+		.ioclk.vfe_clk_rate  = 228570000,
 		.csid_core = 0,
-		.is_csiphy = 1,
-		.is_csid   = 1,
-		.is_ispif  = 1,
-		.is_vpe    = 1,
 		.cam_bus_scale_table = &cam_bus_client_pdata,
 	},
 	{
+		.ioclk.mclk_clk_rate = 24000000,
+		.ioclk.vfe_clk_rate  = 228570000,
 		.csid_core = 1,
-		.is_csiphy = 1,
-		.is_csid   = 1,
-		.is_ispif  = 1,
-		.is_vpe    = 1,
 		.cam_bus_scale_table = &cam_bus_client_pdata,
 	},
 };
