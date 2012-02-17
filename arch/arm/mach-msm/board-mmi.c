@@ -138,8 +138,8 @@ static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
 	PM8XXX_GPIO_OUTPUT_FUNC(25, 0, PM_GPIO_FUNC_2),	 /* Green LED */
 	PM8XXX_GPIO_OUTPUT_FUNC(26, 0, PM_GPIO_FUNC_2),	 /* Blue LED */
 	PM8XXX_GPIO_INPUT(20,	    PM_GPIO_PULL_UP_30), /* SD_CARD_DET_N */
-	PM8XXX_GPIO_PAIRED_IN_VIN(41,  PM_GPIO_VIN_L17), /* Whisper TX 2.7V */
-	PM8XXX_GPIO_PAIRED_OUT_VIN(42, PM_GPIO_VIN_S4),  /* Whisper TX 1.8V */
+	PM8XXX_GPIO_PAIRED_IN_VIN(41,  PM_GPIO_VIN_L17), /* Whisper RX 2.7V */
+	PM8XXX_GPIO_PAIRED_OUT_VIN(42, PM_GPIO_VIN_S4),  /* Whisper RX 1.8V */
 	PM8XXX_GPIO_OUTPUT(43,	    PM_GPIO_PULL_UP_1P5), /* DISP_RESET_N */
 	PM8XXX_GPIO_OUTPUT_VIN(37, PM_GPIO_PULL_UP_30,
 			PM_GPIO_VIN_L17),	/* DISP_RESET_N on P1C+ */
@@ -258,6 +258,10 @@ static bool core_power_init, enable_5v_init;
 #define EMU_DET_ID_EN_GPIO	PM8921_MPP_PM_TO_SYS(9)
 #define EMU_DET_PPD_DET_GPIO	PM8921_GPIO_PM_TO_SYS(35)
 #define EMU_DET_ALT_MODE_GPIO	PM8921_GPIO_PM_TO_SYS(17)
+#define EMU_DET_TX_PAIR_GPIO	PM8921_GPIO_PM_TO_SYS(22)
+#define EMU_DET_DMINUS_GPIO	PM8921_GPIO_PM_TO_SYS(21)
+#define EMU_DET_DPLUS_GPIO	PM8921_GPIO_PM_TO_SYS(41)
+#define EMU_DET_RX_PAIR_GPIO	PM8921_GPIO_PM_TO_SYS(42)
 
 static struct pm8xxx_mpp_config_data emu_det_pm_mpp_config[] = {
 	{	/* EMU_ID */
@@ -328,6 +332,125 @@ static struct pm_gpio emu_det_pm_gpio_config[] = {
 		.disable_pin	= 0,
 	},
 };
+
+static struct pm_gpio emu_det_tx_pair_in_gpio_config[] = {
+	{	/* PM GPIO 42/WHISPER RX: paired input - std */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired input - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 1,
+	},
+};
+
+static struct pm_gpio emu_det_tx_pair_out_gpio_config[] = {
+	{	/* PM GPIO 41/WHISPER RX: paired out - std */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired out - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_DN,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+};
+
+static struct pm_gpio emu_det_rx_pair_in_gpio_config[] = {
+	{	/* PM GPIO 21/WHISPER TX: paired input - std */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired input - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_30,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+};
+
+static struct pm_gpio emu_det_rx_pair_out_gpio_config[] = {
+	{	/* PM GPIO 22/WHISPER TX: paired out - std */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired out - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 1,
+	},
+};
+
+static void emu_det_dp_dm_mode(int mode)
+{
+	struct pm_gpio tx_gpio, tx_pair, rx_gpio, rx_pair;
+	int idx = !!mode;
+
+	tx_pair = emu_det_tx_pair_in_gpio_config[idx];
+	tx_gpio = emu_det_tx_pair_out_gpio_config[idx];
+
+	rx_pair = emu_det_rx_pair_out_gpio_config[idx];
+	rx_gpio = emu_det_rx_pair_in_gpio_config[idx];
+	if (mode == GPIO_MODE_ALT_2)
+		rx_gpio.pull = PM_GPIO_PULL_NO;
+
+	pm8xxx_gpio_config(EMU_DET_DMINUS_GPIO, &tx_gpio);
+	pm8xxx_gpio_config(EMU_DET_TX_PAIR_GPIO, &tx_pair);
+	pm8xxx_gpio_config(EMU_DET_DPLUS_GPIO, &rx_gpio);
+	pm8xxx_gpio_config(EMU_DET_RX_PAIR_GPIO, &rx_pair);
+}
 
 static struct gpiomux_setting emu_det_gsbi12 = {
 	.func = GPIOMUX_FUNC_1,
@@ -520,6 +643,7 @@ static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.alt_mode = emu_det_alt_mode,
 	.gpio_mode = emu_det_gpio_mode,
 	.adc_id = emu_det_adc_id,
+	.dp_dm_mode = emu_det_dp_dm_mode,
 };
 
 #define MSM8960_HSUSB_PHYS	0x12500000
@@ -599,6 +723,18 @@ static struct resource resources_emu_det[] = {
 		.name	= "EMU_ID_GPIO",
 		.start	= EMU_DET_ID_GPIO,	/* PM MPP */
 		.end	= EMU_DET_ID_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "DPLUS_GPIO",
+		.start	= EMU_DET_DPLUS_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_DPLUS_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "DMINUS_GPIO",
+		.start	= EMU_DET_DMINUS_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_DMINUS_GPIO,
 		.flags	= IORESOURCE_IO,
 	},
 };

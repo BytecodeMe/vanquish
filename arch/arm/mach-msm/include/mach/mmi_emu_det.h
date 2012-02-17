@@ -26,10 +26,15 @@ struct mmi_emu_det_platform_data {
 	int (*alt_mode)(int on);
 	void (*gpio_mode)(int mode);
 	int (*adc_id)(void);
+	void (*dp_dm_mode)(int mode);
 };
 
 #define GPIO_MODE_GPIO	0
 #define GPIO_MODE_GSBI	1
+
+#define GPIO_MODE_PAIRED	0
+#define GPIO_MODE_ALT_1		1
+#define GPIO_MODE_ALT_2		2
 
 void emu_det_register_notify(struct notifier_block *nb);
 int emu_det_get_accy(void);

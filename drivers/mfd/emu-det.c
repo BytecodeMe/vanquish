@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 - 2011 Motorola, Inc.
+ * Copyright (C) 2007 - 2012 Motorola, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -182,7 +182,7 @@ static bool in_range(int voltage, int idx)
 #define MODE_F_AUDIO	3
 
 static int debug_mask = PRINT_ERROR | PRINT_DEBUG |
-	PRINT_STATUS | PRINT_TRANSITION;
+			PRINT_STATUS | PRINT_TRANSITION;
 
 #define pr_emu_det(debug_level_mask, fmt, args...) \
 	do { \
@@ -205,10 +205,7 @@ EXPORT_SYMBOL_GPL(emu_det_register_notify);
 #define STATES	{ \
 	DEF(CONFIG), \
 	DEF(SAMPLE), \
-	DEF(WAIT_4_DCD), \
-	DEF(DCD_DONE), \
-	DEF(CHG_DET), \
-	DEF(CHG_DET_WALL), \
+	DEF(SAMPLE_1), \
 	DEF(IDENTIFY), \
 	DEF(IDENTIFY_WHISPER_SMART), \
 	DEF(USB), \
@@ -301,6 +298,8 @@ enum emu_det_gpios {
 	SEMU_ALT_MODE_EN_GPIO,
 	EMU_ID_GPIO,
 	DMB_PPD_DET_GPIO,
+	DPLUS_GPIO,
+	DMINUS_GPIO,
 
 	EMU_DET_MAX_GPIOS,
 };
@@ -311,8 +310,6 @@ enum emu_det_gpios {
 	DEF(B_SESSEND), \
 	DEF(VBUS_VLD), \
 	DEF(SESS_VLD), \
-	DEF(DCD), \
-	DEF(CHG_DET), \
 	DEF(DP), \
 	DEF(DM), \
 	DEF(SE1), \
@@ -322,6 +319,8 @@ enum emu_det_gpios {
 	DEF(PD_100K), \
 	DEF(PD_200K), \
 	DEF(PD_440K), \
+	DEF(NO_DCD), \
+	DEF(USB_DEV), \
 	DEF(SENSE_MAX) }
 
 #define DEF(a)	a##_BIT
@@ -334,7 +333,7 @@ static char *bit_names[] = BITS;
 
 #define SENSE_USB           (test_bit(FLOAT_BIT, &data->sense) && \
 			     test_bit(SESS_VLD_BIT, &data->sense) && \
-			    !test_bit(CHG_DET_BIT, &data->sense))
+			     test_bit(USB_DEV_BIT, &data->sense))
 
 #define SENSE_FACTORY       (test_bit(FACTORY_BIT, &data->sense) && \
 			     test_bit(FLOAT_BIT, &data->sense) && \
@@ -342,10 +341,10 @@ static char *bit_names[] = BITS;
 
 #define SENSE_CHARGER_FLOAT (test_bit(FLOAT_BIT, &data->sense) && \
 			     test_bit(SESS_VLD_BIT, &data->sense) && \
-			     test_bit(CHG_DET_BIT, &data->sense))
+			     test_bit(SE1_BIT, &data->sense))
 
 #define SENSE_CHARGER       (test_bit(SESS_VLD_BIT, &data->sense) && \
-			     test_bit(CHG_DET_BIT, &data->sense))
+			     test_bit(SE1_BIT, &data->sense))
 
 #define SENSE_WHISPER_PPD   (test_bit(B_SESSEND_BIT, &data->sense) && \
 			     test_bit(PD_100K_BIT, &data->sense))
@@ -353,6 +352,12 @@ static char *bit_names[] = BITS;
 #define SENSE_WHISPER_SMART (test_bit(GRND_BIT, &data->sense) && \
 			     test_bit(DP_BIT, &data->sense) && \
 			     test_bit(SESS_VLD_BIT, &data->sense))
+
+#define SENSE_WHISPER_SMART_SE1 (test_bit(GRND_BIT, &data->sense) && \
+				 test_bit(SE1_BIT, &data->sense) && \
+				 test_bit(SESS_VLD_BIT, &data->sense) && \
+				 test_bit(DM_BIT, &data->sense) && \
+				 test_bit(DP_BIT, &data->sense))
 
 #define SENSE_WHISPER_LD2   (test_bit(GRND_BIT, &data->sense) && \
 			     test_bit(SE1_BIT, &data->sense) && \
@@ -381,8 +386,6 @@ struct emu_det_data {
 	struct regulator *regulator;
 	struct wake_lock wake_lock;
 	unsigned char is_vusb_enabled;
-	unsigned char undetect_cnt;
-	char bpass_mod;
 	struct switch_dev wsdev; /* Whisper switch */
 	struct switch_dev dsdev; /* Standard Dock switch */
 	struct switch_dev asdev; /* Audio switch */
@@ -395,7 +398,7 @@ struct emu_det_data {
 	unsigned char audio;
 	short whisper_auth;
 	u8 retries;
-	unsigned char power_up;
+	bool irq_setup;
 	signed emu_gpio[EMU_DET_MAX_GPIOS];
 	unsigned emu_irq[EMU_DET_MAX_INTS];
 	atomic_t in_lpm, last_irq;
@@ -403,6 +406,7 @@ struct emu_det_data {
 	int usb_present;
 	bool protection_forced_off;
 	bool semu_alt_mode;
+	int se1_mode;
 	bool ext_5v_switch_enabled;
 	bool otg_enabled;
 	void __iomem *regs;
@@ -568,12 +572,15 @@ static int adc_emu_id_get(void)
 static int adc_vbus_get(void)
 {
 	struct pm8xxx_adc_chan_result res;
+	int ret = 0;
 	memset(&res, 0, sizeof(res));
 	if (pm8xxx_adc_read(CHANNEL_USBIN, &res))
 		pr_err("VBUS ADC read error\n");
-	else
-		pr_emu_det(DEBUG, "vbus=%lld uV\n", res.physical);
-	return (int)res.physical/1000;
+	else {
+		ret = (int)res.physical/1000;
+		pr_emu_det(DEBUG, "vbus=%d mV\n", ret);
+	}
+	return ret;
 }
 
 
@@ -616,33 +623,6 @@ static void phy_block_on(void)
 	udelay(100);
 	pr_emu_det(DEBUG, "PHY on\n");
 }
-/*
-static void phy_block_off(void)
-{
-	struct emu_det_data *emud = the_emud;
-	struct otg_transceiver *otg = emud->trans;
-	u32 func_ctrl;
-
-	otg->io_ops->write(otg, 0x3F, 0x86);
-	otg->io_ops->write(otg, 0x1F, 0x92);
-	otg->io_ops->write(otg, 0x1F, 0x95);
-
-	func_ctrl = otg->io_ops->read(otg, ULPI_FUNC_CTRL);
-	func_ctrl &= ~ULPI_FUNC_CTRL_OPMODE_MASK;
-	func_ctrl |= ULPI_FUNC_CTRL_OPMODE_NORMAL;
-	otg->io_ops->write(otg, func_ctrl, ULPI_FUNC_CTRL);
-	pr_emu_det(DEBUG, "PHY off\n");
-}
-
-static bool dcd_check(void)
-{
-	struct emu_det_data *emud = the_emud;
-	struct otg_transceiver *otg = emud->trans;
-	u32 line_state = otg->io_ops->read(otg, 0x87);
-	pr_emu_det(DEBUG, "DCD check: 0x%08x\n", line_state);
-	return (line_state & 2);
-}
-*/
 
 static void emu_id_protection_setup(bool on)
 {
@@ -681,25 +661,6 @@ static void alt_mode_setup(bool on)
 	emud->semu_alt_mode = on;
 	pr_emu_det(DEBUG, "SEMU_ALT_MODE_EN is %s\n",
 		on ? "alternate" : "standard");
-}
-
-static void chgdet_setup(int disable, u8 mask)
-{
-	struct emu_det_data *emud = the_emud;
-	struct otg_transceiver *otg = emud->trans;
-	otg->io_ops->write(otg, (mask|0x2|0x1), disable ?
-			ULPI_REG_CLEAR(CHG_DET_CTRL) :
-			ULPI_REG_SET(CHG_DET_CTRL));
-	pr_emu_det(DEBUG, "DP/DM source/sink %s: CHG_DET_CTRL 0x%02x\n",
-		disable ? "disable" : "enable",
-		otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_CTRL)));
-
-	otg->io_ops->write(otg, 0x2, disable ?
-			ULPI_REG_CLEAR(ALT_INT_ENABLE) :
-			ULPI_REG_SET(ALT_INT_ENABLE));
-	pr_emu_det(DEBUG, "ALT_CGHDET %s: ALT_INT_EN 0x%02x\n",
-		disable ? "disable" : "enable",
-		otg->io_ops->read(otg, ULPI_REG_READ(ALT_INT_ENABLE)));
 }
 
 static void otgsc_setup(int disable)
@@ -754,6 +715,26 @@ static void external_5V_setup(bool disable)
 	}
 }
 
+static void dp_dm_pm_gpio_mode(int mode)
+{
+	struct emu_det_data *emud = the_emud;
+
+	if (emu_pdata && emu_pdata->dp_dm_mode) {
+		emu_pdata->dp_dm_mode(mode);
+
+		emud->se1_mode = mode;
+
+		clear_bit(NO_DCD_BIT, &emud->sense);
+		clear_bit(USB_DEV_BIT, &emud->sense);
+		clear_bit(SE1_BIT, &emud->sense);
+		clear_bit(DP_BIT, &emud->sense);
+		clear_bit(DM_BIT, &emud->sense);
+
+		pr_emu_det(PARANOIC, "D+/D- detection: %s\n",
+					mode ? "enabled" : "disabled");
+	}
+}
+
 static void emu_det_vbus_state(int online)
 {
 	struct emu_det_data *emud = the_emud;
@@ -766,11 +747,6 @@ static void emu_det_vbus_state(int online)
 	pr_emu_det(DEBUG, "PM8921 USBIN callback: %s\n",
 					online ? "in" : "out");
 	emud->usb_present = online;
-/* causes sleeping function call from interrupt handling context
-	due to pm8xxx_mpp_config
-	if (!online)
-		emu_id_protection_on();
-*/
 	if (driver_mode == MODE_NORMAL)
 		queue_delayed_work(emud->wq, &emud->irq_work,
 					msecs_to_jiffies(50));
@@ -780,8 +756,6 @@ static void emu_det_vbus_state(int online)
 #define external_5V_disable()	external_5V_setup(0)
 #define alternate_mode_enable()	alt_mode_setup(1)
 #define standard_mode_enable()	alt_mode_setup(0)
-#define chgdet_enable(a)	chgdet_setup(0, a)
-#define chgdet_disable(a)	chgdet_setup(1, a)
 #define otgsc_enable()		otgsc_setup(0)
 #define otgsc_disable()		otgsc_setup(1)
 #define dpdm_enable()		dpdm_setup(0)
@@ -790,8 +764,9 @@ static void emu_det_vbus_state(int online)
 #define emu_id_protection_off()	emu_id_protection_setup(false)
 #define gsbi_ctrl_reg_store()	gsbi_ctrl_register(0)
 #define gsbi_ctrl_reg_restore()	gsbi_ctrl_register(1)
-#define pmic_gpio_config_store(_idx)	pmic_gpio_config(1, _idx)
-#define pmic_gpio_config_restore(_idx)	pmic_gpio_config(0, _idx)
+#define enable_se1_detection()	dp_dm_pm_gpio_mode(GPIO_MODE_ALT_1)
+#define enable_dpdm_detection()	dp_dm_pm_gpio_mode(GPIO_MODE_ALT_2)
+#define disable_se1_detection()	dp_dm_pm_gpio_mode(GPIO_MODE_PAIRED)
 
 static void sense_emu_id(unsigned long *lsense)
 {
@@ -816,16 +791,16 @@ static void sense_emu_id(unsigned long *lsense)
 			set_bit(FLOAT_BIT, lsense);
 			return;
 		} else {
-			emu_det_disable_irq(emud->emu_irq[SEMU_PPD_DET_IRQ]);
-			emu_det_disable_irq(emud->emu_irq[EMU_SCI_OUT_IRQ]);
+			emu_det_disable_irq(SEMU_PPD_DET_IRQ);
+			emu_det_disable_irq(EMU_SCI_OUT_IRQ);
 
 			clear_bit(FACTORY_BIT, lsense);
 			emu_id_protection_off();
 			msleep(20);
 			id = adc_emu_id_get();
 
-			emu_det_enable_irq(emud->emu_irq[SEMU_PPD_DET_IRQ]);
-			emu_det_enable_irq(emud->emu_irq[EMU_SCI_OUT_IRQ]);
+			emu_det_enable_irq(SEMU_PPD_DET_IRQ);
+			emu_det_enable_irq(EMU_SCI_OUT_IRQ);
 		}
 	}
 
@@ -852,17 +827,66 @@ static void sense_emu_id(unsigned long *lsense)
 	}
 }
 
+static void sense_dp_dm(unsigned long *lsense)
+{
+	struct emu_det_data *emud = the_emud;
+	char mask;
+
+	mask = gpio_get_value_cansleep(emud->emu_gpio[DPLUS_GPIO]) << 4;
+	mask |= gpio_get_value_cansleep(emud->emu_gpio[DMINUS_GPIO]);
+
+	pr_emu_det(DEBUG, "D+/D- mask: 0x%x\n", mask);
+
+	if (emud->se1_mode == GPIO_MODE_ALT_1) {
+		clear_bit(NO_DCD_BIT, lsense);
+		clear_bit(USB_DEV_BIT, lsense);
+		clear_bit(SE1_BIT, lsense);
+		switch (mask) {
+		case 0x00: /* USB host */
+			set_bit(USB_DEV_BIT, lsense);
+			break;
+		case 0x10: /* partial insertion */
+			set_bit(NO_DCD_BIT, lsense);
+			break;
+		case 0x11: /* SE1 */
+			set_bit(SE1_BIT, lsense);
+			break;
+		default: /* nonsense */
+			pr_emu_det(PARANOIC, "D+/D- mask is weird!!!\n");
+			break;
+		}
+	} else if (emud->se1_mode == GPIO_MODE_ALT_2) {
+		clear_bit(DP_BIT, lsense);
+		clear_bit(DM_BIT, lsense);
+		switch (mask) {
+		case 0x10: /* D+ */
+			set_bit(DP_BIT, lsense);
+			break;
+		case 0x01: /* D- */
+			set_bit(DM_BIT, lsense);
+			break;
+		case 0x11: /* D+ & D- */
+			set_bit(DP_BIT, lsense);
+			set_bit(DM_BIT, lsense);
+			break;
+		default: /* nonsense */
+			pr_emu_det(PARANOIC, "D+/D- mask is weird!!!\n");
+			break;
+		}
+	}
+}
+
 static int get_sense(void)
 {
 	struct emu_det_data *emud = the_emud;
-	struct otg_transceiver *otg = emud->trans;
 	unsigned long lsense = emud->sense;
 	int irq, value;
-	bool is_dcd_en, is_chgdet_en;
 	u32 otgsc, portsc;
-	u8 ulpi_reg;
 
 	irq = atomic_read(&emud->last_irq);
+
+	if (!hasHoneyBadger())
+		sense_emu_id(&lsense);
 
 	value = gpio_get_value_cansleep(
 				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
@@ -870,19 +894,12 @@ static int get_sense(void)
 		/* Discrete logic has inverse polarity */
 		value = !value;
 	}
-	pr_emu_det(DEBUG, "SEMU_PPD_DET indicates ID %s floating\n",
-				value ? "" : "not");
-	if (value)
-		set_bit(FLOAT_BIT, &lsense);
-	else
-		clear_bit(FLOAT_BIT, &lsense);
 
-	if ((debug_mask & PRINT_PARANOIC)) {
-		value = gpio_get_value_cansleep(
-				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
-		pr_emu_det(PARANOIC, "while EMU_SCI_OUT is %s\n",
-				value ? "high" : "low");
-	}
+	if (value) {
+		set_bit(FLOAT_BIT, &lsense);
+		pr_emu_det(STATUS, "SEMU_PPD_DET: ID floating\n");
+	} else
+		clear_bit(FLOAT_BIT, &lsense);
 
 	value = gpio_get_value_cansleep(
 				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
@@ -892,40 +909,33 @@ static int get_sense(void)
 				emud->emu_gpio[EMU_SCI_OUT_GPIO]);
 	}
 
-	pr_emu_det(DEBUG, "EMU_SCI_OUT indicates ID %s grounded\n",
-				value ? "" : "not");
-	if (value)
+	if (value) {
 		set_bit(GRND_BIT, &lsense);
-	else
+		pr_emu_det(STATUS, "EMU_SCI_OUT: ID grounded\n");
+	} else
 		clear_bit(GRND_BIT, &lsense);
 
-	if ((debug_mask & PRINT_PARANOIC)) {
-		value = gpio_get_value_cansleep(
-				emud->emu_gpio[SEMU_PPD_DET_GPIO]);
-		pr_emu_det(PARANOIC, "while SEMU_PPD_DET is %s\n",
-					value ? "high" : "low");
-	}
+	if (hasHoneyBadger()) {
+		clear_bit(FACTORY_BIT, &lsense);
+		if (test_bit(GRND_BIT, &lsense) &&
+		    test_bit(FLOAT_BIT, &lsense)) {
+			set_bit(FACTORY_BIT, &lsense);
+		}
 
-	ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_CTRL));
-	is_dcd_en = (ulpi_reg & 0x10);
-	is_chgdet_en = (ulpi_reg & 0x3);
-
-	ulpi_reg = otg->io_ops->read(otg, ULPI_REG_READ(CHG_DET_OUT));
-	if (ulpi_reg)
-		pr_emu_det(DEBUG, "CHARGING_DETECTION_OUTPUT: 0x%x\n",
-						ulpi_reg);
-	if (is_dcd_en) {
-		if (ulpi_reg & 2)
-			set_bit(DCD_BIT, &lsense);
-		else
-			clear_bit(DCD_BIT, &lsense);
-	}
-
-	if (is_chgdet_en) {
-		if (ulpi_reg & 1)
-			set_bit(CHG_DET_BIT, &lsense);
-		else
-			clear_bit(CHG_DET_BIT, &lsense);
+		clear_bit(PD_100K_BIT, &lsense);
+		clear_bit(PD_200K_BIT, &lsense);
+		if (!test_bit(GRND_BIT, &lsense) &&
+		    !test_bit(FLOAT_BIT, &lsense)) {
+			value = gpio_get_value_cansleep(
+					emud->emu_gpio[DMB_PPD_DET_GPIO]);
+			pr_emu_det(DEBUG, "ID %s present\n",
+				   value ? "200K" : "100K");
+			if (value)
+				set_bit(PD_200K_BIT, &lsense);
+			else
+				set_bit(PD_100K_BIT, &lsense);
+		} else
+			pr_emu_det(DEBUG, "No need to check DMB_PPD_DET_N\n");
 	}
 
 	otgsc = readl(USB_OTGSC);
@@ -958,44 +968,8 @@ static int get_sense(void)
 	else
 		clear_bit(VBUS_VLD_BIT, &lsense);
 
-	if ((portsc & PORTSC_LS_SE1) == PORTSC_LS_SE1)
-		set_bit(SE1_BIT, &lsense);
-	else {
-		clear_bit(SE1_BIT, &lsense);
-		if (portsc & PORTSC_LS_DP)
-			set_bit(DP_BIT, &lsense);
-		else
-			clear_bit(DP_BIT, &lsense);
-
-		if (portsc & PORTSC_LS_DM)
-			set_bit(DM_BIT, &lsense);
-		else
-			clear_bit(DM_BIT, &lsense);
-	}
-
-	if (hasHoneyBadger()) {
-		clear_bit(FACTORY_BIT, &lsense);
-		if (test_bit(GRND_BIT, &lsense) &&
-		    test_bit(FLOAT_BIT, &lsense)) {
-			set_bit(FACTORY_BIT, &lsense);
-		}
-
-		clear_bit(PD_100K_BIT, &lsense);
-		clear_bit(PD_200K_BIT, &lsense);
-		if (!test_bit(GRND_BIT, &lsense) &&
-		    !test_bit(FLOAT_BIT, &lsense)) {
-			value = gpio_get_value_cansleep(
-					emud->emu_gpio[DMB_PPD_DET_GPIO]);
-			pr_emu_det(DEBUG, "ID %s present\n",
-				   value ? "200K" : "100K");
-			if (value)
-				set_bit(PD_200K_BIT, &lsense);
-			else
-				set_bit(PD_100K_BIT, &lsense);
-		} else
-			pr_emu_det(DEBUG, "No need to check DMB_PPD_DET_N\n");
-	} else
-		sense_emu_id(&lsense);
+	if (emud->se1_mode)
+		sense_dp_dm(&lsense);
 
 	emud->sense = lsense;
 	pr_emu_det(STATUS, "%s\n", print_sense_bits(&lsense));
@@ -1009,25 +983,36 @@ static int configure_hardware(enum emu_det_accy accy)
 	int retval = 0;
 
 	switch (accy) {
+	case ACCY_UNKNOWN:
+		mux_ctrl_mode(MUXMODE_UART);
+		enable_se1_detection();
+		gsbi_ctrl_reg_restore();
+		standard_mode_enable();
+		external_5V_disable();
+
+		break;
+
 	case ACCY_USB:
 	case ACCY_FACTORY:
-	case ACCY_UNKNOWN:
 	case ACCY_WHISPER_SMART:
 		mux_ctrl_mode(MUXMODE_USB);
+		disable_se1_detection();
 		gsbi_ctrl_reg_restore();
 		standard_mode_enable();
 		external_5V_disable();
 		break;
 
 	case ACCY_CHARGER:
-		mux_ctrl_mode(MUXMODE_USB);
+		mux_ctrl_mode(MUXMODE_UART);
+		disable_se1_detection();
 		gsbi_ctrl_reg_store();
 		standard_mode_enable();
 		external_5V_disable();
 		break;
 
 	case ACCY_WHISPER_PPD:
-		mux_ctrl_mode(MUXMODE_USB);
+		mux_ctrl_mode(MUXMODE_UART);
+		disable_se1_detection();
 		gsbi_ctrl_reg_store();
 		standard_mode_enable();
 		external_5V_enable();
@@ -1035,6 +1020,7 @@ static int configure_hardware(enum emu_det_accy accy)
 
 	case ACCY_USB_DEVICE:
 		mux_ctrl_mode(MUXMODE_USB);
+		disable_se1_detection();
 		gsbi_ctrl_reg_restore();
 		standard_mode_enable();
 		external_5V_enable();
@@ -1042,6 +1028,7 @@ static int configure_hardware(enum emu_det_accy accy)
 
 	case ACCY_NONE:
 		mux_ctrl_mode(MUXMODE_USB);
+		disable_se1_detection();
 		gsbi_ctrl_reg_restore();
 		standard_mode_enable();
 		emud->whisper_auth = AUTH_NOT_STARTED;
@@ -1053,9 +1040,6 @@ static int configure_hardware(enum emu_det_accy accy)
 	}
 
 	if (retval != 0)
-
-
-
 		retval = -EFAULT;
 
 	return retval;
@@ -1105,6 +1089,8 @@ static void notify_accy(enum emu_det_accy accy)
 	data->accy = accy;
 	pr_emu_det(STATUS, "EMU detection Notify: %s\n", print_accy_name(accy));
 
+	/* configure hardware must occur before notifying OTG */
+	configure_hardware(accy);
 	notify_otg(accy);
 
 	/* Always go through None State */
@@ -1113,8 +1099,6 @@ static void notify_accy(enum emu_det_accy accy)
 					     (unsigned long)ACCY_NONE,
 					     (void *)NULL);
 	}
-
-	configure_hardware(accy);
 
 	blocking_notifier_call_chain(&emu_det_notifier_list,
 				     (unsigned long)accy,
@@ -1193,16 +1177,13 @@ static int whisper_audio_check(struct emu_det_data *data)
 }
 
 #define POLL_TIME		(100 * HZ/1000) /* 100 msec */
-#define MAX_RETRIES		6
-#define CHG_PRI_DET_TIME	(40 * HZ/1000) /* TVDPSRC_ON */
-#define CHG_SEC_DET_TIME	(40 * HZ/1000) /* TVDMSRC_ON */
 #define WASTE_CYCLE_TIME	(50 * HZ/1000)
 
 static void detection_work(bool caused_by_irq)
 {
 	struct emu_det_data *data = the_emud;
 	int last_irq;
-	bool   tmout;
+	unsigned long delay = 0;
 
 	static unsigned long last_run;
 
@@ -1232,7 +1213,6 @@ static void detection_work(bool caused_by_irq)
 		memset(&data->sense, 0, sizeof(data->sense));
 		phy_block_on();
 		otgsc_enable();
-		chgdet_enable(0);
 
 		configure_hardware(ACCY_UNKNOWN);
 		emu_det_enable_irq(PHY_USB_IRQ);
@@ -1250,41 +1230,41 @@ static void detection_work(bool caused_by_irq)
 		data->prev_sense = data->sense;
 		last_irq = get_sense();
 
-		if (test_bit(CHG_DET_BIT, &data->sense)) {
-			clear_bit(CHG_DET_BIT, &data->sense);
-			chgdet_enable(0x8);
-			pr_emu_det(DEBUG, "Primary CHG_DET-ed\n");
-			data->retries = 0;
-			data->state = CHG_DET;
+		if (test_bit(GRND_BIT, &data->sense)) {
+			pr_emu_det(DEBUG, "DP/DM ...\n");
+			data->state = SAMPLE_1;
+			enable_dpdm_detection();
 
-			break;
-		}
-
-		chgdet_disable(0);
-
-		if (data->sense != data->prev_sense) {
+		} else if ((test_bit(SESS_VLD_BIT, &data->sense) &&
+			   !test_bit(FACTORY_BIT, &data->sense) &&
+			    test_bit(NO_DCD_BIT, &data->sense)) ||
+			   (data->sense != data->prev_sense)) {
 			pr_emu_det(DEBUG, "SAMPLE keep waiting ...\n");
 			data->state = SAMPLE;
+			delay = msecs_to_jiffies(WASTE_CYCLE_TIME);
 		} else
 			data->state = IDENTIFY;
 
-		queue_delayed_work(data->wq, &data->timer_work, 0);
+		queue_delayed_work(data->wq, &data->timer_work, delay);
 		break;
 
-	case CHG_DET:
+	case SAMPLE_1:
 		data->prev_sense = data->sense;
 		last_irq = get_sense();
 
-		tmout = ++data->retries == MAX_RETRIES;
-		if (tmout || test_bit(CHG_DET_BIT, &data->sense)) {
-			chgdet_disable(0x8);
+		if (test_bit(B_SESSEND_BIT, &data->sense) ||
+			!test_bit(GRND_BIT, &data->sense)) {
+			pr_emu_det(DEBUG, "Start over ...\n");
+			data->state = CONFIG;
+
+		} else if (test_bit(DP_BIT, &data->sense) ||
+			   test_bit(DM_BIT, &data->sense)) {
 			data->state = IDENTIFY;
-			pr_emu_det(DEBUG, "fall through to IDENTIFY ...\n");
-		} else {
-			queue_delayed_work(data->wq, &data->timer_work,
-							CHG_SEC_DET_TIME);
-			break;
-		}
+		} else
+			delay = msecs_to_jiffies(WASTE_CYCLE_TIME);
+
+		queue_delayed_work(data->wq, &data->timer_work, delay);
+		break;
 
 	case IDENTIFY:
 		data->state = CONFIG;
@@ -1298,20 +1278,6 @@ static void detection_work(bool caused_by_irq)
 			data->state = USB;
 			notify_accy(ACCY_USB);
 
-		} else if (SENSE_CHARGER_FLOAT ||
-			   SENSE_CHARGER) {
-			pr_emu_det(STATUS,
-				"detection_work: CHARGER Identified\n");
-			notify_accy(ACCY_CHARGER);
-			notify_whisper_switch(ACCY_CHARGER);
-			data->state = CHARGER;
-		} else if (SENSE_WHISPER_PPD) {
-			pr_emu_det(STATUS,
-				"detection_work: PPD Identified\n");
-			emu_id_protection_off();
-			notify_accy(ACCY_WHISPER_PPD);
-			notify_whisper_switch(ACCY_WHISPER_PPD);
-			data->state = WHISPER_PPD;
 		} else if (SENSE_WHISPER_SMART ||
 			   SENSE_WHISPER_LD2 ||
 			   SENSE_USB_ADAPTER) {
@@ -1320,10 +1286,21 @@ static void detection_work(bool caused_by_irq)
 			data->state = IDENTIFY_WHISPER_SMART;
 			queue_delayed_work(data->wq,
 					&data->timer_work, 0);
-		} else if (test_bit(SESS_VLD_BIT, &data->sense) &&
-			  (data->accy == ACCY_NONE)) {
+		} else if (SENSE_CHARGER_FLOAT ||
+			   SENSE_CHARGER) {
 			pr_emu_det(STATUS,
-				"detection_work: PARTIAL INSERTION\n");
+				"detection_work: CHARGER Identified\n");
+			notify_accy(ACCY_CHARGER);
+			notify_whisper_switch(ACCY_CHARGER);
+			data->state = CHARGER;
+
+		} else if (SENSE_WHISPER_PPD) {
+			pr_emu_det(STATUS,
+				"detection_work: PPD Identified\n");
+			emu_id_protection_off();
+			notify_accy(ACCY_WHISPER_PPD);
+			notify_whisper_switch(ACCY_WHISPER_PPD);
+			data->state = WHISPER_PPD;
 
 		} else {
 			pr_emu_det(DEBUG, "no accessory\n");
@@ -1339,7 +1316,8 @@ static void detection_work(bool caused_by_irq)
 	case IDENTIFY_WHISPER_SMART:
 		data->state = CONFIG;
 
-		if (SENSE_WHISPER_SMART || SENSE_WHISPER_LD2) {
+		if (SENSE_WHISPER_SMART ||
+		    SENSE_WHISPER_LD2) {
 			pr_emu_det(STATUS,
 				"detection_work: SMART Identified\n");
 			notify_accy(ACCY_WHISPER_SMART);
@@ -1385,7 +1363,6 @@ static void detection_work(bool caused_by_irq)
 		    !test_bit(FLOAT_BIT, &data->sense) &&
 		    (data->whisper_auth == AUTH_PASSED)) {
 			/* SPD->PPD transition */
-			clear_bit(CHG_DET_BIT, &data->sense);
 			emu_id_protection_off();
 			notify_whisper_switch(ACCY_WHISPER_PPD);
 			notify_accy(ACCY_WHISPER_PPD);
@@ -1477,6 +1454,17 @@ static void detection_work(bool caused_by_irq)
 			notify_accy(ACCY_CHARGER);
 		}
 
+		if ((switch_get_state(&data->edsdev) != MOBILE_DOCK) &&
+		    (switch_get_state(&data->sdsdev) == DOCKED) &&
+		    test_bit(SESS_VLD_BIT, &data->sense) &&
+		    (data->whisper_auth == AUTH_PASSED)) {
+			pr_emu_det(STATUS, "SMART_LD2: " \
+					"Its a SMART dock with SE1\n");
+			data->state = WHISPER_SMART;
+			queue_delayed_work(data->wq, &data->timer_work, 0);
+			break;
+		}
+
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->timer_work, 0);
@@ -1522,23 +1510,16 @@ static void detection_work(bool caused_by_irq)
 	}
 }
 
+#define DEBOUNCE_TIME	(HZ/200) /* 5ms */
+
 static irqreturn_t emu_det_irq_handler(int irq, void *data)
 {
 	struct emu_det_data *emud = data;
 	u32 usbsts, otgsc;
 	static u32 count;
+	static int prev_irq;
+	static unsigned long prev_jiffies;
 
-/* in case we ever care about LPM
-	if (atomic_read(&data->in_lpm)) {
-		struct otg_transceiver *otg = &emud->trans->otg;
-
-		disable_irq_nosync(irq);
-		data->async_int = 1;
-		pm_runtime_get(otg->dev);
-		pr_emu_det(DEBUG, "IRQ_HANDLED (LPM)\n");
-		return IRQ_HANDLED;
-	}
-*/
 	usbsts = readl(USB_USBSTS);
 	otgsc = readl(USB_OTGSC);
 
@@ -1554,8 +1535,6 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 			if (ulpi_reg) { /* clear ALT_INT_LATCH */
 				otg->io_ops->write(otg, ulpi_reg,
 					ULPI_REG_SET(ALT_INT_LATCH));
-				pr_emu_det(DEBUG, "ALT_INTERRUPT_LATCH:"
-						  " 0x%02x\n", ulpi_reg);
 			}
 			goto put_on_schedule;
 
@@ -1564,26 +1543,34 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 				writel(otgsc, USB_OTGSC);
 			else {
 				count++;
-				if ((debug_mask & PRINT_PARANOIC)) {
-					u32 portsc = readl(USB_PORTSC);
-					pr_emu_det(PARANOIC, "USBSTS: 0x%x," \
-						" OTGSC: 0x%x, PORTSC: 0x%x\n",
-							usbsts, otgsc, portsc);
-				}
 				return IRQ_NONE;
 			}
 		}
-	}
+	} else if (!emud->irq_setup)
+		return IRQ_HANDLED;
 
 put_on_schedule:
 
-	atomic_set(&emud->last_irq, irq);
+	/* debounce sporadic IRQs */
+	if (prev_jiffies && prev_irq) {
+		if ((irq == prev_irq) &&
+		     time_before_eq(jiffies, prev_jiffies+DEBOUNCE_TIME)) {
+			pr_emu_det(PARANOIC, "debounce sporadic IRQ (%dms)!\n",
+				jiffies_to_msecs(jiffies - prev_jiffies));
+			goto do_not_schedule;
+		}
+	}
 
-	pr_emu_det(DEBUG, "irq=%d(%d), usbsts: 0x%08x, otgsc: 0x%08x\n",
-				irq, count, usbsts, otgsc);
-	count = 0;
 	if (driver_mode == MODE_NORMAL)
 		queue_delayed_work(emud->wq, &emud->irq_work, 0);
+
+	prev_jiffies = jiffies;
+
+do_not_schedule:
+
+	atomic_set(&emud->last_irq, irq);
+	prev_irq = irq;
+	count = 0;
 
 	return IRQ_HANDLED;
 }
@@ -1653,9 +1640,7 @@ static int __devinit request_irqs(struct platform_device *pdev)
 				emu_det_irq_data[i].name, ret);
 			goto err_out;
 		}
-		if (!(emu_det_irq_data[i].flags & IRQF_SHARED))
-			emu_det_disable_irq(
-				emud->emu_irq[emu_det_irq_data[i].idx]);
+		emu_det_disable_irq(emu_det_irq_data[i].idx);
 	}
 	return 0;
 
@@ -1697,6 +1682,8 @@ struct emu_det_gpio_init_data emu_det_gpio_data[] = {
 	DECLARE_GPIO(SEMU_ALT_MODE_EN_GPIO, SKIP,       -1, GPIO_REQUIRED),
 	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1, GPIO_OPTIONAL),
 	DECLARE_GPIO(DMB_PPD_DET_GPIO,      DIR_INPUT,  -1, GPIO_OPTIONAL),
+	DECLARE_GPIO(DPLUS_GPIO,            SKIP,       -1, GPIO_REQUIRED),
+	DECLARE_GPIO(DMINUS_GPIO,           SKIP,       -1, GPIO_REQUIRED),
 };
 
 static void free_gpios(void)
@@ -2132,23 +2119,21 @@ static int emu_det_probe(struct platform_device *pdev)
 
 	data->wq = create_singlethread_workqueue("emu_det");
 
+	data->state = CONFIG;
+	data->semu_alt_mode = false;
+	data->accy = ACCY_NONE;
+	data->whisper_auth = AUTH_NOT_STARTED;
+	data->otg_enabled = false;
+	data->low_pwr_mode = 1;
+	dev_set_drvdata(&pdev->dev, data);
+
 	ret = request_irqs(pdev);
 	if (ret) {
 		pr_err("couldn't register interrupts rc=%d\n", ret);
 		goto free_gpios;
 	}
 	pr_emu_det(DEBUG, "done with irqs\n");
-
-	data->state = CONFIG;
-	data->power_up = 1;
-	data->semu_alt_mode = false;
-	data->accy = ACCY_NONE;
-	data->undetect_cnt = 0;
-	data->bpass_mod = 'a';
-	data->whisper_auth = AUTH_NOT_STARTED;
-	data->otg_enabled = false;
-	data->low_pwr_mode = 1;
-	dev_set_drvdata(&pdev->dev, data);
+	data->irq_setup = true;
 
 	pm8921_charger_register_vbus_sn(&emu_det_vbus_state);
 	pr_emu_det(DEBUG, "registered callback with PM8921\n");
