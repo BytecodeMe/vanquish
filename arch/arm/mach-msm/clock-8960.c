@@ -4635,8 +4635,10 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_HS(0x07), &afab_a_clk.c },
 	{ TEST_PER_HS(0x18), &sfab_clk.c },
 	{ TEST_PER_HS(0x18), &sfab_a_clk.c },
+#ifdef CONFIG_DEBUG_FS
 	{ TEST_PER_HS(0x26), &q6sw_clk },
 	{ TEST_PER_HS(0x27), &q6fw_clk },
+#endif
 	{ TEST_PER_HS(0x2A), &adm0_clk.c },
 	{ TEST_PER_HS(0x34), &ebi1_clk.c },
 	{ TEST_PER_HS(0x34), &ebi1_a_clk.c },
@@ -4732,11 +4734,13 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_LPA(0x14), &pcm_clk.c },
 	{ TEST_LPA(0x1D), &audio_slimbus_clk.c },
 
+#ifdef CONFIG_DEBUG_FS
 	{ TEST_LPA_HS(0x00), &q6_func_clk },
 
 	{ TEST_CPUL2(0x2), &l2_m_clk },
 	{ TEST_CPUL2(0x0), &krait0_m_clk },
 	{ TEST_CPUL2(0x1), &krait1_m_clk },
+#endif
 };
 
 static struct measure_sel *find_measure_sel(struct clk *clk)
@@ -5156,9 +5160,11 @@ static struct clk_lookup msm_clocks_8064[] = {
 
 	CLK_LOOKUP("mem_clk",		ebi1_adm_clk.c, "msm_dmov"),
 
+#ifdef CONFIG_DEBUG_FS
 	CLK_LOOKUP("l2_mclk",		l2_m_clk,     NULL),
 	CLK_LOOKUP("krait0_mclk",	krait0_m_clk, NULL),
 	CLK_LOOKUP("krait1_mclk",	krait1_m_clk, NULL),
+#endif
 };
 
 static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
@@ -5410,12 +5416,14 @@ static struct clk_lookup msm_clocks_8960_v1[] __initdata = {
 
 	CLK_LOOKUP("mem_clk",		ebi1_adm_clk.c, "msm_dmov"),
 
+#ifdef CONFIG_DEBUG_FS
 	CLK_LOOKUP("l2_mclk",		l2_m_clk,     NULL),
 	CLK_LOOKUP("krait0_mclk",	krait0_m_clk, NULL),
 	CLK_LOOKUP("krait1_mclk",	krait1_m_clk, NULL),
 	CLK_LOOKUP("q6sw_clk",		q6sw_clk, NULL),
 	CLK_LOOKUP("q6fw_clk",		q6fw_clk, NULL),
 	CLK_LOOKUP("q6_func_clk",	q6_func_clk, NULL),
+#endif
 };
 
 static struct clk_lookup msm_clocks_8960_v2[] __initdata = {
