@@ -911,12 +911,16 @@ static int pm_chg_batt_hot_temp_config(struct pm8921_chg_chip *chip,
 static void pm8921_chg_hw_config(struct pm8921_chg_chip *chip)
 {
 	int rc;
+	int resume_voltage_delta = chip->resume_voltage_delta;
 
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	resume_voltage_delta = -resume_voltage_delta;
+#endif
 	rc = pm_chg_vbatdet_set(chip,
-			chip->max_voltage_mv - chip->resume_voltage_delta);
+			chip->max_voltage_mv - resume_voltage_delta);
 	if (rc)
 		pr_err("Failed to set vbatdet comprator voltage to %d rc=%d\n",
-			chip->max_voltage_mv - chip->resume_voltage_delta, rc);
+			chip->max_voltage_mv - resume_voltage_delta, rc);
 
 	rc = pm_chg_vddmax_set(chip, chip->max_voltage_mv);
 	if (rc)
@@ -1160,7 +1164,9 @@ static void bms_notify(struct work_struct *work)
 		pm8921_bms_charging_began();
 	} else {
 		pm8921_bms_charging_end(n->is_battery_full);
+#ifndef CONFIG_PM8921_FLOAT_CHARGE
 		n->is_battery_full = 0;
+#endif
 	}
 }
 
@@ -1170,6 +1176,11 @@ static void bms_notify_check(struct pm8921_chg_chip *chip)
 
 	fsm_state = pm_chg_get_fsm_state(chip);
 	new_is_charging = is_battery_charging(fsm_state);
+
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	if (chip->bms_notify.is_battery_full)
+		new_is_charging = 0;
+#endif
 
 	if (chip->bms_notify.is_charging ^ new_is_charging) {
 		chip->bms_notify.is_charging = new_is_charging;
@@ -1437,6 +1448,10 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
 	if ((alarm_state == PM_BATT_ALARM_OV) || !(chip->batt_valid))
 		return POWER_SUPPLY_STATUS_UNKNOWN;
+#endif
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	if (chip->bms_notify.is_battery_full)
+		return POWER_SUPPLY_STATUS_FULL;
 #endif
 
 	if (chip->ext_psy) {
@@ -2073,7 +2088,9 @@ static irqreturn_t vbatdet_low_irq_handler(int irq, void *data)
 
 	if (high_transition) {
 		/* enable auto charging */
+#ifndef CONFIG_PM8921_FLOAT_CHARGE
 		pm_chg_auto_enable(chip, !charging_disabled);
+#endif
 		pr_info("batt fell below resume voltage %s\n",
 			charging_disabled ? "" : "charger enabled");
 	}
@@ -2500,9 +2517,6 @@ static void update_heartbeat(struct work_struct *work)
 					      &data, &enable, &btm_state);
 		if (retval == 1) {
 			pm_chg_vddmax_set(chip, data.max_voltage);
-			pm_chg_vbatdet_set(chip,
-					   data.max_voltage -
-					   chip->resume_voltage_delta);
 			pm_chg_auto_enable(chip, enable);
 			pr_debug("Config VDDMAX = %d mV, Enable = %d\n",
 				 data.max_voltage,
@@ -2568,9 +2582,10 @@ static int is_charging_finished(struct pm8921_chg_chip *chip)
 
 		vbatdet_low = pm_chg_get_rt_status(chip, VBATDET_LOW_IRQ);
 		pr_debug("vbatdet_low = %d\n", vbatdet_low);
+#ifndef CONFIG_PM8921_FLOAT_CHARGE
 		if (vbatdet_low == 1)
 			return CHG_IN_PROGRESS;
-
+#endif
 		/* reset count if battery is hot/cold */
 		rc = pm_chg_get_rt_status(chip, BAT_TEMP_OK_IRQ);
 		pr_debug("batt_temp_ok = %d\n", rc);
@@ -2677,19 +2692,28 @@ static void eoc_worker(struct work_struct *work)
 
 	if (count == CONSECUTIVE_COUNT) {
 		count = 0;
+#ifndef CONFIG_PM8921_FLOAT_CHARGE
 		pr_info("End of Charging\n");
 
 		pm_chg_auto_enable(chip, 0);
-
+#endif
 		if (is_ext_charging(chip))
 			chip->ext_charge_done = true;
 
+#ifndef CONFIG_PM8921_FLOAT_CHARGE
 		if (chip->is_bat_warm || chip->is_bat_cool)
 			chip->bms_notify.is_battery_full = 0;
 		else
 			chip->bms_notify.is_battery_full = 1;
+
 		/* declare end of charging by invoking chgdone interrupt */
 		chgdone_irq_handler(chip->pmic_chg_irq[CHGDONE_IRQ], chip);
+#endif
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+		pr_info("Taper Reached Float Charging\n");
+		chip->bms_notify.is_battery_full = 1;
+		bms_notify_check(chip);
+#endif
 		wake_unlock(&chip->eoc_wake_lock);
 	} else {
 		pr_debug("EOC count = %d\n", count);
@@ -3440,6 +3464,11 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 		   (the_chip->emu_accessory == EMU_ACCY_WHISPER_SMART_DOCK)) {
 		__pm8921_charger_vbus_draw(0);
 	}
+
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	if ((enum emu_accy) status == EMU_ACCY_NONE)
+		the_chip->bms_notify.is_battery_full = 0;
+#endif
 
 	the_chip->emu_accessory = (enum emu_accy) status;
 	pr_info("%s: accy_state: %d\n", __func__, the_chip->emu_accessory);

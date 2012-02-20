@@ -381,4 +381,11 @@ config PM8921_TEST_OVERRIDE
 	  Say Y here to enable user-space override of specific battery
 	  state variables.  To be used for test purposes only
 
+config PM8921_FLOAT_CHARGE
+	bool "Enable PM8921 Float Charge in the BMS and Charger driver"
+	depends on PM8921_BMS
+	depends on PM8921_CHARGER
+	help
+	  Say Y here to enable support for Pm8921 Float charge
+
 endif # POWER_SUPPLY

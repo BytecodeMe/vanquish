@@ -195,6 +195,17 @@ void pm8921_bms_charging_began(void);
  *				track of chargecycles
  */
 void pm8921_bms_charging_end(int is_battery_full);
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+/**
+ * pm8921_bms_charging_full - function to notify the bms driver that charging
+ *				is Full.
+ */
+void pm8921_bms_charging_full(void);
+#else
+static inline void pm8921_bms_charging_full(void)
+{
+}
+#endif
 
 #ifdef CONFIG_PM8921_TEST_OVERRIDE
 int pm8921_override_get_charge_status(int *status);
