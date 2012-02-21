@@ -2025,17 +2025,41 @@ static irqreturn_t msm_pmic_id_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static const char *usb_state_name(enum usb_otg_state state)
+{
+	if (state == OTG_STATE_A_HOST)
+		return "HOST";
+	if (state == OTG_STATE_B_PERIPHERAL)
+		return "PERIPHERAL";
+	if (state == OTG_STATE_B_IDLE)
+		return "IDLE";
+	return "INVALID";
+}
+
+static const char *usb_event_name(enum usb_xceiv_events event)
+{
+	if (event == USB_EVENT_NONE)
+		return "DISCONNECTED";
+	if (event == USB_EVENT_VBUS)
+		return "VBUS";
+	if (event == USB_EVENT_ID)
+		return "ID";
+	if (event == USB_EVENT_CHARGER)
+		return "CHARGER";
+	return "INVALID";
+}
+
 static int msm_otg_accy_notify(struct notifier_block *nb,
 			unsigned long event, void *ignore)
 {
 	struct msm_otg *motg;
 	struct otg_transceiver *otg;
-	enum usb_mode_type req_mode;
+	enum usb_otg_state req_state;
 
 	motg = container_of(nb, struct msm_otg, accy_nb);
 	otg = &motg->otg;
 
-	pr_info("%s called for %lu event\n", __func__, event);
+	dev_info(otg->dev, "received %s event\n", usb_event_name(event));
 
 	/*
 	 * This is set after the accy detect driver determines the connection
@@ -2045,16 +2069,17 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		otg->state = OTG_STATE_B_IDLE;
 
 	if (event == USB_EVENT_ID)
-		req_mode = USB_HOST;
+		req_state = OTG_STATE_A_HOST;
 	else if (event == USB_EVENT_VBUS || event == USB_EVENT_CHARGER)
-		req_mode = USB_PERIPHERAL;
+		req_state = OTG_STATE_B_PERIPHERAL;
 	else
-		req_mode = USB_NONE;
+		req_state = OTG_STATE_B_IDLE;
 
-	pr_info("%s: current state: %d\trequested mode: %d\n",
-					__func__, otg->state, req_mode);
-	switch (req_mode) {
-	case USB_NONE:
+	dev_info(otg->dev, "%s --> %s\n", usb_state_name(otg->state),
+		usb_state_name(req_state));
+
+	switch (req_state) {
+	case OTG_STATE_B_IDLE:
 		switch (otg->state) {
 		case OTG_STATE_B_IDLE:
 			if (motg->chg_type != USB_DCP_CHARGER)
@@ -2068,7 +2093,7 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 			goto out;
 		}
 		break;
-	case USB_PERIPHERAL:
+	case OTG_STATE_B_PERIPHERAL:
 		switch (otg->state) {
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_A_HOST:
@@ -2084,7 +2109,7 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 			goto out;
 		}
 		break;
-	case USB_HOST:
+	case OTG_STATE_A_HOST:
 		switch (otg->state) {
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_B_PERIPHERAL:
