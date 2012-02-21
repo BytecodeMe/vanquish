@@ -2033,6 +2033,8 @@ static const char *usb_state_name(enum usb_otg_state state)
 		return "PERIPHERAL";
 	if (state == OTG_STATE_B_IDLE)
 		return "IDLE";
+	if (state == OTG_STATE_UNDEFINED)
+		return "UNDEFINED";
 	return "INVALID";
 }
 
@@ -2061,13 +2063,6 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 
 	dev_info(otg->dev, "received %s event\n", usb_event_name(event));
 
-	/*
-	 * This is set after the accy detect driver determines the connection
-	 * status at boot.
-	 */
-	if (otg->state == OTG_STATE_UNDEFINED)
-		otg->state = OTG_STATE_B_IDLE;
-
 	if (event == USB_EVENT_ID)
 		req_state = OTG_STATE_A_HOST;
 	else if (event == USB_EVENT_VBUS || event == USB_EVENT_CHARGER)
@@ -2081,9 +2076,16 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 	switch (req_state) {
 	case OTG_STATE_B_IDLE:
 		switch (otg->state) {
+		case OTG_STATE_UNDEFINED:
+			/* set when accy driver init detection completes */
+			otg->state = OTG_STATE_B_IDLE;
+			goto out;
 		case OTG_STATE_B_IDLE:
-			if (motg->chg_type != USB_DCP_CHARGER)
+			if (motg->chg_type != USB_DCP_CHARGER) {
+				/* balances usage count increase from resume */
+				pm_runtime_put_noidle(otg->dev);
 				goto out;
+			}
 		case OTG_STATE_A_HOST:
 		case OTG_STATE_B_PERIPHERAL:
 			set_bit(ID, &motg->inputs);
@@ -2095,6 +2097,9 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		break;
 	case OTG_STATE_B_PERIPHERAL:
 		switch (otg->state) {
+		case OTG_STATE_UNDEFINED:
+			/* set when accy driver init detection completes */
+			otg->state = OTG_STATE_B_IDLE;
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_A_HOST:
 			set_bit(ID, &motg->inputs);
@@ -2111,6 +2116,9 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		break;
 	case OTG_STATE_A_HOST:
 		switch (otg->state) {
+		case OTG_STATE_UNDEFINED:
+			/* set when accy driver init detection completes */
+			otg->state = OTG_STATE_B_IDLE;
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_B_PERIPHERAL:
 			clear_bit(ID, &motg->inputs);

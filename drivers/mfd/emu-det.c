@@ -1184,6 +1184,7 @@ static void detection_work(bool caused_by_irq)
 	struct emu_det_data *data = the_emud;
 	int last_irq;
 	unsigned long delay = 0;
+	int ret;
 
 	static unsigned long last_run;
 
@@ -1200,7 +1201,11 @@ static void detection_work(bool caused_by_irq)
 	case CONFIG:
 		if (!data->otg_enabled) {
 			data->otg_enabled = true;
-			pm_runtime_get_sync(data->trans->dev);
+			ret = pm_runtime_get_sync(data->trans->dev);
+			if (ret < 0) {
+				pr_emu_det(ERROR,
+				"pm_runtime_get_sync failed, err %d\n", ret);
+			}
 			/*
 			 * Avoid resetting the phy while the OTG driver is still
 			 * host mode and when the phy is still powered on. This
@@ -1307,7 +1312,11 @@ static void detection_work(bool caused_by_irq)
 			notify_accy(ACCY_NONE);
 			notify_whisper_switch(ACCY_NONE);
 			if (data->otg_enabled) {
-				pm_runtime_put(data->trans->dev);
+				ret = pm_runtime_put(data->trans->dev);
+				if (ret < 0) {
+					pr_emu_det(ERROR,
+					"pm_runtime_put failed, err %d\n", ret);
+				}
 				data->otg_enabled = false;
 			}
 		}
