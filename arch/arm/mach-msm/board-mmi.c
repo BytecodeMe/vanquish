@@ -1974,13 +1974,13 @@ static ssize_t ecsd_show(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static struct kobj_attribute cid_attribute =
-	__ATTR(cid, 0666, cid_show, NULL);
+	__ATTR(cid, 0444, cid_show, NULL);
 
 static struct kobj_attribute csd_attribute =
-	__ATTR(csd, 0666, csd_show, NULL);
+	__ATTR(csd, 0444, csd_show, NULL);
 
 static struct kobj_attribute ecsd_attribute =
-	__ATTR(ecsd, 0666, ecsd_show, NULL);
+	__ATTR(ecsd, 0444, ecsd_show, NULL);
 
 static struct attribute *emmc_attrs[] = {
 	&cid_attribute.attr,
