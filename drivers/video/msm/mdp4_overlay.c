@@ -2549,9 +2549,9 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		mdp4_overlay_vg_setup(pipe);	/* video/graphic pipe */
 	else {
 		if (pipe->flags & MDP_SHARPENING) {
-			pr_warn(
+/*			pr_warn(
 			"%s: Sharpening/Smoothing not supported on RGB pipe\n",
-								     __func__);
+							     __func__); */
 			pipe->flags &= ~MDP_SHARPENING;
 		}
 		mdp4_overlay_rgb_setup(pipe);	/* rgb pipe */

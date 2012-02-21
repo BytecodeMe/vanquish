@@ -26,6 +26,12 @@
 #define DEV_WARN(args...)	dev_warn(external_common_state->dev, args)
 #define DEV_ERR(args...)	dev_err(external_common_state->dev, args)
 
+#ifdef CONFIG_FB_MSM_HDMI_COMMON
+/* Enable this define to allow user space control over HDCP enabling
+ */
+#define SUPPORT_HDCP_ENABLE_VIA_SYSFS
+#endif
+
 #ifdef CONFIG_FB_MSM_TVOUT
 #define TVOUT_VFRMT_NTSC_M_720x480i		0
 #define TVOUT_VFRMT_NTSC_J_720x480i		1
@@ -221,6 +227,10 @@ struct external_common_state_type {
 	uint32 audio_data_blocks[16];
 	int (*read_edid_block)(int block, uint8 *edid_buf);
 	int (*hpd_feature)(int on);
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+	boolean hdcp_enable;
+	void (*update_hdcp_enable)(boolean en);
+#endif
 #endif
 };
 

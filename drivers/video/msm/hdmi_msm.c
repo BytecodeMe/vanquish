@@ -793,9 +793,12 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		DEV_INFO("HDMI HPD: QDSP OFF\n");
 		kobject_uevent_env(external_common_state->uevent_kobj,
 				   KOBJ_CHANGE, envp);
+#ifndef SUPPORT_NON_HDCP_DEVICES
+		/* The HPD switch should not be connected to HDCP */
 		switch_set_state(&external_common_state->sdev, 0);
 		DEV_INFO("Hdmi state switch to %d: %s\n",
 			external_common_state->sdev.state,  __func__);
+#endif
 		if (hpd_state) {
 			hdmi_msm_read_edid();
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
@@ -817,6 +820,12 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			switch_set_state(&external_common_state->sdev, 1);
 			DEV_INFO("Hdmi state switch to %d: %s\n",
 				external_common_state->sdev.state, __func__);
+#endif
+#ifdef SUPPORT_NON_HDCP_DEVICES
+			/* Announce HPD regardless of HDCP */
+			switch_set_state(&external_common_state->sdev, 1);
+			DEV_INFO("Hdmi state switch to %d: %s\n",
+				external_common_state->sdev.state,  __func__);
 #endif
 		} else {
 			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n"
@@ -1080,9 +1089,12 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 			DEV_INFO("HDMI HPD:QDSP OFF\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 			KOBJ_CHANGE, envp);
+#ifndef SUPPORT_NON_HDCP_DEVICES
+			/* The HPD switch should not be connected to HDCP */
 			switch_set_state(&external_common_state->sdev, 0);
 			DEV_INFO("Hdmi state switch to %d: %s\n",
 				external_common_state->sdev.state,  __func__);
+#endif
 			mutex_lock(&hdcp_auth_state_mutex);
 			hdmi_msm_state->full_auth_done = FALSE;
 			mutex_unlock(&hdcp_auth_state_mutex);
@@ -2188,6 +2200,11 @@ static void hdcp_deauthenticate(void)
 {
 	int hdcp_link_status = HDMI_INP(0x011C);
 
+	DEV_DBG("%s: %x", __func__, hdcp_link_status);
+
+	/* Disable HDCP interrupts */
+	HDMI_OUTP(0x0118, 0x0);
+
 	external_common_state->hdcp_active = FALSE;
 	/* 0x0130 HDCP_RESET
 	  [0] LINK0_DEAUTHENTICATE */
@@ -2201,11 +2218,6 @@ static void hdcp_deauthenticate(void)
 
 	if (hdcp_link_status & 0x00000004)
 		hdcp_auth_info((hdcp_link_status & 0x000000F0) >> 4);
-
-#ifdef SUPPORT_NON_HDCP_DEVICES
-	/* Disable HDCP interrupts */
-	HDMI_OUTP(0x0118, 0x0);
-#endif
 }
 #endif
 
@@ -2931,6 +2943,23 @@ error:
 	return ret;
 }
 
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+static void hdmi_msm_upd_hdcp_enable(boolean en)
+{
+	if (external_common_state->hdcp_enable == en)
+		return;
+
+	external_common_state->hdcp_enable = en;
+
+	if (external_common_state->sdev.state) {
+		if (en)
+			hdmi_msm_hdcp_enable();
+		else
+			hdcp_deauthenticate();
+	}
+}
+#endif
+
 static void hdmi_msm_hdcp_enable(void)
 {
 	int ret = 0;
@@ -2944,6 +2973,13 @@ static void hdmi_msm_hdcp_enable(void)
 			external_common_state->sdev.state, __func__);
 		return;
 	}
+
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+	if (!external_common_state->hdcp_enable) {
+		DEV_INFO("HDCP is not enabled via SYSFS\n");
+		return;
+	}
+#endif
 
 	mutex_lock(&hdmi_msm_state_mutex);
 	hdmi_msm_state->hdcp_activating = TRUE;
@@ -3018,9 +3054,12 @@ static void hdmi_msm_hdcp_enable(void)
 		kobject_uevent_env(external_common_state->uevent_kobj,
 		    KOBJ_CHANGE, envp);
 	}
+#ifndef SUPPORT_NON_HDCP_DEVICES
+	/* The HPD switch should not be connected to HDCP */
 	switch_set_state(&external_common_state->sdev, 1);
 	DEV_INFO("Hdmi state switch to %d: %s\n",
 		external_common_state->sdev.state, __func__);
+#endif
 	return;
 
 error:
@@ -3040,9 +3079,12 @@ error:
 			queue_work(hdmi_work_queue,
 			    &hdmi_msm_state->hdcp_reauth_work);
 	}
+#ifndef SUPPORT_NON_HDCP_DEVICES
+	/* The HPD switch should not be connected to HDCP */
 	switch_set_state(&external_common_state->sdev, 0);
 	DEV_INFO("Hdmi state switch to %d: %s\n",
 		external_common_state->sdev.state, __func__);
+#endif
 }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
@@ -4515,6 +4557,10 @@ static int __init hdmi_msm_init(void)
 	*/
 	hdmi_work_queue = create_workqueue("hdmi_hdcp");
 	external_common_state->hpd_feature = hdmi_msm_hpd_feature;
+
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+	external_common_state->update_hdcp_enable = hdmi_msm_upd_hdcp_enable;
+#endif
 
 	rc = platform_driver_register(&this_driver);
 	if (rc) {

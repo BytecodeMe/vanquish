@@ -439,6 +439,37 @@ static DEVICE_ATTR(test, S_IRUGO | S_IWUGO, hdmi_common_rda_test,
 					    hdmi_common_wta_test);
 #endif
 
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+static ssize_t hdmi_common_rda_hdcp_en(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			external_common_state->hdcp_enable);
+}
+
+static ssize_t hdmi_common_wta_hdcp_en(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long en;
+	boolean flag;
+	int rc;
+
+	rc = strict_strtoul(buf, 0, &en);
+	if (rc || en > 2)
+		return -EINVAL;
+
+	flag = (en) ? TRUE : FALSE;
+
+	if (external_common_state->update_hdcp_enable)
+		external_common_state->update_hdcp_enable(flag);
+
+	return count;
+}
+
+static DEVICE_ATTR(hdcp_en, S_IRUGO | S_IWUGO, hdmi_common_rda_hdcp_en,
+					       hdmi_common_wta_hdcp_en);
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 /*
  * This interface for CEC feature is defined to suit
@@ -751,6 +782,9 @@ static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_hpd.attr,
 	&dev_attr_3d_present.attr,
 	&dev_attr_hdcp_present.attr,
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+	&dev_attr_hdcp_en.attr,
+#endif
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 	&dev_attr_format_3d.attr,
