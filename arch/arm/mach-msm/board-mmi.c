@@ -251,6 +251,7 @@ static int boot_mode_is_factory(void)
 
 #ifdef CONFIG_EMU_DETECTION
 static struct platform_device emu_det_device;
+static int l17_voltage = 2650000;
 static bool core_power_init, enable_5v_init;
 
 #define EMU_DET_ID_GPIO		PM8921_MPP_PM_TO_SYS(10)
@@ -541,7 +542,7 @@ static int emu_det_core_power(int on)
 			pr_err("unable to get EMU_POWER reg\n");
 			return PTR_ERR(emu_vdd);
 		}
-		rc = regulator_set_voltage(emu_vdd, 2700000, 2700000);
+		rc = regulator_set_voltage(emu_vdd, l17_voltage, l17_voltage);
 		if (rc) {
 			pr_err("unable to set voltage EMU_POWER reg\n");
 			goto put_vdd;
@@ -855,8 +856,11 @@ static __init void emu_det_gpio_init(void)
 
 	res = platform_get_resource_byname(&emu_det_device,
 					   IORESOURCE_IO, "DMB_PPD_DET_GPIO");
-	if (res)
+	if (res) {
 		pm8xxx_mpp_config(res->start, &emu_det_pm_mpp_config[3]);
+		pr_info("HW has HoneyBadger\n");
+		l17_voltage = 2850000;
+	}
 
 	res = platform_get_resource_byname(&emu_det_device,
 					   IORESOURCE_IO, "EMU_ID_EN_GPIO");
@@ -1011,9 +1015,9 @@ static int mipi_dsi_panel_power(int on)
 		}
 
 		if (NULL != reg_vddio) {
-			rc = regulator_set_voltage(reg_vddio, 2700000, 2700000);
+			rc = regulator_set_voltage(reg_vddio, 2650000, 2850000);
 			if (rc) {
-				pr_err("set_voltage l8 failed, rc=%d\n", rc);
+				pr_err("set_voltage l17 failed, rc=%d\n", rc);
 				return -EINVAL;
 			}
 		}
@@ -1816,14 +1820,16 @@ static void w1_gpio_enable_regulators(int enable)
 			if (!rc)
 				rc = regulator_enable(vdd1);
 			if (rc)
-				pr_err("w1_gpio Failed 8921_l7 to 2.7V\n");
+				pr_err("w1_gpio failed to set voltage "\
+								"8921_l7\n");
 		}
 		if (!IS_ERR_OR_NULL(vdd2)) {
-			rc = regulator_set_voltage(vdd2, 2700000, 2950000);
+			rc = regulator_set_voltage(vdd2, 2650000, 2850000);
 			if (!rc)
 				rc = regulator_enable(vdd2);
 			if (rc)
-				pr_err("w1_gpio Failed 8921_l17 to 2.7V\n");
+				pr_err("w1_gpio failed to set voltage "\
+								"8921_l17\n");
 		}
 	} else {
 		if (!IS_ERR_OR_NULL(vdd1)) {
