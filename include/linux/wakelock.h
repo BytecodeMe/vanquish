@@ -46,6 +46,8 @@ struct wake_lock {
 		ktime_t         prevent_suspend_time;
 		ktime_t         max_time;
 		ktime_t         last_time;
+		ktime_t         last_unlock_time;
+		ktime_t         background_locked_time;
 	} stat;
 #endif
 };
