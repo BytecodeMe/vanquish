@@ -51,6 +51,10 @@
 #define VOLTAGE_MONITOR_FAULT		0x80
 #define UNDER_VOLTAGE_FAULT		0x10
 
+#define STROBE_CURRENT_MASK	0x0F
+#define TORCH_CURRENT_MASK	0x70
+
+
 struct lm3556_data {
 	struct i2c_client *client;
 	struct lm3556_platform_data *pdata;
@@ -305,7 +309,7 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 				return -EIO;
 			}
 
-			prev_flash_val &= 0x0f;
+			prev_flash_val &= STROBE_CURRENT_MASK;
 			torch_brightness = (val | prev_flash_val);
 
 			err = lm3556_write_reg(LM3556_CURRENT_CTRL_REG,
@@ -366,7 +370,7 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 				return -EIO;
 			}
 
-			prev_torch_val = (prev_torch_val & 0x70);
+			prev_torch_val &= TORCH_CURRENT_MASK;
 			val = (val & 0x0f);
 			strobe_brightness = (val | prev_torch_val);
 
@@ -395,8 +399,7 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 static ssize_t lm3556_torch_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	sprintf(buf, "%d\n", torch_data->flash_light_brightness);
-	return sizeof(buf);
+	return sprintf(buf, "%d\n", torch_data->flash_light_brightness);
 }
 
 static ssize_t lm3556_torch_store(struct device *dev,
@@ -416,7 +419,7 @@ static ssize_t lm3556_torch_store(struct device *dev,
 	if (err)
 		return err;
 
-	return sizeof(buf);
+	return count;
 }
 
 static DEVICE_ATTR(flash_light, 0644, lm3556_torch_show, lm3556_torch_store);
@@ -424,8 +427,7 @@ static DEVICE_ATTR(flash_light, 0644, lm3556_torch_show, lm3556_torch_store);
 static ssize_t lm3556_strobe_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	sprintf(buf, "%d\n", torch_data->camera_strobe_brightness);
-	return sizeof(buf);
+	return sprintf(buf, "%d\n", torch_data->camera_strobe_brightness);
 }
 
 
@@ -446,7 +448,7 @@ static ssize_t lm3556_strobe_store(struct device *dev,
 	if (err)
 		return err;
 
-	return sizeof(buf);
+	return count;
 }
 
 static DEVICE_ATTR(camera_strobe, 0644, lm3556_strobe_show,
@@ -466,12 +468,46 @@ static ssize_t lm3556_strobe_err_show(struct device *dev,
 		return -EIO;
 	}
 
-	sprintf(buf, "%d\n", (err_flags & TX_EVENT_FAULT));
-
-	return sizeof(buf);
+	return sprintf(buf, "%d\n", (err_flags & TX_EVENT_FAULT));
 }
 
 static DEVICE_ATTR(strobe_err, 0644, lm3556_strobe_err_show, NULL);
+
+static ssize_t lm3556_max_strobe_power_range_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	unsigned int max_strobe_power_val;
+	uint8_t strobe_val;
+
+	strobe_val = (torch_data->pdata->current_cntrl_reg_def &
+				STROBE_CURRENT_MASK);
+
+	max_strobe_power_val = LM3556_STROBE_STEP * strobe_val;
+
+	return sprintf(buf, "%u\n", max_strobe_power_val);
+}
+
+static DEVICE_ATTR(max_strobe_power, 0644,
+		lm3556_max_strobe_power_range_show, NULL);
+
+static ssize_t lm3556_max_torch_power_range_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	unsigned int max_torch_power_val;
+	uint8_t torch_val;
+
+	torch_val = (torch_data->pdata->current_cntrl_reg_def &
+				TORCH_CURRENT_MASK);
+
+	torch_val >>= 4;
+
+	max_torch_power_val = LM3556_TORCH_STEP * torch_val;
+
+	return sprintf(buf, "%u\n", max_torch_power_val);
+}
+
+static DEVICE_ATTR(max_torch_power, 0644,
+		lm3556_max_torch_power_range_show, NULL);
 
 static int lm3556_init_registers(void)
 {
@@ -575,7 +611,7 @@ static int lm3556_probe(struct i2c_client *client,
 
 	err = lm3556_init_registers();
 	if (err < 0)
-		goto err_reg_init_reg_failed;
+		goto err_init_failed_release_gpio;
 
 	torch_data->led_dev.name = LM3556_LED_DEV;
 	torch_data->led_dev.brightness_set = NULL;
@@ -585,7 +621,7 @@ static int lm3556_probe(struct i2c_client *client,
 		err = -ENODEV;
 		pr_err("%s: Register led class failed: %d\n",
 				__func__, err);
-		goto err_reg_led_class_failed;
+		goto err_init_failed_release_gpio;
 	}
 
 	if (torch_data->pdata->flags & LM3556_TORCH) {
@@ -599,6 +635,18 @@ static int lm3556_probe(struct i2c_client *client,
 					__func__, err);
 			goto err_reg_torch_file_failed;
 		}
+
+		pr_debug("%s: Creating Max_Torch_Power File\n", __func__);
+
+		err = device_create_file(torch_data->led_dev.dev,
+				&dev_attr_max_torch_power);
+		if (err < 0) {
+			pr_err("%s:File device creation failed: %d\n",
+					__func__, err);
+			err = -ENODEV;
+			goto err_reg_max_torch_power_file_failed;
+		}
+
 	}
 	if (torch_data->pdata->flags & LM3556_FLASH) {
 		pr_debug("%s: Creating Flash\n", __func__);
@@ -622,7 +670,19 @@ static int lm3556_probe(struct i2c_client *client,
 					__func__, err);
 			goto err_reg_strobe_error_file_failed;
 		}
+
+		pr_debug("%s: Creating Max_Strobe_Power File\n", __func__);
+
+		err = device_create_file(torch_data->led_dev.dev,
+				&dev_attr_max_strobe_power);
+		if (err < 0) {
+			pr_err("%s:File device creation failed: %d\n",
+					__func__, err);
+			err = -ENODEV;
+			goto err_reg_max_strobe_power_file_failed;
+		}
 	}
+
 
 	pr_debug("%s: Creating Registers File\n", __func__);
 
@@ -643,22 +703,30 @@ static int lm3556_probe(struct i2c_client *client,
 err_reg_register_file_failed:
 	if (torch_data->pdata->flags & LM3556_FLASH)
 		device_remove_file(torch_data->led_dev.dev,
+				&dev_attr_max_strobe_power);
+
+err_reg_max_strobe_power_file_failed:
+	if (torch_data->pdata->flags & LM3556_FLASH)
+		device_remove_file(torch_data->led_dev.dev,
 				&dev_attr_strobe_err);
 
 err_reg_strobe_error_file_failed:
 	if (torch_data->pdata->flags & LM3556_FLASH)
 		device_remove_file(torch_data->led_dev.dev,
 				&dev_attr_camera_strobe);
-
 err_reg_flash_file_failed:
+	if (torch_data->pdata->flags & LM3556_TORCH)
+		device_remove_file(torch_data->led_dev.dev,
+				&dev_attr_max_torch_power);
+
+err_reg_max_torch_power_file_failed:
 	if (torch_data->pdata->flags & LM3556_TORCH)
 		device_remove_file(torch_data->led_dev.dev,
 				&dev_attr_flash_light);
 err_reg_torch_file_failed:
 	led_classdev_unregister(&torch_data->led_dev);
 
-err_reg_init_reg_failed:
-err_reg_led_class_failed:
+err_init_failed_release_gpio:
 	gpio_free(pdata->hw_enable);
 	kfree(torch_data);
 error1:
@@ -673,10 +741,16 @@ static int lm3556_remove(struct i2c_client *client)
 				&dev_attr_camera_strobe);
 		device_remove_file(torch_data->led_dev.dev,
 				&dev_attr_strobe_err);
+		device_remove_file(torch_data->led_dev.dev,
+				&dev_attr_max_strobe_power);
 	}
-	if (torch_data->pdata->flags & LM3556_TORCH)
+
+	if (torch_data->pdata->flags & LM3556_TORCH) {
 		device_remove_file(torch_data->led_dev.dev,
 				&dev_attr_flash_light);
+		device_remove_file(torch_data->led_dev.dev,
+				&dev_attr_max_torch_power);
+	}
 
 	led_classdev_unregister(&torch_data->led_dev);
 
