@@ -7,7 +7,6 @@ TARGET_DEFCONFIG		:= $(DEFCONFIGSRC)/$(_TARGET_DEFCONFIG)
 # build eng kernel for eng and userdebug Android variants
 ifneq ($(TARGET_BUILD_VARIANT), user)
 PRODUCT_SPECIFIC_DEFCONFIGS += ${LJAPDEFCONFIGSRC}/eng_bld.config
-ANDR_LOCALVERSION := 'CONFIG_LOCALVERSION=-eng'
 endif
 
 #
