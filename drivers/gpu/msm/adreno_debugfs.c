@@ -23,6 +23,9 @@
 #include "a2xx_reg.h"
 
 unsigned int kgsl_cff_dump_enable;
+
+#ifdef CONFIG_DEBUG_FS
+
 int kgsl_pm_regs_enabled;
 
 static struct dentry *pm_d_debugfs;
@@ -358,3 +361,5 @@ void adreno_debugfs_init(struct kgsl_device *device)
 	debugfs_create_file("regs_enabled", 0644, pm_d_debugfs, device,
 			    &pm_regs_enabled_fops);
 }
+
+#endif /* CONFIG_DEBUG_FS */

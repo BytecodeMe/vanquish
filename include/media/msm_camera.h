@@ -217,7 +217,8 @@ struct msm_mctl_post_proc_cmd {
 #define PP_SNAP  0x01
 #define PP_RAW_SNAP ((0x01)<<1)
 #define PP_PREV  ((0x01)<<2)
-#define PP_MASK		(PP_SNAP|PP_RAW_SNAP|PP_PREV)
+#define PP_THUMB ((0x01)<<3)
+#define PP_MASK		(PP_SNAP|PP_RAW_SNAP|PP_PREV|PP_THUMB)
 
 #define MSM_CAM_CTRL_CMD_DONE  0
 #define MSM_CAM_SENSOR_VFE_CMD 1
@@ -295,6 +296,7 @@ struct msm_pp_frame {
 		struct msm_pp_frame_sp sp;
 		struct msm_pp_frame_mp mp[MAX_PLANES];
 	};
+	int node_type;
 };
 
 struct msm_cam_evt_divert_frame {
@@ -506,6 +508,9 @@ struct outputCfg {
 	uint32_t window_height_lastline;
 };
 
+#define VIDEO_NODE 0
+#define MCTL_NODE 1
+
 #define OUTPUT_1	0
 #define OUTPUT_2	1
 #define OUTPUT_1_AND_2            2   /* snapshot only */
@@ -681,6 +686,9 @@ struct msm_stats_buf {
 #define MSM_V4L2_CAM_OP_ZSL             (MSM_V4L2_CAM_OP_DEFAULT+4)
 /* camera operation mode for raw snapshot - one frame output queue */
 #define MSM_V4L2_CAM_OP_RAW             (MSM_V4L2_CAM_OP_DEFAULT+5)
+/* camera operation mode for jpeg snapshot - one frame output queue */
+#define MSM_V4L2_CAM_OP_JPEG_CAPTURE    (MSM_V4L2_CAM_OP_DEFAULT+6)
+
 
 #define MSM_V4L2_VID_CAP_TYPE	0
 #define MSM_V4L2_STREAM_ON		1
