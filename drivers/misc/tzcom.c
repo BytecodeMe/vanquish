@@ -75,6 +75,9 @@ static DEFINE_MUTEX(send_cmd_lock);
 static DEFINE_MUTEX(tzcom_bw_mutex);
 static int tzcom_bw_count;
 static struct clk *tzcom_bus_clk;
+
+static long mot_tzcom_ioctl(unsigned cmd, unsigned long ioctl_param);
+
 struct tzcom_callback_list {
 	struct list_head      list;
 	struct tzcom_callback callback;
@@ -907,7 +910,7 @@ static long tzcom_ioctl(struct file *file, unsigned cmd,
 		break;
 	}
 	default:
-		return -EINVAL;
+		return mot_tzcom_ioctl(cmd, arg);
 	}
 	return ret;
 }
@@ -1234,6 +1237,95 @@ static void __exit tzcom_exit(void)
 	ion_client_destroy(ion_clnt);
 }
 
+/* Motorola extension to TZCOM */
+#define TZBSP_SVC_OEM 254
+#define SEC_PROC_ID_SIZE 16
+
+static long mot_tzcom_ioctl(unsigned cmd, unsigned long ioctl_param)
+{
+	struct {
+		int mot_cmd;
+		int parm1;
+		int parm2;
+		int parm3;
+	} my_cmd;
+
+	struct {
+		unsigned int which_bank;
+		unsigned int efuse_value;
+	} efuse_data;
+
+	u32 *shared_mem;
+	int count, ret_val = -EINVAL;
+
+	switch (cmd) {
+
+	case TZCOM_IOCTL_READ_UID:
+
+		shared_mem = kmalloc(SEC_PROC_ID_SIZE, GFP_KERNEL);
+		my_cmd.mot_cmd = 8;
+		my_cmd.parm1 = virt_to_phys(shared_mem);
+
+		ret_val = scm_call(TZBSP_SVC_OEM, 1, &my_cmd,
+			sizeof(my_cmd), NULL, 0);
+
+		count = copy_to_user((void __user *) ioctl_param,
+			 (const void *) shared_mem, SEC_PROC_ID_SIZE);
+
+		kfree(shared_mem);
+		ret_val = 0;
+		break;
+
+	case TZCOM_IOCTL_WRITE_FUSE:
+
+		count = copy_from_user(&efuse_data, (void __user *)
+			ioctl_param, sizeof(efuse_data));
+
+		if (count != 0)
+			break;
+
+		my_cmd.mot_cmd = 2;
+		my_cmd.parm1 = efuse_data.which_bank;
+		my_cmd.parm2 = efuse_data.efuse_value;
+
+		ret_val = scm_call(TZBSP_SVC_OEM, 1, &my_cmd,
+			sizeof(my_cmd), NULL, 0);
+
+		break;
+
+	case TZCOM_IOCTL_READ_FUSE:
+
+		count = copy_from_user(&efuse_data,
+			(void *)ioctl_param, sizeof(efuse_data));
+
+		if (count != 0)
+			break;
+
+		shared_mem = kmalloc(4, GFP_KERNEL);
+		my_cmd.mot_cmd = 1;
+		my_cmd.parm1 = efuse_data.which_bank;
+		my_cmd.parm2 = virt_to_phys(shared_mem);
+
+		ret_val = scm_call(TZBSP_SVC_OEM, 1, &my_cmd,
+		sizeof(my_cmd), NULL, 0);
+
+		efuse_data.efuse_value = *shared_mem;
+		kfree(shared_mem);
+
+		if (ret_val != 0)
+			efuse_data.efuse_value = 0xFFFFFFFF;
+
+		count += copy_to_user((void *)ioctl_param,
+		&efuse_data, sizeof(efuse_data));
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return ret_val;
+}
+/* End Motorola changes */
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Sachin Shah <sachins@codeaurora.org>");

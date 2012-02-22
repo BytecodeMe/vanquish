@@ -133,4 +133,9 @@ struct tzcom_cont_cmd_op_req {
 /* For TZ service */
 #define TZCOM_IOCTL_SEND_CMD_FD_REQ \
 	_IOWR(TZCOM_IOC_MAGIC, 7, struct tzcom_send_cmd_fd_op_req)
+
+#define TZCOM_IOCTL_READ_UID	0x5000
+#define TZCOM_IOCTL_READ_FUSE	0x5001
+#define TZCOM_IOCTL_WRITE_FUSE	0x5002
+
 #endif /* __TZCOM_H_ */
