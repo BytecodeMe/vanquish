@@ -176,7 +176,23 @@ static int esd_recovery_start(struct msm_fb_data_type *mfd)
 
 	return 0;
 }
+static int mipi_read_cmd_locked(struct msm_fb_data_type *mfd,
+			 struct dsi_cmd_desc *cmd)
+{
+	int rd_val = -1;
 
+	mutex_lock(&mfd->dma->ov_mutex);
+	mipi_set_tx_power_mode(0);
+	/* Todo: consider to remove mdp4_dsi_cmd_dma_busy_wait
+	 * mipi_dsi_cmds_tx/rx wait for dma completion already.
+	 */
+	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mipi_dsi_mdp_busy_wait(mfd);
+	rd_val = get_panel_info(mfd, mot_panel, cmd);
+	mutex_unlock(&mfd->dma->ov_mutex);
+
+	return rd_val;
+}
 static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 {
 
@@ -184,26 +200,24 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 	static u16 manufacture_id = 0xff;
 	u16 rd_manufacture_id;
 	int ret = 0;
+	struct dsi_cmd_desc *cmd;
 
 	if (atomic_read(&mot_panel->state) == MOT_PANEL_OFF)
 		return 0;
 
-	if (manufacture_id == 0xff)
-		manufacture_id = get_panel_info(mfd, mot_panel,
-						&mot_manufacture_id_cmd);
+	if (manufacture_id == 0xff) {
+		cmd = &mot_manufacture_id_cmd;
+		manufacture_id = mipi_read_cmd_locked(mfd, cmd);
+		msleep(100);
+	}
 
 	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON)
 		expected_mode = 0x9c;
 	else
 		expected_mode = 0x98;
 
-	mutex_lock(&mfd->dma->ov_mutex);
-
-	mipi_set_tx_power_mode(0);
-	mdp4_dsi_cmd_dma_busy_wait(mfd);
-	mipi_dsi_mdp_busy_wait(mfd);
-	pwr_mode = mipi_mode_get_pwr_mode(mot_panel->mfd);
-	mutex_unlock(&mfd->dma->ov_mutex);
+	cmd = &mot_get_pwr_mode_cmd;
+	pwr_mode =  mipi_read_cmd_locked(mfd, cmd);
 
 	/*
 	 * There is a issue of the mipi_dsi_cmds_rx(), and case# 00743147
@@ -222,12 +236,8 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 	 */
 	msleep(100);
 
-	mipi_set_tx_power_mode(0);
-	mdp4_dsi_cmd_dma_busy_wait(mfd);
-	mipi_dsi_mdp_busy_wait(mfd);
-	rd_manufacture_id = get_panel_info(mfd, mot_panel,
-						&mot_manufacture_id_cmd);
-	mutex_unlock(&mfd->dma->ov_mutex);
+	cmd = &mot_manufacture_id_cmd;
+	rd_manufacture_id = mipi_read_cmd_locked(mfd, cmd);
 
 	if ((pwr_mode != expected_mode) ||
 		(rd_manufacture_id != manufacture_id)) {
