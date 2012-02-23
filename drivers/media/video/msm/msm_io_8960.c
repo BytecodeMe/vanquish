@@ -138,6 +138,9 @@ void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 
 static int msm_camera_vreg_enable(struct device *dev)
 {
+	/* use_cam_xxx flags are a hack to bypass this regulator control */
+	struct msm_camera_sensor_info *sinfo = dev->platform_data;
+
 	if (mipi_csi_vdd == NULL) {
 		mipi_csi_vdd = regulator_get(dev, "mipi_csi_vdd");
 		if (IS_ERR(mipi_csi_vdd)) {
@@ -163,7 +166,7 @@ static int msm_camera_vreg_enable(struct device *dev)
 			goto mipi_csi_vdd_disable;
 		}
 	}
-	if (cam_vana == NULL) {
+	if (sinfo->use_cam_vana && cam_vana == NULL) {
 		cam_vana = regulator_get(dev, "cam_vana");
 		if (IS_ERR(cam_vana)) {
 			CDBG("%s: VREG CAM VANA get failed\n", __func__);
@@ -187,7 +190,7 @@ static int msm_camera_vreg_enable(struct device *dev)
 			goto cam_vana_disable;
 		}
 	}
-	if (cam_vio == NULL) {
+	if (sinfo->use_cam_vio && cam_vio == NULL) {
 		cam_vio = regulator_get(dev, "cam_vio");
 		if (IS_ERR(cam_vio)) {
 			CDBG("%s: VREG VIO get failed\n", __func__);
@@ -199,7 +202,7 @@ static int msm_camera_vreg_enable(struct device *dev)
 			goto cam_vio_put;
 		}
 	}
-	if (cam_vdig == NULL) {
+	if (sinfo->use_cam_vdig && cam_vdig == NULL) {
 		cam_vdig = regulator_get(dev, "cam_vdig");
 		if (IS_ERR(cam_vdig)) {
 			CDBG("%s: VREG CAM VDIG get failed\n", __func__);
@@ -223,7 +226,7 @@ static int msm_camera_vreg_enable(struct device *dev)
 			goto cam_vdig_disable;
 		}
 	}
-	if (cam_vaf == NULL) {
+	if (sinfo->use_cam_vaf && cam_vaf == NULL) {
 		cam_vaf = regulator_get(dev, "cam_vaf");
 		if (IS_ERR(cam_vaf)) {
 			CDBG("%s: VREG CAM VAF get failed\n", __func__);

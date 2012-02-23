@@ -178,6 +178,10 @@ struct msm8960_privacy_light_cfg {
 
 struct msm_camera_sensor_platform_info {
 	int mount_angle;
+	int use_cam_vana;
+	int use_cam_vio;
+	int use_cam_vdig;
+	int use_cam_vaf;
 	int sensor_reset_enable;
 	int sensor_reset;
 	int sensor_pwd;
