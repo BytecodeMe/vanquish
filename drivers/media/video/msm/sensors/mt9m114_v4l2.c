@@ -90,6 +90,10 @@ static int32_t mt9m114_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 	/* assert reset */
 	gpio_direction_output(pinfo->sensor_reset, 0);
 
+	/* Turn off MCLK */
+	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
+	usleep_range(1000, 2000);
+
 	/* turn off analog supply */
 	gpio_direction_output(pinfo->analog_en, 0);
 
@@ -100,8 +104,6 @@ static int32_t mt9m114_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 	gpio_free(pinfo->sensor_reset);
 	gpio_free(pinfo->analog_en);
 	gpio_free(pinfo->digital_en);
-
-	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
 	return 0;
 }
