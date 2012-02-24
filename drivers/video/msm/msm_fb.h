@@ -46,9 +46,13 @@
 #include "msm_fb_panel.h"
 #include "mdp.h"
 
+#define MSM_FB_US_DVI_SUPPORT /* User Space DVI Support */
+
 #define MSM_FB_DEFAULT_PAGE_SIZE 2
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
+
+extern int fb_switching_resolutions;
 
 struct disp_info_type_suspend {
 	boolean op_enable;
@@ -148,6 +152,17 @@ struct msm_fb_data_type {
 	__u32 var_xres;
 	__u32 var_yres;
 	__u32 var_pixclock;
+
+#ifdef MSM_FB_US_DVI_SUPPORT
+	__u32 var_left_margin;		/* time from sync to picture	*/
+	__u32 var_right_margin;		/* time from picture to sync	*/
+	__u32 var_upper_margin;		/* time from sync to picture	*/
+	__u32 var_lower_margin;
+	__u32 var_hsync_len;		/* length of horizontal sync	*/
+	__u32 var_vsync_len;		/* length of vertical sync	*/
+	__u32 var_sync;			/* see FB_SYNC_*		*/
+	__u32 var_vmode;		/* see FB_VMODE_*		*/
+#endif
 
 #ifdef MSM_FB_ENABLE_DBGFS
 	struct dentry *sub_dir;

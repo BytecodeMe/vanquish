@@ -57,6 +57,8 @@ extern int load_565rle_image(char *filename);
 #define MSM_FB_NUM	3
 #endif
 
+int fb_switching_resolutions = 0;
+
 static unsigned char *fbram;
 static unsigned char *fbram_phys;
 static int fbram_size;
@@ -1708,12 +1710,40 @@ static int msm_fb_set_par(struct fb_info *info)
 		mfd->var_pixclock = var->pixclock;
 		blank = 1;
 	}
+
+#ifdef MSM_FB_US_DVI_SUPPORT
+	if (mfd->hw_refresh && (var->reserved[3] == 99) &&
+	    ((mfd->var_left_margin != var->left_margin) ||
+	     (mfd->var_right_margin != var->right_margin) ||
+	     (mfd->var_upper_margin != var->upper_margin) ||
+	     (mfd->var_lower_margin != var->lower_margin) ||
+	     (mfd->var_hsync_len != var->hsync_len) ||
+	     (mfd->var_vsync_len != var->vsync_len) ||
+	     (mfd->var_sync != var->sync) ||
+	     (mfd->var_vmode != var->vmode))) {
+		mfd->var_xres = var->xres;
+		mfd->var_yres = var->yres;
+		mfd->var_pixclock = var->pixclock;
+		mfd->var_left_margin = var->left_margin;
+		mfd->var_right_margin = var->right_margin;
+		mfd->var_upper_margin = var->upper_margin;
+		mfd->var_lower_margin = var->lower_margin;
+		mfd->var_hsync_len = var->hsync_len;
+		mfd->var_vsync_len = var->vsync_len;
+		mfd->var_sync = var->sync;
+		mfd->var_vmode = var->vmode;
+		blank = 1;
+	}
+#endif
+
 	mfd->fbi->fix.line_length = msm_fb_line_length(mfd->index, var->xres,
 						       var->bits_per_pixel/8);
 
 	if (blank) {
+		fb_switching_resolutions = 1;
 		msm_fb_blank_sub(FB_BLANK_POWERDOWN, info, mfd->op_enable);
 		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
+		fb_switching_resolutions = 0;
 	}
 
 	return 0;

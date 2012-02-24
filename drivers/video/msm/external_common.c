@@ -24,6 +24,12 @@
 #include "external_common.h"
 #include "mhl_api.h"
 
+#ifdef MSM_FB_US_DVI_SUPPORT
+/* User space defined timing info */
+#define HDMI_VFRMT_US_TIMING   99
+static struct hdmi_disp_mode_timing_type us_timing;
+#endif
+
 struct external_common_state_type *external_common_state;
 EXPORT_SYMBOL(external_common_state);
 DEFINE_MUTEX(external_common_state_hpd_mutex);
@@ -1562,7 +1568,31 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 	struct fb_var_screeninfo *var = &mfd->fbi->var;
 	bool changed = TRUE;
 
+#ifdef MSM_FB_US_DVI_SUPPORT
+	if (var->reserved[3] == HDMI_VFRMT_US_TIMING) {
+		format = HDMI_VFRMT_US_TIMING;
+		us_timing.video_format  = format;
+		us_timing.active_h      = mfd->var_xres;
+		us_timing.front_porch_h = mfd->var_right_margin;
+		us_timing.pulse_width_h = mfd->var_hsync_len;
+		us_timing.back_porch_h  = mfd->var_left_margin;
+		us_timing.active_low_h  =
+			(mfd->var_sync & FB_SYNC_HOR_HIGH_ACT) ? 0 : 1;
+		us_timing.active_v      = mfd->var_yres;
+		us_timing.front_porch_v = mfd->var_lower_margin;
+		us_timing.pulse_width_v = mfd->var_vsync_len;
+		us_timing.back_porch_v  = mfd->var_upper_margin;
+		us_timing.active_low_v  =
+			(mfd->var_sync & FB_SYNC_VERT_HIGH_ACT) ? 0 : 1;
+		us_timing.pixel_freq    = mfd->var_pixclock / 1000;
+		us_timing.refresh_rate  = 60000; /* Just hack */
+		us_timing.interlaced    =
+			(mfd->var_vmode & FB_VMODE_INTERLACED) ? 1 : 0;
+		us_timing.supported     = true;
+	} else if (var->reserved[3]) {
+#else
 	if (var->reserved[3]) {
+#endif
 		format = var->reserved[3]-1;
 		DEV_DBG("reserved format is %d\n", format);
 	} else {
@@ -1607,6 +1637,11 @@ EXPORT_SYMBOL(hdmi_common_get_video_format_from_drv_data);
 
 const struct hdmi_disp_mode_timing_type *hdmi_common_get_mode(uint32 mode)
 {
+#ifdef MSM_FB_US_DVI_SUPPORT
+	if (mode == HDMI_VFRMT_US_TIMING)
+		return &us_timing;
+#endif
+
 	if (mode >= HDMI_VFRMT_MAX)
 		return NULL;
 

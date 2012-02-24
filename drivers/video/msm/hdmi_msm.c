@@ -3181,6 +3181,10 @@ static const struct hdmi_msm_audio_arcs hdmi_msm_audio_acr_lut[] = {
 	HDMI_MSM_AUDIO_ARCS(27030, {
 		{4096, 27027}, {6272, 30030}, {6144, 27027}, {12544, 30030},
 		{12288, 27027}, {25088, 30030}, {24576, 27027} }),
+	/*  72.000MHz */
+	HDMI_MSM_AUDIO_ARCS(72000, {
+		{4096, 72000}, {6272, 80000}, {6144, 72000}, {12544, 80000},
+		{12288, 72000}, {25088, 80000}, {24576, 72000} }),
 	/*  74.250MHz */
 	HDMI_MSM_AUDIO_ARCS(74250, {
 		{4096, 74250}, {6272, 82500}, {6144, 74250}, {12544, 82500},
@@ -4234,10 +4238,13 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	hdcp_deauthenticate();
 #endif
-	hdmi_msm_hpd_off();
+
+	if (!fb_switching_resolutions)
+		hdmi_msm_hpd_off();
 	hdmi_msm_powerdown_phy();
 	hdmi_msm_dump_regs("HDMI-OFF: ");
-	hdmi_msm_hpd_on(true);
+	if (!fb_switching_resolutions)
+		hdmi_msm_hpd_on(true);
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (!external_common_state->hpd_feature_on)
