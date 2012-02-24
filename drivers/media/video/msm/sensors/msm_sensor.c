@@ -329,7 +329,7 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("msm_sensor_config: cfgtype = %d\n",
 	cdata.cfgtype);
-		switch (cdata.cfgtype) {
+	switch (cdata.cfgtype) {
 		case CFG_SET_FPS:
 		case CFG_SET_PICT_FPS:
 			if (s_ctrl->func_tbl->
@@ -434,7 +434,31 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				sizeof(struct sensor_eeprom_data_t)))
 				rc = -EFAULT;
 			break;
+		case CFG_GET_SNAPSHOTDATA:
+			{
+				/* Sensor code is not in place.. following
+				   is testing the flow, TODO  s_ctrl->func_tbl->
+				   sensor_get_snapshotdata()  */
+				struct msm_sensor_snapshotdata testing;
+				struct msm_sensor_snapshotdata *ptr_data
+					= cdata.cfg.snapshotdata.data;
+				size_t size_data =
+					sizeof(struct msm_sensor_snapshotdata);
+				size_t size_cfg  =
+					sizeof(struct sensor_cfg_data);
+				testing.exposure_time = 200;
+				testing.iso_speed = 100;
+				testing.metering_mode = 1;
+				if (copy_to_user(
+							(void *)ptr_data,
+							&testing, size_data))
+					rc = -EFAULT;
 
+				if (copy_to_user((void *)argp,
+							&cdata, size_cfg))
+					rc = -EFAULT;
+				break;
+			}
 		default:
 			rc = -EFAULT;
 			break;
