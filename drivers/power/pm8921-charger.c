@@ -227,8 +227,8 @@ struct pm8921_chg_chip {
 	unsigned int			update_time;
 	unsigned int			max_voltage_mv;
 	unsigned int			min_voltage_mv;
-	unsigned int			cool_temp_dc;
-	unsigned int			warm_temp_dc;
+	int				cool_temp_dc;
+	int				warm_temp_dc;
 	unsigned int			temp_check_period;
 	unsigned int			cool_bat_chg_current;
 	unsigned int			warm_bat_chg_current;
@@ -475,14 +475,6 @@ static int pm_chg_charge_dis(struct pm8921_chg_chip *chip, int disable)
 
 	return pm_chg_masked_write(chip, CHG_CNTRL, CHG_CHARGE_DIS_BIT,
 				disable ? CHG_CHARGE_DIS_BIT : 0);
-}
-
-static bool pm_is_chg_charge_dis_bit_set(struct pm8921_chg_chip *chip)
-{
-	u8 temp = 0;
-
-	pm8xxx_readb(chip->dev->parent, CHG_CNTRL, &temp);
-	return !!(temp & CHG_CHARGE_DIS_BIT);
 }
 
 #define PM8921_CHG_V_MIN_MV	3240
@@ -1219,6 +1211,11 @@ static int pm_power_get_property(struct power_supply *psy,
 
 		else if (psy->type == POWER_SUPPLY_TYPE_USB ||
 #else
+		val->intval = 0;
+		if (charging_disabled)
+			return 0;
+
+		/* USB charging */
 		if (psy->type == POWER_SUPPLY_TYPE_USB ||
 #endif
 			psy->type == POWER_SUPPLY_TYPE_USB_DCP ||
@@ -1241,6 +1238,8 @@ static int pm_power_get_property(struct power_supply *psy,
 				val->intval = 0;
 #endif
 		}
+
+		pr_err("Unkown POWER_SUPPLY_TYPE %d\n", psy->type);
 		break;
 	default:
 		return -EINVAL;
@@ -1875,6 +1874,7 @@ int pm8921_set_usb_power_supply_type(enum power_supply_type type)
 
 	the_chip->usb_psy.type = type;
 	power_supply_changed(&the_chip->usb_psy);
+	power_supply_changed(&the_chip->dc_psy);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(pm8921_set_usb_power_supply_type);
@@ -1935,6 +1935,7 @@ static void handle_stop_ext_chg(struct pm8921_chg_chip *chip)
 	power_supply_set_charge_type(chip->ext_psy,
 					POWER_SUPPLY_CHARGE_TYPE_NONE);
 	pm8921_disable_source_current(false); /* release BATFET */
+	power_supply_changed(&chip->dc_psy);
 	chip->ext_charging = false;
 	chip->ext_charge_done = false;
 	bms_notify_check(chip);
@@ -1982,8 +1983,10 @@ static void handle_start_ext_chg(struct pm8921_chg_chip *chip)
 		return;
 	}
 
+	power_supply_set_online(chip->ext_psy, dc_present);
 	power_supply_set_charge_type(chip->ext_psy,
 					POWER_SUPPLY_CHARGE_TYPE_FAST);
+	power_supply_changed(&chip->dc_psy);
 	chip->ext_charging = true;
 	chip->ext_charge_done = false;
 	bms_notify_check(chip);
@@ -2064,6 +2067,7 @@ static irqreturn_t vbatdet_low_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	return IRQ_HANDLED;
 }
@@ -2115,6 +2119,7 @@ static irqreturn_t chgdone_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	bms_notify_check(chip);
 
@@ -2137,6 +2142,7 @@ static irqreturn_t chgfail_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 	return IRQ_HANDLED;
 }
 
@@ -2147,6 +2153,7 @@ static irqreturn_t chgstate_irq_handler(int irq, void *data)
 	pr_debug("state_changed_to=%d\n", pm_chg_get_fsm_state(data));
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+	power_supply_changed(&chip->dc_psy);
 
 	bms_notify_check(chip);
 
@@ -2781,8 +2788,16 @@ static int configure_btm(struct pm8921_chg_chip *chip)
 {
 	int rc;
 
-	btm_config.btm_warm_fn = battery_warm;
-	btm_config.btm_cool_fn = battery_cool;
+	if (chip->warm_temp_dc != INT_MIN)
+		btm_config.btm_warm_fn = battery_warm;
+	else
+		btm_config.btm_warm_fn = NULL;
+
+	if (chip->cool_temp_dc != INT_MIN)
+		btm_config.btm_cool_fn = battery_cool;
+	else
+		btm_config.btm_cool_fn = NULL;
+
 	btm_config.low_thr_temp = chip->cool_temp_dc;
 	btm_config.high_thr_temp = chip->warm_temp_dc;
 	btm_config.interval = chip->temp_check_period;
@@ -4060,7 +4075,7 @@ static int pm8921_charger_resume(struct device *dev)
 	int rc;
 	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
 
-	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)
+	if (!(chip->cool_temp_dc == INT_MIN && chip->warm_temp_dc == INT_MIN)
 		&& !(chip->keep_btm_on_suspend)) {
 		rc = pm8xxx_adc_btm_configure(&btm_config);
 		if (rc)
@@ -4082,7 +4097,7 @@ static int pm8921_charger_suspend(struct device *dev)
 	int rc;
 	struct pm8921_chg_chip *chip = dev_get_drvdata(dev);
 
-	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)
+	if (!(chip->cool_temp_dc == INT_MIN && chip->warm_temp_dc == INT_MIN)
 		&& !(chip->keep_btm_on_suspend)) {
 		rc = pm8xxx_adc_btm_end();
 		if (rc)
@@ -4128,8 +4143,16 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->batt_id_channel = pdata->charger_cdata.batt_id_channel;
 	chip->batt_id_min = pdata->batt_id_min;
 	chip->batt_id_max = pdata->batt_id_max;
-	chip->cool_temp_dc = pdata->cool_temp * 10;
-	chip->warm_temp_dc = pdata->warm_temp * 10;
+	if (pdata->cool_temp != INT_MIN)
+		chip->cool_temp_dc = pdata->cool_temp * 10;
+	else
+		chip->cool_temp_dc = INT_MIN;
+
+	if (pdata->warm_temp != INT_MIN)
+		chip->warm_temp_dc = pdata->warm_temp * 10;
+	else
+		chip->warm_temp_dc = INT_MIN;
+
 	chip->temp_check_period = pdata->temp_check_period;
 	chip->max_bat_chg_current = pdata->max_bat_chg_current;
 	chip->cool_bat_chg_current = pdata->cool_bat_chg_current;
@@ -4337,10 +4360,10 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	enable_irq_wake(chip->pmic_chg_irq[VBATDET_LOW_IRQ]);
 	enable_irq_wake(chip->pmic_chg_irq[FASTCHG_IRQ]);
 	/*
-	 * if both the cool_temp_dc and warm_temp_dc are zero the device doesnt
+	 * if both the cool_temp_dc and warm_temp_dc are invalid device doesnt
 	 * care for jeita compliance
 	 */
-	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)) {
+	if (!(chip->cool_temp_dc == INT_MIN && chip->warm_temp_dc == INT_MIN)) {
 		rc = configure_btm(chip);
 		if (rc) {
 			pr_err("couldn't register with btm rc=%d\n", rc);

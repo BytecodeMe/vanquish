@@ -1042,8 +1042,6 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 	host->curr.got_dataend = 0;
 	host->curr.got_auto_prog_done = 0;
 
-	memset(&host->pio, 0, sizeof(host->pio));
-
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
 
 	if (host->curr.wait_for_auto_prog_done)
@@ -1078,23 +1076,21 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 
 	/* Is data transfer in PIO mode required? */
 	if (!(datactrl & MCI_DPSM_DMAENABLE)) {
-		int flags = SG_MITER_ATOMIC;
-		host->pio.sg = data->sg;
-		host->pio.sg_len = data->sg_len;
-		host->pio.sg_off = 0;
+		unsigned int sg_miter_flags = SG_MITER_ATOMIC;
 
 		if (data->flags & MMC_DATA_READ) {
-			flags |= SG_MITER_TO_SG;
+			sg_miter_flags |= SG_MITER_TO_SG;
 			pio_irqmask = MCI_RXFIFOHALFFULLMASK;
 			if (host->curr.xfer_remain < MCI_FIFOSIZE)
 				pio_irqmask |= MCI_RXDATAAVLBLMASK;
 		} else {
-			flags |= SG_MITER_FROM_SG;
+			sg_miter_flags |= SG_MITER_FROM_SG;
 			pio_irqmask = MCI_TXFIFOHALFEMPTYMASK |
 					MCI_TXFIFOEMPTYMASK;
 		}
-		sg_miter_start(&host->pio.sg_miter, data->sg,
-			data->sg_len, flags);
+
+		sg_miter_start(&host->sg_miter, data->sg, data->sg_len,
+				sg_miter_flags);
 	}
 
 	if (data->flags & MMC_DATA_READ)
@@ -1260,6 +1256,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 	struct msmsdcc_host	*host = dev_id;
 	void __iomem		*base = host->base;
 	uint32_t		status;
+	unsigned long flags;
 
 	spin_lock(&host->lock);
 
@@ -1274,9 +1271,10 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 #if IRQ_DEBUG
 	msmsdcc_print_status(host, "irq1-r", status);
 #endif
+	local_irq_save(flags);
 
-	do {
-		unsigned long flags;
+	while (sg_miter_next(&host->sg_miter)) {
+
 		unsigned int remain, len;
 		char *buffer;
 
@@ -1284,11 +1282,8 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 				| MCI_RXDATAAVLBL)))
 			break;
 
-		/* Map the current scatter buffer */
-		local_irq_save(flags);
-		BUG_ON(!sg_miter_next(&host->pio.sg_miter));
-		buffer = host->pio.sg_miter.addr;
-		remain = min(host->pio.sg_miter.length, host->curr.xfer_remain);
+		buffer = host->sg_miter.addr;
+		remain = host->sg_miter.length;
 
 		len = 0;
 		if (status & MCI_RXACTIVE)
@@ -1299,13 +1294,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		if (len > remain)
 			len = remain;
 
-		/* Unmap the buffer */
-		host->pio.sg_miter.consumed = len;
-		if (status & MCI_RXACTIVE && host->curr.user_pages)
-			flush_dcache_page(host->pio.sg_miter.page);
-		sg_miter_stop(&host->pio.sg_miter);
-		local_irq_restore(flags);
-
+		host->sg_miter.consumed = len;
 		host->curr.xfer_remain -= len;
 		host->curr.data_xfered += len;
 		remain -= len;
@@ -1313,13 +1302,11 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		if (remain) /* Done with this page? */
 			break; /* Nope */
 
-		if (!host->curr.xfer_remain) {
-			memset(&host->pio, 0, sizeof(host->pio));
-			break;
-		}
-
 		status = readl_relaxed(base + MMCISTATUS);
-	} while (1);
+	}
+
+	sg_miter_stop(&host->sg_miter);
+	local_irq_restore(flags);
 
 	if (status & MCI_RXACTIVE && host->curr.xfer_remain < MCI_FIFOSIZE) {
 		writel_relaxed((readl_relaxed(host->base + MMCIMASK0) &
@@ -3076,29 +3063,20 @@ msmsdcc_slot_status(struct msmsdcc_host *host)
 {
 	int status;
 	unsigned int gpio_no = host->plat->status_gpio;
-	static unsigned int allocated;
 
-	if (!allocated) {
-		status = gpio_request(gpio_no, "SD_HW_Detect");
-		if (status) {
-			pr_err("%s: %s: Failed to request GPIO %d\n",
-				mmc_hostname(host->mmc), __func__, gpio_no);
-			goto out;
-		} else {
-			status = gpio_direction_input(gpio_no);
-			if (status) {
-				pr_err("%s: %s: Failed to configure GPIO %d\n",
-				mmc_hostname(host->mmc), __func__, gpio_no);
-				goto out;
-			}
-			allocated = 1;
-			gpio_export(gpio_no, 0);
+	status = gpio_request(gpio_no, "SD_HW_Detect");
+	if (status) {
+		pr_err("%s: %s: Failed to request GPIO %d\n",
+			mmc_hostname(host->mmc), __func__, gpio_no);
+	} else {
+		status = gpio_direction_input(gpio_no);
+		if (!status) {
+			status = gpio_get_value_cansleep(gpio_no);
+			if (host->plat->is_status_gpio_active_low)
+				status = !status;
 		}
+		gpio_free(gpio_no);
 	}
-	status = !gpio_get_value_cansleep(gpio_no);
-	if (host->plat->is_status_gpio_active_low)
-		status = !status;
-out:
 	return status;
 }
 
