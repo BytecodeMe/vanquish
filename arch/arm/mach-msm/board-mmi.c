@@ -264,6 +264,8 @@ static bool core_power_init, enable_5v_init;
 #define EMU_DET_DMINUS_GPIO	PM8921_GPIO_PM_TO_SYS(21)
 #define EMU_DET_DPLUS_GPIO	PM8921_GPIO_PM_TO_SYS(41)
 #define EMU_DET_RX_PAIR_GPIO	PM8921_GPIO_PM_TO_SYS(42)
+#define WHISPER_UART_TX_GPIO	42
+#define WHISPER_UART_RX_GPIO	43
 
 static struct pm8xxx_mpp_config_data emu_det_pm_mpp_config[] = {
 	{	/* EMU_ID */
@@ -739,6 +741,19 @@ static struct resource resources_emu_det[] = {
 		.end	= EMU_DET_DMINUS_GPIO,
 		.flags	= IORESOURCE_IO,
 	},
+	{
+		.name	= "WHISPER_UART_TX_GPIO",
+		.start	= WHISPER_UART_TX_GPIO,	/* MSM GPIO */
+		.end	= WHISPER_UART_TX_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "WHISPER_UART_RX_GPIO",
+		.start	= WHISPER_UART_RX_GPIO,	/* MSM GPIO */
+		.end	= WHISPER_UART_RX_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+
 };
 
 static struct platform_device emu_det_device = {

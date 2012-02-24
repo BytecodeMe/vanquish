@@ -296,6 +296,8 @@ enum emu_det_gpios {
 	DMB_PPD_DET_GPIO,
 	DPLUS_GPIO,
 	DMINUS_GPIO,
+	WHISPER_UART_TX_GPIO,
+	WHISPER_UART_RX_GPIO,
 
 	EMU_DET_MAX_GPIOS,
 };
@@ -1655,6 +1657,7 @@ struct emu_det_gpio_init_data {
 	int	direction;
 	int	value;
 	int	required;
+	bool	exprt;
 };
 
 #define SKIP		0
@@ -1664,26 +1667,41 @@ struct emu_det_gpio_init_data {
 #define GPIO_OPTIONAL	0
 #define GPIO_REQUIRED	1
 
-#define DECLARE_GPIO(_id, _dir, _val, _req)		\
+#define DECLARE_GPIO(_id, _dir, _val, _req, _expt)	\
 { \
 	.idx		= _id, \
 	.name		= #_id, \
 	.direction	= _dir, \
 	.value		= _val, \
 	.required	= _req, \
+	.exprt		= _expt, \
 }
 
 struct emu_det_gpio_init_data emu_det_gpio_data[] = {
-	DECLARE_GPIO(EMU_SCI_OUT_GPIO,      DIR_INPUT,  -1, GPIO_REQUIRED),
-	DECLARE_GPIO(EMU_ID_EN_GPIO,        DIR_INPUT,  -1, GPIO_OPTIONAL),
-	DECLARE_GPIO(EMU_MUX_CTRL0_GPIO,    DIR_OUTPUT,  1, GPIO_REQUIRED),
-	DECLARE_GPIO(EMU_MUX_CTRL1_GPIO,    DIR_OUTPUT,  0, GPIO_REQUIRED),
-	DECLARE_GPIO(SEMU_PPD_DET_GPIO,     DIR_INPUT,  -1, GPIO_REQUIRED),
-	DECLARE_GPIO(SEMU_ALT_MODE_EN_GPIO, SKIP,       -1, GPIO_REQUIRED),
-	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1, GPIO_OPTIONAL),
-	DECLARE_GPIO(DMB_PPD_DET_GPIO,      DIR_INPUT,  -1, GPIO_OPTIONAL),
-	DECLARE_GPIO(DPLUS_GPIO,            SKIP,       -1, GPIO_REQUIRED),
-	DECLARE_GPIO(DMINUS_GPIO,           SKIP,       -1, GPIO_REQUIRED),
+	DECLARE_GPIO(EMU_SCI_OUT_GPIO,      DIR_INPUT,  -1,
+		     GPIO_REQUIRED,  true),
+	DECLARE_GPIO(EMU_ID_EN_GPIO,        DIR_INPUT,  -1,
+		     GPIO_OPTIONAL,  false),
+	DECLARE_GPIO(EMU_MUX_CTRL0_GPIO,    DIR_OUTPUT,  1,
+		     GPIO_REQUIRED,  false),
+	DECLARE_GPIO(EMU_MUX_CTRL1_GPIO,    DIR_OUTPUT,  0,
+		     GPIO_REQUIRED,  false),
+	DECLARE_GPIO(SEMU_PPD_DET_GPIO,     DIR_INPUT,  -1,
+		     GPIO_REQUIRED,  true),
+	DECLARE_GPIO(SEMU_ALT_MODE_EN_GPIO, SKIP,       -1,
+		     GPIO_REQUIRED,  true),
+	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1,
+		     GPIO_OPTIONAL,  false),
+	DECLARE_GPIO(DMB_PPD_DET_GPIO,      DIR_INPUT,  -1,
+		     GPIO_OPTIONAL,  false),
+	DECLARE_GPIO(DPLUS_GPIO,            SKIP,       -1,
+		     GPIO_REQUIRED,  false),
+	DECLARE_GPIO(DMINUS_GPIO,           SKIP,       -1,
+		     GPIO_REQUIRED,  false),
+	DECLARE_GPIO(WHISPER_UART_TX_GPIO,  DIR_OUTPUT, -1,
+		     GPIO_REQUIRED,  true),
+	DECLARE_GPIO(WHISPER_UART_RX_GPIO,  DIR_INPUT,  -1,
+		     GPIO_REQUIRED,  true),
 };
 
 static void free_gpios(void)
@@ -1750,6 +1768,13 @@ static int __devinit request_gpios(struct platform_device *pdev)
 				emud->emu_gpio[emu_det_gpio_data[i].idx]);
 		}
 
+		if (emu_det_gpio_data[i].exprt == true) {
+			ret = gpio_export(
+			      emud->emu_gpio[emu_det_gpio_data[i].idx], 0);
+			pr_emu_det(DEBUG, "exporting gpio %s-%d\n",
+				   emu_det_gpio_data[i].name,
+				   emud->emu_gpio[emu_det_gpio_data[i].idx]);
+		}
 	}
 	return 0;
 
