@@ -1223,13 +1223,9 @@ static int pm_power_get_property(struct power_supply *psy,
 			psy->type == POWER_SUPPLY_TYPE_USB_ACA) {
 			chip = container_of(psy, struct pm8921_chg_chip,
 							usb_psy);
-			if (pm_is_chg_charge_dis_bit_set(chip))
-				val->intval = 0;
-			else
-				val->intval = is_usb_chg_plugged_in(chip);
+			val->intval = is_usb_chg_plugged_in(chip);
 #ifdef CONFIG_EMU_DETECTION
-			if (pm_is_chg_charge_dis_bit_set(chip) ||
-			    (alarm_state == PM_BATT_ALARM_SHUTDOWN))
+			if (alarm_state == PM_BATT_ALARM_SHUTDOWN)
 				val->intval = 0;
 			else if ((chip->emu_accessory == EMU_ACCY_USB) ||
 				 (chip->emu_accessory == EMU_ACCY_FACTORY))
