@@ -242,6 +242,7 @@ struct pm8921_chg_chip {
 	unsigned int			batt_temp_channel;
 	unsigned int			batt_id_channel;
 	struct power_supply		usb_psy;
+	struct power_supply		dc_psy;
 	struct power_supply		*ext_psy;
 	struct power_supply		batt_psy;
 	struct dentry			*dent;
@@ -281,7 +282,6 @@ struct pm8921_chg_chip {
 #endif
 #ifdef CONFIG_EMU_DETECTION
 	enum emu_accy			emu_accessory;
-	struct power_supply		ac_psy;
 #endif
 };
 
@@ -1194,52 +1194,61 @@ static char *pm_power_supplied_to[] = {
 	"battery",
 };
 
+#define USB_WALL_THRESHOLD_MA	500
 static int pm_power_get_property(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  union power_supply_propval *val)
 {
-	struct pm8921_chg_chip *chip;
+	int current_max;
+
+	/* Check if called before init */
+	if (!the_chip)
+		return -EINVAL;
 
 	switch (psp) {
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		pm_chg_iusbmax_get(the_chip, &current_max);
+		val->intval = current_max;
+		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 	case POWER_SUPPLY_PROP_ONLINE:
+		if (pm_is_chg_charge_dis_bit_set(the_chip) ||
 #ifdef CONFIG_EMU_DETECTION
-		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
-			chip = container_of(psy, struct pm8921_chg_chip,
-							ac_psy);
-
-			if (((chip->emu_accessory == EMU_ACCY_CHARGER) ||
-			     (chip->emu_accessory ==
+				(alarm_state == PM_BATT_ALARM_SHUTDOWN))
+#else
+				!is_usb_chg_plugged_in(the_chip))
+#endif
+			val->intval = 0;
+		else if (psy->type == POWER_SUPPLY_TYPE_USB ||
+				psy->type == POWER_SUPPLY_TYPE_USB_DCP ||
+				psy->type == POWER_SUPPLY_TYPE_USB_CDP ||
+				psy->type == POWER_SUPPLY_TYPE_USB_ACA) {
+			val->intval = 1;
+#ifdef CONFIG_EMU_DETECTION
+			if ((the_chip->emu_accessory == EMU_ACCY_USB) ||
+			    (the_chip->emu_accessory == EMU_ACCY_FACTORY))
+				val->intval = 1;
+			else if (the_chip->emu_accessory != EMU_ACCY_UNKNOWN)
+				val->intval = 0;
+#endif
+		} else if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
+			pm_chg_iusbmax_get(the_chip, &current_max);
+			if (current_max > USB_WALL_THRESHOLD_MA)
+				val->intval = 1;
+			else
+				val->intval = 0;
+#ifdef CONFIG_EMU_DETECTION
+			if (((the_chip->emu_accessory == EMU_ACCY_CHARGER) ||
+			     (the_chip->emu_accessory ==
 				EMU_ACCY_WHISPER_SMART_DOCK)) &&
 			    (alarm_state != PM_BATT_ALARM_SHUTDOWN))
 				val->intval = 1;
 			else
 				val->intval = 0;
-		}
-
-		else if (psy->type == POWER_SUPPLY_TYPE_USB ||
-#else
-		if (psy->type == POWER_SUPPLY_TYPE_USB ||
 #endif
-			psy->type == POWER_SUPPLY_TYPE_USB_DCP ||
-			psy->type == POWER_SUPPLY_TYPE_USB_CDP ||
-			psy->type == POWER_SUPPLY_TYPE_USB_ACA) {
-			chip = container_of(psy, struct pm8921_chg_chip,
-							usb_psy);
-			if (pm_is_chg_charge_dis_bit_set(chip))
-				val->intval = 0;
-			else
-				val->intval = is_usb_chg_plugged_in(chip);
-#ifdef CONFIG_EMU_DETECTION
-			if (pm_is_chg_charge_dis_bit_set(chip) ||
-			    (alarm_state == PM_BATT_ALARM_SHUTDOWN))
-				val->intval = 0;
-			else if ((chip->emu_accessory == EMU_ACCY_USB) ||
-				 (chip->emu_accessory == EMU_ACCY_FACTORY))
-				val->intval = 1;
-			else if (chip->emu_accessory != EMU_ACCY_UNKNOWN)
-				val->intval = 0;
-#endif
+		} else {
+			val->intval = 0;
+			pr_err("Unkown POWER_SUPPLY_TYPE %d\n", psy->type);
 		}
 		break;
 	default:
@@ -3424,7 +3433,7 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 	pr_info("%s: accy_state: %d\n", __func__, the_chip->emu_accessory);
 	power_supply_changed(&the_chip->batt_psy);
 	power_supply_changed(&the_chip->usb_psy);
-	power_supply_changed(&the_chip->ac_psy);
+	power_supply_changed(&the_chip->dc_psy);
 
 	return 0;
 }
@@ -4231,14 +4240,16 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->usb_psy.get_property = pm_power_get_property,
 
 #ifdef CONFIG_EMU_DETECTION
-	chip->ac_psy.name = "ac",
-	chip->ac_psy.type = POWER_SUPPLY_TYPE_MAINS,
-	chip->ac_psy.supplied_to = pm_power_supplied_to,
-	chip->ac_psy.num_supplicants = ARRAY_SIZE(pm_power_supplied_to),
-	chip->ac_psy.properties = pm_power_props,
-	chip->ac_psy.num_properties = ARRAY_SIZE(pm_power_props),
-	chip->ac_psy.get_property = pm_power_get_property,
+	chip->dc_psy.name = "ac",
+#else
+	chip->dc_psy.name = "pm8921-dc",
 #endif
+	chip->dc_psy.type = POWER_SUPPLY_TYPE_MAINS,
+	chip->dc_psy.supplied_to = pm_power_supplied_to,
+	chip->dc_psy.num_supplicants = ARRAY_SIZE(pm_power_supplied_to),
+	chip->dc_psy.properties = pm_power_props,
+	chip->dc_psy.num_properties = ARRAY_SIZE(pm_power_props),
+	chip->dc_psy.get_property = pm_power_get_property,
 
 	chip->batt_psy.name = "battery",
 	chip->batt_psy.type = POWER_SUPPLY_TYPE_BATTERY,
@@ -4252,21 +4263,16 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 		goto free_chip;
 	}
 
-#ifdef CONFIG_EMU_DETECTION
-	rc = power_supply_register(chip->dev, &chip->ac_psy);
+	rc = power_supply_register(chip->dev, &chip->dc_psy);
 	if (rc < 0) {
-		pr_err("power_supply_register ac failed rc = %d\n", rc);
+		pr_err("power_supply_register usb failed rc = %d\n", rc);
 		goto unregister_usb;
 	}
-#endif
+
 	rc = power_supply_register(chip->dev, &chip->batt_psy);
 	if (rc < 0) {
 		pr_err("power_supply_register batt failed rc = %d\n", rc);
-#ifdef CONFIG_EMU_DETECTION
-		goto unregister_ac;
-#else
-		goto unregister_usb;
-#endif
+		goto unregister_dc;
 	}
 
 	platform_set_drvdata(pdev, chip);
@@ -4389,10 +4395,8 @@ free_irq:
 	free_irqs(chip);
 unregister_batt:
 	power_supply_unregister(&chip->batt_psy);
-#ifdef CONFIG_EMU_DETECTION
-unregister_ac:
-	power_supply_unregister(&chip->ac_psy);
-#endif
+unregister_dc:
+	power_supply_unregister(&chip->dc_psy);
 unregister_usb:
 	power_supply_unregister(&chip->usb_psy);
 free_chip:
