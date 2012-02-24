@@ -168,10 +168,6 @@ static bool in_range(int voltage, int idx)
 #define OTGSC_AVVIS	(1<<17) /* A VBUS valid interrupt state */
 #define OTGSC_AVV	(1<<9)  /* A VBUS valid */
 
-#define PORTSC_LS_DM	(1<<10)
-#define PORTSC_LS_DP	(1<<11)
-#define PORTSC_LS_SE1	(PORTSC_LS_DM | PORTSC_LS_DP)
-
 #define MUXMODE_USB	1
 #define MUXMODE_UART	2
 #define MUXMODE_AUDIO	3
@@ -772,15 +768,18 @@ static void sense_emu_id(unsigned long *lsense)
 {
 	struct emu_det_data *emud = the_emud;
 	bool auto_protected = false;
-	int id;
+	int id, vbus_voltage = adc_vbus_get();
 
 	clear_bit(PD_100K_BIT, lsense);
 	clear_bit(PD_200K_BIT, lsense);
 
 	/* determine whether id protection is on */
-	if (in_range(adc_vbus_get(), REF_VBUS_PRESENT))
+	if (in_range(vbus_voltage, REF_VBUS_PRESENT))
 		auto_protected = true;
-	else
+	else if (test_bit(SESS_VLD_BIT, lsense)) {
+		auto_protected = true;
+		pr_emu_det(ERROR, "PMIC glitch\n");
+	} else
 		clear_bit(FACTORY_BIT, lsense);
 
 	id = adc_emu_id_get();
@@ -881,9 +880,31 @@ static int get_sense(void)
 	struct emu_det_data *emud = the_emud;
 	unsigned long lsense = emud->sense;
 	int irq, value;
-	u32 otgsc, portsc;
+	u32 otgsc;
 
 	irq = atomic_read(&emud->last_irq);
+
+	otgsc = readl(USB_OTGSC);
+
+	pr_emu_det(DEBUG, "irq=%d, otgsc: 0x%08x\n", irq, otgsc);
+
+	if ((otgsc & (OTGSC_BSEIS | OTGSC_BSEIE)) &&
+	    (otgsc & OTGSC_BSE))
+		set_bit(B_SESSEND_BIT, &lsense);
+	else
+		clear_bit(B_SESSEND_BIT, &lsense);
+
+	if ((otgsc & (OTGSC_BSVIS | OTGSC_BSVIE)) &&
+	    (otgsc & OTGSC_BSV))
+		set_bit(B_SESSVLD_BIT, &lsense);
+	else
+		clear_bit(B_SESSVLD_BIT, &lsense);
+
+	if ((otgsc & (OTGSC_ASVIS | OTGSC_ASVIE)) &&
+	    (otgsc & OTGSC_ASV))
+		set_bit(SESS_VLD_BIT, &lsense);
+	else
+		clear_bit(SESS_VLD_BIT, &lsense);
 
 	if (!hasHoneyBadger())
 		sense_emu_id(&lsense);
@@ -937,36 +958,6 @@ static int get_sense(void)
 		} else
 			pr_emu_det(DEBUG, "No need to check DMB_PPD_DET_N\n");
 	}
-
-	otgsc = readl(USB_OTGSC);
-	portsc = readl(USB_PORTSC);
-
-	pr_emu_det(DEBUG, "irq=%d, otgsc: 0x%08x, portsc: 0x%08x\n",
-					irq, otgsc, portsc);
-
-	if ((otgsc & (OTGSC_BSEIS | OTGSC_BSEIE)) &&
-	    (otgsc & OTGSC_BSE))
-		set_bit(B_SESSEND_BIT, &lsense);
-	else
-		clear_bit(B_SESSEND_BIT, &lsense);
-
-	if ((otgsc & (OTGSC_BSVIS | OTGSC_BSVIE)) &&
-	    (otgsc & OTGSC_BSV))
-		set_bit(B_SESSVLD_BIT, &lsense);
-	else
-		clear_bit(B_SESSVLD_BIT, &lsense);
-
-	if ((otgsc & (OTGSC_ASVIS | OTGSC_ASVIE)) &&
-	    (otgsc & OTGSC_ASV))
-		set_bit(SESS_VLD_BIT, &lsense);
-	else
-		clear_bit(SESS_VLD_BIT, &lsense);
-
-	if ((otgsc & (OTGSC_AVVIS | OTGSC_AVVIE)) &&
-	    (otgsc & OTGSC_AVV))
-		set_bit(VBUS_VLD_BIT, &lsense);
-	else
-		clear_bit(VBUS_VLD_BIT, &lsense);
 
 	if (emud->se1_mode)
 		sense_dp_dm(&lsense);
