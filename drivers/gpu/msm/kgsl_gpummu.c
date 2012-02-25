@@ -16,7 +16,6 @@
 #include <linux/genalloc.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <mach/msm_rtb.h>
 
 #include "kgsl.h"
 #include "kgsl_mmu.h"
@@ -383,15 +382,16 @@ static inline void
 kgsl_pt_map_set(struct kgsl_gpummu_pt *pt, uint32_t pte, uint32_t val)
 {
 	uint32_t *baseptr = (uint32_t *)pt->base.hostptr;
-	uncached_logk(LOGK_GRAPHICS_MMU, baseptr);
-	writel_relaxed(val, &baseptr[pte]);
+	BUG_ON(pte*sizeof(uint32_t) >= pt->base.size);
+	baseptr[pte] = val;
 }
 
 static inline uint32_t
 kgsl_pt_map_get(struct kgsl_gpummu_pt *pt, uint32_t pte)
 {
 	uint32_t *baseptr = (uint32_t *)pt->base.hostptr;
-	return readl_relaxed(&baseptr[pte]) & GSL_PT_PAGE_ADDR_MASK;
+	BUG_ON(pte*sizeof(uint32_t) >= pt->base.size);
+	return baseptr[pte] & GSL_PT_PAGE_ADDR_MASK;
 }
 
 static unsigned int kgsl_gpummu_pt_get_flags(struct kgsl_pagetable *pt,
@@ -630,7 +630,6 @@ kgsl_gpummu_unmap(void *mmu_specific_pt,
 	   mask here to make sure we have the right address */
 
 	unsigned int gpuaddr = memdesc->gpuaddr &  KGSL_MMU_ALIGN_MASK;
-	uncached_logk(LOGK_GRAPHICS_MMU, gpummu_pt);
 
 	numpages = (range >> PAGE_SHIFT);
 	if (range & (PAGE_SIZE - 1))
@@ -676,7 +675,6 @@ kgsl_gpummu_map(void *mmu_specific_pt,
 	int flushtlb = 0;
 	int i;
 
-	uncached_logk(LOGK_GRAPHICS_MMU, gpummu_pt);
 	pte = kgsl_pt_entry_get(KGSL_PAGETABLE_BASE, memdesc->gpuaddr);
 
 	/* Flush the TLB if the first PTE isn't at the superpte boundary */

@@ -1061,10 +1061,10 @@ static void l2cap_conn_ready(struct l2cap_conn *conn)
 				if (pending_sec > sec_level)
 					sec_level = pending_sec;
 
-				if (smp_conn_security(conn, sec_level)) {
+				if (smp_conn_security(conn, sec_level))
 					l2cap_chan_ready(sk);
-					hci_conn_put(conn->hcon);
-				}
+
+				hci_conn_put(conn->hcon);
 
 			} else if (sk->sk_type != SOCK_SEQPACKET &&
 					sk->sk_type != SOCK_STREAM) {
@@ -7333,7 +7333,7 @@ static int l2cap_connect_ind(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type)
 	struct hlist_node *node;
 
 	if (type != ACL_LINK)
-		return -EINVAL;
+		return 0;
 
 	BT_DBG("hdev %s, bdaddr %s", hdev->name, batostr(bdaddr));
 
