@@ -181,7 +181,6 @@ static int mipi_read_cmd_locked(struct msm_fb_data_type *mfd,
 {
 	int rd_val = -1;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_set_tx_power_mode(0);
 	/* Todo: consider to remove mdp4_dsi_cmd_dma_busy_wait
 	 * mipi_dsi_cmds_tx/rx wait for dma completion already.
@@ -189,7 +188,6 @@ static int mipi_read_cmd_locked(struct msm_fb_data_type *mfd,
 	mdp4_dsi_cmd_dma_busy_wait(mfd);
 	mipi_dsi_mdp_busy_wait(mfd);
 	rd_val = get_panel_info(mfd, mot_panel, cmd);
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return rd_val;
 }
@@ -202,22 +200,28 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 	int ret = 0;
 	struct dsi_cmd_desc *cmd;
 
-	if (atomic_read(&mot_panel->state) == MOT_PANEL_OFF)
-		return 0;
-
 	if (manufacture_id == 0xff) {
-		cmd = &mot_manufacture_id_cmd;
-		manufacture_id = mipi_read_cmd_locked(mfd, cmd);
-		msleep(100);
+		mutex_lock(&mfd->dma->ov_mutex);
+		if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
+			cmd = &mot_manufacture_id_cmd;
+			manufacture_id = mipi_read_cmd_locked(mfd, cmd);
+			mutex_unlock(&mfd->dma->ov_mutex);
+			msleep(100);
+		} else {
+			mutex_unlock(&mfd->dma->ov_mutex);
+			return 0;
+		}
 	}
 
-	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON)
-		expected_mode = 0x9c;
-	else
-		expected_mode = 0x98;
-
-	cmd = &mot_get_pwr_mode_cmd;
-	pwr_mode =  mipi_read_cmd_locked(mfd, cmd);
+	mutex_lock(&mfd->dma->ov_mutex);
+	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
+		cmd = &mot_get_pwr_mode_cmd;
+		pwr_mode =  mipi_read_cmd_locked(mfd, cmd);
+		mutex_unlock(&mfd->dma->ov_mutex);
+	} else {
+		mutex_unlock(&mfd->dma->ov_mutex);
+		return 0;
+	}
 
 	/*
 	 * There is a issue of the mipi_dsi_cmds_rx(), and case# 00743147
@@ -236,8 +240,17 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 	 */
 	msleep(100);
 
-	cmd = &mot_manufacture_id_cmd;
-	rd_manufacture_id = mipi_read_cmd_locked(mfd, cmd);
+	mutex_lock(&mfd->dma->ov_mutex);
+	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
+		cmd = &mot_manufacture_id_cmd;
+		rd_manufacture_id = mipi_read_cmd_locked(mfd, cmd);
+		mutex_unlock(&mfd->dma->ov_mutex);
+	} else {
+		mutex_unlock(&mfd->dma->ov_mutex);
+		return 0;
+	}
+
+	expected_mode = 0x9c;
 
 	if ((pwr_mode != expected_mode) ||
 		(rd_manufacture_id != manufacture_id)) {
@@ -247,6 +260,11 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 			__func__, pwr_mode, expected_mode,
 			manufacture_id, rd_manufacture_id);
 		ret = -1;
+	} else {
+		pr_debug("%s:manufacture_id. Cur_mode=0x%x Expected_mode=0x%x "
+			" stored manufacture_id=0x%x Read=0x%x\n",
+			__func__, pwr_mode, expected_mode,
+			manufacture_id, rd_manufacture_id);
 	}
 
 	return ret;
