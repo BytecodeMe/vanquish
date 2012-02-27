@@ -35,9 +35,50 @@ enum emu_accy {
 	EMU_ACCY_UNKNOWN,
 };
 
+enum {
+	NO_DOCK,
+	DESK_DOCK,
+	CAR_DOCK,
+	LE_DOCK,
+	HE_DOCK,
+	MOBILE_DOCK,
+};
+
+enum {
+	NO_DEVICE,
+	EMU_OUT,
+};
+
+enum {
+	AUTH_NOT_STARTED,
+	AUTH_IN_PROGRESS,
+	AUTH_FAILED,
+	AUTH_PASSED,
+};
+
+enum {
+	UNDOCKED,
+	DOCKED,
+};
+
+enum {
+	AUTH_REQUIRED,
+	AUTH_NOT_REQUIRED,
+};
+
+enum {
+	MUXMODE_USB = 1,
+	MUXMODE_UART,
+	MUXMODE_AUDIO,
+	MUXMODE_UNDEFINED,
+};
+
 struct emu_accy_platform_data {
 	enum emu_accy accy;
 };
+
+void set_mux_ctrl_mode_for_audio(int mode);
+void semu_audio_register_notify(struct notifier_block *nb);
 
 /*
  *  CPCAP compatibility section

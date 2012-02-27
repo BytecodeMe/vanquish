@@ -168,10 +168,6 @@ static bool in_range(int voltage, int idx)
 #define OTGSC_AVVIS	(1<<17) /* A VBUS valid interrupt state */
 #define OTGSC_AVV	(1<<9)  /* A VBUS valid */
 
-#define MUXMODE_USB	1
-#define MUXMODE_UART	2
-#define MUXMODE_AUDIO	3
-
 #define MODE_NORMAL	0
 #define MODE_F_USB	1
 #define MODE_F_UART	2
@@ -196,6 +192,14 @@ void emu_det_register_notify(struct notifier_block *nb)
 	blocking_notifier_chain_register(&emu_det_notifier_list, nb);
 }
 EXPORT_SYMBOL_GPL(emu_det_register_notify);
+
+static BLOCKING_NOTIFIER_HEAD(semu_audio_notifier_list);
+
+void semu_audio_register_notify(struct notifier_block *nb)
+{
+	blocking_notifier_chain_register(&semu_audio_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(semu_audio_register_notify);
 
 #undef DEF
 #define STATES	{ \
@@ -223,37 +227,6 @@ enum emu_det_state STATES;
 #define DEF(a)	#a
 static char *state_names[] = STATES;
 #undef DEF
-
-enum {
-	NO_DOCK,
-	DESK_DOCK,
-	CAR_DOCK,
-	LE_DOCK,
-	HE_DOCK,
-	MOBILE_DOCK,
-};
-
-enum {
-	NO_DEVICE,
-	EMU_OUT,
-};
-
-enum {
-	AUTH_NOT_STARTED,
-	AUTH_IN_PROGRESS,
-	AUTH_FAILED,
-	AUTH_PASSED,
-};
-
-enum {
-	UNDOCKED,
-	DOCKED,
-};
-
-enum {
-	AUTH_REQUIRED,
-	AUTH_NOT_REQUIRED
-};
 
 #undef DEF
 #define ACCYS { \
@@ -411,11 +384,13 @@ struct emu_det_data {
 	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
 	unsigned char low_pwr_mode;
+	int requested_muxmode;
 };
 
 static struct mmi_emu_det_platform_data *emu_pdata;
 static struct emu_det_data *the_emud;
 static DEFINE_MUTEX(switch_access);
+static DEFINE_MUTEX(mux_mode_switch);
 static char buffer[512];
 static int driver_mode;
 
@@ -531,27 +506,79 @@ static void gsbi_ctrl_register(bool restore)
 	iounmap(gsbi_ctrl);
 }
 
-static void mux_ctrl_mode(int mode)
+void switch_mux_mode(int mode, int check_valid_req)
 {
 	struct emu_det_data *emud = the_emud;
-	int sel0 = 0;
-	int sel1 = 0;
+	int emu_audio = switch_get_state(&emud->asdev);
+
+	mutex_lock(&mux_mode_switch);
+	if (check_valid_req) {
+		if ((!emu_audio &&
+		     (emud->requested_muxmode != MUXMODE_UART)) ||
+		    (emu_audio &&
+		     (emud->requested_muxmode == MUXMODE_USB)))
+			mode = MUXMODE_UART;
+		else
+			mode = emud->requested_muxmode;
+		emud->requested_muxmode = MUXMODE_UNDEFINED;
+	}
 
 	switch (mode) {
 	case MUXMODE_USB:
-		sel0 = 1;
-		break;
-	case MUXMODE_UART:
-		sel1 = 1;
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 0);
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
 		break;
 	case MUXMODE_AUDIO:
-		sel0 = sel1 = 1;
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
+		break;
+	case MUXMODE_UART:
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 0);
+		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
 		break;
 	default:
+		break;
+	}
+	mutex_unlock(&mux_mode_switch);
+}
+
+void set_mux_ctrl_mode_for_audio(int mode)
+{
+	struct emu_det_data *emud = the_emud;
+
+	if ((emud->whisper_auth == AUTH_FAILED) ||
+	    (emud->whisper_auth == AUTH_NOT_STARTED)) {
+		pr_err("Invalid Call to emu_det driver by Audio driver\n");
 		return;
 	}
-	gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], sel0);
-	gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], sel1);
+
+	if (emud->whisper_auth == AUTH_IN_PROGRESS) {
+		if ((mode < MUXMODE_UNDEFINED) &&
+		    ((emud->state == CHARGER) ||
+		     (emud->state == WHISPER_PPD)))
+			emud->requested_muxmode = mode;
+		return;
+	}
+
+	if ((emud->whisper_auth == AUTH_PASSED) &&
+	    ((emud->state == CHARGER) ||
+	     (emud->state == WHISPER_PPD))) {
+		emud->requested_muxmode = mode;
+		switch_mux_mode(mode, 1);
+	}
+}
+
+static void mux_ctrl_mode(int mode)
+{
+	struct emu_det_data *emud = the_emud;
+	int check_validity = 0;
+
+	if ((emud->requested_muxmode != MUXMODE_UNDEFINED) &&
+	    ((emud->state == CHARGER) ||
+	     (emud->state == WHISPER_PPD)))
+		check_validity = 1;
+
+	switch_mux_mode(mode, check_validity);
 }
 
 /* Returns voltage in mV */
@@ -982,7 +1009,6 @@ static int configure_hardware(enum emu_det_accy accy)
 		gsbi_ctrl_reg_restore();
 		standard_mode_enable();
 		external_5V_disable();
-
 		break;
 
 	case ACCY_USB:
@@ -996,18 +1022,18 @@ static int configure_hardware(enum emu_det_accy accy)
 		break;
 
 	case ACCY_CHARGER:
-		mux_ctrl_mode(MUXMODE_UART);
+		if (!switch_get_state(&emud->asdev))
+			mux_ctrl_mode(MUXMODE_UART);
 		disable_se1_detection();
 		gsbi_ctrl_reg_store();
-		standard_mode_enable();
 		external_5V_disable();
 		break;
 
 	case ACCY_WHISPER_PPD:
-		mux_ctrl_mode(MUXMODE_UART);
+		if (!switch_get_state(&emud->asdev))
+			mux_ctrl_mode(MUXMODE_UART);
 		disable_se1_detection();
 		gsbi_ctrl_reg_store();
-		standard_mode_enable();
 		external_5V_enable();
 		break;
 
@@ -1087,11 +1113,14 @@ static void notify_accy(enum emu_det_accy accy)
 	notify_otg(accy);
 
 	/* Always go through None State */
-	if (data->accy != ACCY_NONE) {
+	if (data->accy != ACCY_NONE)
 		blocking_notifier_call_chain(&emu_det_notifier_list,
 					     (unsigned long)ACCY_NONE,
 					     (void *)NULL);
-	}
+	else
+		blocking_notifier_call_chain(&semu_audio_notifier_list,
+					     (unsigned long)NO_DEVICE,
+					     (void *)NULL);
 
 	blocking_notifier_call_chain(&emu_det_notifier_list,
 				     (unsigned long)accy,
@@ -1149,17 +1178,18 @@ static int whisper_audio_check(struct emu_det_data *data)
 		prev_audio_state = switch_get_state(&data->asdev);
 
 		if (test_bit(PD_200K_BIT, &data->sense)) {
-			mux_ctrl_mode(MUXMODE_AUDIO);
 			alternate_mode_enable();
 			audio = EMU_OUT;
 			pr_emu_det(DEBUG, "HEADSET attached\n");
 		} else {
-			mux_ctrl_mode(MUXMODE_USB);
 			standard_mode_enable();
 			pr_emu_det(DEBUG, "HEADSET detached\n");
 		}
 
 		switch_set_state(&data->asdev, audio);
+		blocking_notifier_call_chain(&semu_audio_notifier_list,
+				     (unsigned long)audio,
+				     (void *)NULL);
 
 		if (prev_audio_state == audio)
 			return 0;
@@ -1368,6 +1398,7 @@ static void detection_work(bool caused_by_irq)
 			emu_id_protection_off();
 			notify_whisper_switch(ACCY_WHISPER_PPD);
 			notify_accy(ACCY_WHISPER_PPD);
+			disable_low_power_mode(data);
 			data->state = WHISPER_PPD;
 		} else if (!test_bit(SESS_VLD_BIT, &data->sense) &&
 			    test_bit(B_SESSEND_BIT, &data->sense)) {
@@ -2150,6 +2181,7 @@ static int emu_det_probe(struct platform_device *pdev)
 	data->whisper_auth = AUTH_NOT_STARTED;
 	data->otg_enabled = false;
 	data->low_pwr_mode = 1;
+	data->requested_muxmode = MUXMODE_UNDEFINED;
 	dev_set_drvdata(&pdev->dev, data);
 
 	ret = request_irqs(pdev);
