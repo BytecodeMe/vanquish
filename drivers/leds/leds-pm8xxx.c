@@ -81,6 +81,9 @@ struct pm8xxx_led_data {
 	int			pwm_channel;
 	u32			pwm_period_us;
 	struct pm8xxx_pwm_duty_cycles *pwm_duty_cycles;
+#ifdef CONFIG_MACH_MSM8960_MMI
+	void (*led_ctrl)(struct device *dev, unsigned on);
+#endif
 };
 
 static void led_kp_set(struct pm8xxx_led_data *led, enum led_brightness value)
@@ -213,12 +216,20 @@ static void pm8xxx_led_set(struct led_classdev *led_cdev,
 	led = container_of(led_cdev, struct pm8xxx_led_data, cdev);
 
 	if (value < LED_OFF || value > led->cdev.max_brightness) {
-		dev_err(led->cdev.dev, "Invalid brightness value exceeds");
+		pr_err("invalid brightness value %d, max = %d",
+			value, led->cdev.max_brightness);
 		return;
 	}
 
 	pr_info("%s %d\n", led->cdev.name, value);
 	led->cdev.brightness = value;
+#ifdef CONFIG_MACH_MSM8960_MMI
+	if (led->led_ctrl) {
+		mutex_lock(&led->lock);
+		led->led_ctrl(led->dev->parent, value ? 1 : 0);
+		mutex_unlock(&led->lock);
+	}
+#endif
 	schedule_work(&led->work);
 }
 
@@ -389,6 +400,9 @@ static int __devinit pm8xxx_led_probe(struct platform_device *pdev)
 		led_dat->pwm_channel = led_cfg->pwm_channel;
 		led_dat->pwm_period_us = led_cfg->pwm_period_us;
 		led_dat->pwm_duty_cycles = led_cfg->pwm_duty_cycles;
+#ifdef CONFIG_MACH_MSM8960_MMI
+		led_dat->led_ctrl = led_cfg->led_ctrl;
+#endif
 
 		if (!((led_dat->id >= PM8XXX_ID_LED_KB_LIGHT) &&
 				(led_dat->id <= PM8XXX_ID_FLASH_LED_1))) {

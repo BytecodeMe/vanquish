@@ -653,6 +653,26 @@ static struct pm8xxx_pwm_duty_cycles pm8921_led0_pwm_duty_cycles = {
 	.start_idx = 0,
 };
 
+#ifdef CONFIG_MACH_MSM8960_MMI
+
+#define ATC_LED_SRC 0x216
+#define ATC_LED_SRC_MASK 0x30
+void pm8xxx_atc_led_ctrl(struct device *dev, unsigned on)
+{
+	u8 val;
+
+	if (on) {
+		pm8xxx_readb(dev, ATC_LED_SRC, &val);
+		val |= ATC_LED_SRC_MASK;
+		pm8xxx_writeb(dev, ATC_LED_SRC, val);
+	} else {
+		pm8xxx_readb(dev, ATC_LED_SRC, &val);
+		val &= ~ATC_LED_SRC_MASK;
+		pm8xxx_writeb(dev, ATC_LED_SRC, val);
+	}
+}
+#endif
+
 static struct pm8xxx_led_config pm8921_led_configs[] = {
 	[0] = {
 		.id = PM8XXX_ID_LED_0,
@@ -661,6 +681,9 @@ static struct pm8xxx_led_config pm8921_led_configs[] = {
 		.pwm_channel = 5,
 		.pwm_period_us = PM8XXX_LED_PWM_PERIOD,
 		.pwm_duty_cycles = &pm8921_led0_pwm_duty_cycles,
+#ifdef CONFIG_MACH_MSM8960_MMI
+		.led_ctrl = pm8xxx_atc_led_ctrl,
+#endif
 	},
 	[1] = {
 		.id = PM8XXX_ID_LED_1,
