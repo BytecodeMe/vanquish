@@ -2767,6 +2767,9 @@ static __init void register_i2c_devices_from_dt(int bus)
 				info.platform_data =
 					&msm_camera_sensor_s5k5b3g_data;
 				break;
+			case 0x00030014: /* TexasInstruments, TMP105 */
+				msm8960_tmp105_init(&info, child);
+				break;
 			}
 		}
 
