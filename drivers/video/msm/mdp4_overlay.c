@@ -2369,6 +2369,8 @@ int mdp4_overlay_blt(struct fb_info *info, struct msmfb_overlay_blt *req)
 		mdp4_dsi_video_overlay_blt(mfd, req);
 	else if (ctrl->panel_mode & MDP4_PANEL_LCDC)
 		mdp4_lcdc_overlay_blt(mfd, req);
+	else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+		mdp4_mddi_overlay_blt(mfd, req);
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 
@@ -2390,6 +2392,8 @@ int mdp4_overlay_blt_offset(struct fb_info *info, struct msmfb_overlay_blt *req)
 		ret = mdp4_dsi_video_overlay_blt_offset(mfd, req);
 	else if (ctrl->panel_mode & MDP4_PANEL_LCDC)
 		ret = mdp4_lcdc_overlay_blt_offset(mfd, req);
+	else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+		mdp4_mddi_overlay_blt_offset(mfd, req);
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 
@@ -2528,6 +2532,8 @@ static void mdp4_overlay_update_blt_mode(struct msm_fb_data_type *mfd)
 			mdp4_dsi_video_blt_start(mfd);
 		else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
 			mdp4_dsi_overlay_blt_start(mfd);
+		else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+			mdp4_mddi_overlay_blt_start(mfd);
 	} else {
 		if (mfd->panel_info.type == LCDC_PANEL)
 			mdp4_lcdc_overlay_blt_stop(mfd);
@@ -2535,6 +2541,8 @@ static void mdp4_overlay_update_blt_mode(struct msm_fb_data_type *mfd)
 			mdp4_dsi_video_blt_stop(mfd);
 		else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
 			mdp4_dsi_overlay_blt_stop(mfd);
+		else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+			mdp4_mddi_overlay_blt_stop(mfd);
 	}
 	mfd->ov0_blt_state = mfd->use_ov0_blt;
 }
@@ -2578,6 +2586,12 @@ static u32 mdp4_overlay_blt_enable(struct mdp_overlay *req,
 		if (mdp4_overlay_validate_downscale(req, mfd, perf_level,
 			clk_rate))
 			use_blt = 1;
+	}
+
+	if (mfd->panel_info.type == MDDI_PANEL) {
+		if ((req->src_rect.h/2) >= req->dst_rect.h ||
+			(req->src_rect.w/2) >= req->dst_rect.w)
+				use_blt = 1;
 	}
 
 	if (mfd->mdp_rev == MDP_REV_41) {
@@ -2712,6 +2726,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 					mdp4_set_perf_level();
 			} else if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 				mdp4_mddi_dma_busy_wait(mfd);
+				mdp4_mddi_blt_dmap_busy_wait(mfd);
 				mdp4_set_perf_level();
 			}
 		} else {
@@ -2786,7 +2801,7 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 #else
 		if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 			if (mfd->panel_power_on)
-				mdp4_mddi_dma_busy_wait(mfd);
+				mdp4_mddi_blt_dmap_busy_wait(mfd);
 		}
 #endif
 	}
