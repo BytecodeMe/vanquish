@@ -315,6 +315,58 @@ int hdmi_pll_set_rate(unsigned rate)
 		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG7);
 	break;
 
+	case 65000000:
+		writel_relaxed(0x18, HDMI_PHY_PLL_REFCLK_CFG);
+		writel_relaxed(0x2, HDMI_PHY_PLL_CHRG_PUMP_CFG);
+		writel_relaxed(0x20, HDMI_PHY_PLL_LOOP_FLT_CFG0);
+		writel_relaxed(0xff, HDMI_PHY_PLL_LOOP_FLT_CFG1);
+		writel_relaxed(0x2C, HDMI_PHY_PLL_IDAC_ADJ_CFG);
+		writel_relaxed(0x6, HDMI_PHY_PLL_I_VI_KVCO_CFG);
+		writel_relaxed(0x0b, HDMI_PHY_PLL_SDM_CFG0);
+		writel_relaxed(0x4b, HDMI_PHY_PLL_SDM_CFG1);
+		writel_relaxed(0x7b, HDMI_PHY_PLL_SDM_CFG2);
+		writel_relaxed(0x09, HDMI_PHY_PLL_SDM_CFG3);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SDM_CFG4);
+		writel_relaxed(0x9A, HDMI_PHY_PLL_SSC_CFG0);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG1);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG2);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG3);
+		writel_relaxed(0x8A, HDMI_PHY_PLL_VCOCAL_CFG0);
+		writel_relaxed(0x02, HDMI_PHY_PLL_VCOCAL_CFG1);
+		writel_relaxed(0x3b, HDMI_PHY_PLL_VCOCAL_CFG2);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG3);
+		writel_relaxed(0x86, HDMI_PHY_PLL_VCOCAL_CFG4);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG5);
+		writel_relaxed(0x33, HDMI_PHY_PLL_VCOCAL_CFG6);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG7);
+	break;
+
+	case 69290000:
+		writel_relaxed(0x18, HDMI_PHY_PLL_REFCLK_CFG);
+		writel_relaxed(0x2, HDMI_PHY_PLL_CHRG_PUMP_CFG);
+		writel_relaxed(0x20, HDMI_PHY_PLL_LOOP_FLT_CFG0);
+		writel_relaxed(0xff, HDMI_PHY_PLL_LOOP_FLT_CFG1);
+		writel_relaxed(0x2C, HDMI_PHY_PLL_IDAC_ADJ_CFG);
+		writel_relaxed(0x6, HDMI_PHY_PLL_I_VI_KVCO_CFG);
+		writel_relaxed(0x0b, HDMI_PHY_PLL_SDM_CFG0);
+		writel_relaxed(0x4b, HDMI_PHY_PLL_SDM_CFG1);
+		writel_relaxed(0xdb, HDMI_PHY_PLL_SDM_CFG2);
+		writel_relaxed(0xd4, HDMI_PHY_PLL_SDM_CFG3);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SDM_CFG4);
+		writel_relaxed(0x9A, HDMI_PHY_PLL_SSC_CFG0);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG1);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG2);
+		writel_relaxed(0x00, HDMI_PHY_PLL_SSC_CFG3);
+		writel_relaxed(0xb4, HDMI_PHY_PLL_VCOCAL_CFG0);
+		writel_relaxed(0x02, HDMI_PHY_PLL_VCOCAL_CFG1);
+		writel_relaxed(0x3b, HDMI_PHY_PLL_VCOCAL_CFG2);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG3);
+		writel_relaxed(0x86, HDMI_PHY_PLL_VCOCAL_CFG4);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG5);
+		writel_relaxed(0x33, HDMI_PHY_PLL_VCOCAL_CFG6);
+		writel_relaxed(0x00, HDMI_PHY_PLL_VCOCAL_CFG7);
+	break;
+
 	case 72000000:
 		writel_relaxed(0x18, HDMI_PHY_PLL_REFCLK_CFG);
 		writel_relaxed(0x2, HDMI_PHY_PLL_CHRG_PUMP_CFG);

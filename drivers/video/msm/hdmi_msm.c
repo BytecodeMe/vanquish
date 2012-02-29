@@ -1260,10 +1260,26 @@ static boolean hdmi_msm_is_dvi_mode(void)
 void hdmi_msm_set_mode(boolean power_on)
 {
 	uint32 reg_val = 0;
+#ifdef MSM_FB_US_DVI_SUPPORT
+	int force_hdmi = 0;
+
+	/* If user space requires audio for a DVI resolution
+	 * force the HW into HDMI mode, regardless of the EDID
+	 * and the IEEE value.
+	 */
+	if (external_common_state->video_resolution == HDMI_VFRMT_US_TIMING) {
+		force_hdmi = external_common_state->dvi_audio;
+	}
+#endif
+
 	if (power_on) {
 		/* ENABLE */
 		reg_val |= 0x00000001; /* Enable the block */
+#ifdef MSM_FB_US_DVI_SUPPORT
+		if (external_common_state->hdmi_sink == 0 && !force_hdmi) {
+#else
 		if (external_common_state->hdmi_sink == 0) {
+#endif
 			/* HDMI_DVI_SEL */
 			reg_val |= 0x00000002;
 			if (external_common_state->present_hdcp)
@@ -3184,6 +3200,14 @@ static const struct hdmi_msm_audio_arcs hdmi_msm_audio_acr_lut[] = {
 	HDMI_MSM_AUDIO_ARCS(27030, {
 		{4096, 27027}, {6272, 30030}, {6144, 27027}, {12544, 30030},
 		{12288, 27027}, {25088, 30030}, {24576, 27027} }),
+	/*  65.000MHz */
+	HDMI_MSM_AUDIO_ARCS(65000, {
+		{4096, 65000}, {7056, 81250}, {6144, 65000}, {14112, 81250},
+		{12288, 65000}, {28224, 81250}, {24576, 65000} }),
+	/*  69.290MHz */
+	HDMI_MSM_AUDIO_ARCS(69290, {
+		{4096, 69290}, {14112, 173225}, {6144, 69290}, {28224, 173225},
+		{12288, 69290}, {56448, 173225}, {24576, 69290} }),
 	/*  72.000MHz */
 	HDMI_MSM_AUDIO_ARCS(72000, {
 		{4096, 72000}, {6272, 80000}, {6144, 72000}, {12544, 80000},
@@ -3192,6 +3216,10 @@ static const struct hdmi_msm_audio_arcs hdmi_msm_audio_acr_lut[] = {
 	HDMI_MSM_AUDIO_ARCS(74250, {
 		{4096, 74250}, {6272, 82500}, {6144, 74250}, {12544, 82500},
 		{12288, 74250}, {25088, 82500}, {24576, 74250} }),
+	/* 108.000MHz */
+	HDMI_MSM_AUDIO_ARCS(108000, {
+		{4096, 108000}, {6272, 120000}, {6144, 108000}, {12544, 120000},
+		{12288, 108000}, {25088, 120000}, {24576, 108000} }),
 	/* 148.500MHz */
 	HDMI_MSM_AUDIO_ARCS(148500, {
 		{4096, 148500}, {6272, 165000}, {6144, 148500}, {12544, 165000},
@@ -3703,6 +3731,36 @@ static uint8 hdmi_msm_avi_iframe_lut[][16] = {
 	 0x07,	0x07,	0x07,	0x07,	0x02, 0x02, 0x02}  /*12*/
 };
 
+static void hdmi_msm_us_timing_info_frame(uint8 *frameData)
+{
+	/* Data Byte 01: 0 Y1 Y0 A0 B1 B0 S1 S0 */
+	frameData[3]  = 0x00;
+	/* Data Byte 02: C1 C0 M1 M0 R3 R2 R1 R0 */
+	frameData[4]  = 0x08;
+	/* Data Byte 03: ITC EC2 EC1 EC0 Q1 Q0 SC1 SC0 */
+	frameData[5]  = 0x04;
+	/* Data Byte 04: 0 VIC6 VIC5 VIC4 VIC3 VIC2 VIC1 VIC0 */
+	frameData[6]  = 0x00;
+	/* Data Byte 05: 0 0 0 0 PR3 PR2 PR1 PR0 */
+	frameData[7]  = 0x00;
+	/* Data Byte 06: LSB Line No of End of Top Bar */
+	frameData[8]  = 0x00;
+	/* Data Byte 07: MSB Line No of End of Top Bar */
+	frameData[9]  = 0x00;
+	/* Data Byte 08: LSB Line No of Start of Bottom Bar */
+	frameData[10] = 0x00;
+	/* Data Byte 09: MSB Line No of Start of Bottom Bar */
+	frameData[11] = 0x00;
+	/* Data Byte 10: LSB Pixel Number of End of Left Bar */
+	frameData[12] = 0x00;
+	/* Data Byte 11: MSB Pixel Number of End of Left Bar */
+	frameData[13] = 0x00;
+	/* Data Byte 12: LSB Pixel Number of Start of Right Bar */
+	frameData[14] = 0x00;
+	/* Data Byte 13: MSB Pixel Number of Start of Right Bar */
+	frameData[15] = 0x00;
+}
+
 static void hdmi_msm_avi_info_frame(void)
 {
 	/* two header + length + 13 data */
@@ -3762,6 +3820,9 @@ static void hdmi_msm_avi_info_frame(void)
 	case HDMI_VFRMT_720x576p50_4_3:
 		mode = 15;
 		break;
+	case HDMI_VFRMT_US_TIMING:  /* User Space Timings */
+		mode = 0; /* Fake with 0 and fix below */
+		break;
 	default:
 		DEV_INFO("%s: mode %d not supported\n", __func__,
 			external_common_state->video_resolution);
@@ -3801,6 +3862,9 @@ static void hdmi_msm_avi_info_frame(void)
 	aviInfoFrame[14] = hdmi_msm_avi_iframe_lut[11][mode];
 	/* Data Byte 13: MSB Pixel Number of Start of Right Bar */
 	aviInfoFrame[15] = hdmi_msm_avi_iframe_lut[12][mode];
+
+	if (external_common_state->video_resolution == HDMI_VFRMT_US_TIMING)
+		hdmi_msm_us_timing_info_frame(aviInfoFrame);
 
 	sum = 0;
 	for (i = 0; i < 16; i++)

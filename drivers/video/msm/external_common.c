@@ -25,8 +25,8 @@
 #include "mhl_api.h"
 
 #ifdef MSM_FB_US_DVI_SUPPORT
-/* User space defined timing info */
-#define HDMI_VFRMT_US_TIMING   99
+#define FB_VMODE_MIN_DS     (1 << 31)
+#define FB_VMODE_DVI_AUDIO  (1 << 30)
 static struct hdmi_disp_mode_timing_type us_timing;
 #endif
 
@@ -1594,6 +1594,10 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 		us_timing.interlaced    =
 			(mfd->var_vmode & FB_VMODE_INTERLACED) ? 1 : 0;
 		us_timing.supported     = true;
+		external_common_state->dvi_audio =
+			(mfd->var_vmode & FB_VMODE_DVI_AUDIO) ? true : false;
+		external_common_state->min_ds =
+			(mfd->var_vmode & FB_VMODE_MIN_DS) ? true : false;
 	} else if (var->reserved[3]) {
 #else
 	if (var->reserved[3]) {
