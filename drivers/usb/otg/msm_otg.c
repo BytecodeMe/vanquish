@@ -100,6 +100,14 @@ static inline bool aca_enabled(void)
 #endif
 }
 
+static inline bool vbus_power_control_enabled(struct msm_otg *motg)
+{
+	if (motg->pdata->otg_control == OTG_ACCY_CONTROL)
+		return false;
+	else
+		return true;
+}
+
 static int msm_hsusb_init_vddcx(struct msm_otg *motg, int init)
 {
 	int ret = 0;
@@ -995,7 +1003,7 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 	int ret;
 	static bool vbus_is_on;
 
-	if (motg->pdata->otg_control == OTG_ACCY_CONTROL)
+	if (!vbus_power_control_enabled(motg))
 		return;
 
 	if (vbus_is_on == on)
@@ -1903,7 +1911,8 @@ static void msm_otg_sm_work(struct work_struct *w)
 				!test_bit(ID_A, &motg->inputs)) {
 			msm_otg_start_host(otg, 0);
 			msm_hsusb_vbus_power(motg, 0);
-			msleep(100); /* TA_WAIT_VFALL */
+			if (vbus_power_control_enabled(motg))
+				msleep(100); /* TA_WAIT_VFALL */
 			/*
 			 * Exit point of host mode.
 			 *
