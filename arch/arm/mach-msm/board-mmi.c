@@ -181,6 +181,7 @@ static int keypad_mode = MMI_KEYPAD_RESET;
 static int phy_settings[] = {0x34, 0x82, 0x3f, 0x81, -1};
 
 static bool	bare_board;
+static u8 uart_over_gsbi12;
 bool camera_single_mclk;
 
 /*
@@ -254,6 +255,26 @@ static int boot_mode_is_factory(void)
 static struct platform_device emu_det_device;
 static int l17_voltage = 2650000;
 static bool core_power_init, enable_5v_init;
+
+#define MSM_UART_NAME		"msm_serial_hs"
+#define MSM_DSPS_HCLK           "dsps_hclk"
+#define MSM_GSBI12_PHYS		0x12480000
+#define MSM_UART12DM_PHYS	(MSM_GSBI12_PHYS + 0x10000)
+#define MSM_GSBI4_PHYS		0x16300000
+#define MSM_UART4DM_PHYS	(MSM_GSBI4_PHYS + 0x40000)
+
+#define GSBI_PROTOCOL_UNDEFINED	0x70
+#define GSBI_PROTOCOL_I2C_UART	0x60
+#define GSBI_PROTOCOL_UART	0x40
+
+#define GSBI4_WHISPER_TX        18
+#define GSBI4_WHISPER_RX        19
+#define GSBI12_WHISPER_TX       42
+#define GSBI12_WHISPER_RX       43
+#define EMU_MUX_CTRL0           107
+#define EMU_MUX_CTRL1           96
+#define EMU_ID_EN               0
+#define EMU_SCI_OUT             90
 
 #define EMU_DET_ID_GPIO		PM8921_MPP_PM_TO_SYS(10)
 #define EMU_DET_DMB_PPD_GPIO	PM8921_MPP_PM_TO_SYS(10)
@@ -338,7 +359,7 @@ static struct pm_gpio emu_det_pm_gpio_config[] = {
 };
 
 static struct pm_gpio emu_det_tx_pair_in_gpio_config[] = {
-	{	/* PM GPIO 42/WHISPER RX: paired input - std */
+	{	/* PM GPIO 22/WHISPER RX: paired input - std */
 		.direction	= PM_GPIO_DIR_IN,
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 0,
@@ -363,7 +384,7 @@ static struct pm_gpio emu_det_tx_pair_in_gpio_config[] = {
 };
 
 static struct pm_gpio emu_det_tx_pair_out_gpio_config[] = {
-	{	/* PM GPIO 41/WHISPER RX: paired out - std */
+	{	/* PM GPIO 21/WHISPER RX: paired out - std */
 		.direction	= PM_GPIO_DIR_OUT,
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 0,
@@ -378,7 +399,7 @@ static struct pm_gpio emu_det_tx_pair_out_gpio_config[] = {
 		.direction	= PM_GPIO_DIR_IN,
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 0,
-		.pull		= PM_GPIO_PULL_DN,
+		.pull		= PM_GPIO_PULL_NO,
 		.vin_sel	= PM_GPIO_VIN_L17,
 		.out_strength	= PM_GPIO_STRENGTH_LOW,
 		.function	= PM_GPIO_FUNC_NORMAL,
@@ -388,7 +409,7 @@ static struct pm_gpio emu_det_tx_pair_out_gpio_config[] = {
 };
 
 static struct pm_gpio emu_det_rx_pair_in_gpio_config[] = {
-	{	/* PM GPIO 21/WHISPER TX: paired input - std */
+	{	/* PM GPIO 41/WHISPER TX: paired input - std */
 		.direction	= PM_GPIO_DIR_IN,
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 0,
@@ -413,7 +434,7 @@ static struct pm_gpio emu_det_rx_pair_in_gpio_config[] = {
 };
 
 static struct pm_gpio emu_det_rx_pair_out_gpio_config[] = {
-	{	/* PM GPIO 22/WHISPER TX: paired out - std */
+	{	/* PM GPIO 42/WHISPER TX: paired out - std */
 		.direction	= PM_GPIO_DIR_OUT,
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 0,
@@ -456,7 +477,7 @@ static void emu_det_dp_dm_mode(int mode)
 	pm8xxx_gpio_config(EMU_DET_RX_PAIR_GPIO, &rx_pair);
 }
 
-static struct gpiomux_setting emu_det_gsbi12 = {
+static struct gpiomux_setting emu_det_gsbi = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
@@ -486,30 +507,50 @@ static struct gpiomux_setting emu_det_id_en = {
 	.pull = GPIOMUX_PULL_DOWN,
 };
 
-static struct msm_gpiomux_config emu_det_msm_gpio_configs[] = {
+static struct msm_gpiomux_config emu_det_msm_gpio_gsbi4_configs[] = {
 	{
-		.gpio      = 42,	/* GSBI12 WHISPER_TX */
+		.gpio      = GSBI4_WHISPER_TX,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &emu_det_gsbi12,
-			[GPIOMUX_ACTIVE] = &emu_det_gsbi12,
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi,
 		},
 	},
 	{
-		.gpio      = 43,	/* GSBI12 WHISPER_RX */
+		.gpio      = GSBI4_WHISPER_RX,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &emu_det_gsbi12,
-			[GPIOMUX_ACTIVE] = &emu_det_gsbi12,
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi,
+		},
+	},
+};
+
+static struct msm_gpiomux_config emu_det_msm_gpio_gsbi12_configs[] = {
+	{
+		.gpio      = GSBI12_WHISPER_TX,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi,
 		},
 	},
 	{
-		.gpio      = 107,	/* EMU_MUX_CTRL0 */
+		.gpio      = GSBI12_WHISPER_RX,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi,
+		},
+	},
+};
+
+static struct msm_gpiomux_config emu_det_msm_gpio_mux_configs[] = {
+	{
+		.gpio      = EMU_MUX_CTRL0,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &emu_det_mux_ctrl0,
 			[GPIOMUX_ACTIVE] = &emu_det_mux_ctrl0,
 		}
 	},
 	{
-		.gpio      = 96,	/* EMU_MUX_CTRL1 */
+		.gpio      = EMU_MUX_CTRL1,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &emu_det_mux_ctrl1,
 			[GPIOMUX_ACTIVE] = &emu_det_mux_ctrl1,
@@ -519,14 +560,14 @@ static struct msm_gpiomux_config emu_det_msm_gpio_configs[] = {
 
 static struct msm_gpiomux_config emu_det_msm_gpio_alt_configs[] = {
 	{
-		.gpio      = 0,		/* EMU_ID_EN */
+		.gpio      = EMU_ID_EN,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &emu_det_id_en,
 			[GPIOMUX_ACTIVE] = &emu_det_id_en,
 		},
 	},
 	{
-		.gpio      = 90,	/* EMU_SCI_OUT */
+		.gpio      = EMU_SCI_OUT,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &emu_det_sci_out,
 			[GPIOMUX_ACTIVE] = &emu_det_sci_out,
@@ -621,13 +662,19 @@ static void emu_det_gpio_mode(int mode)
 {
 	switch (mode) {
 	case GPIO_MODE_GPIO:
-		emu_det_gsbi12.func = GPIOMUX_FUNC_GPIO;
+		emu_det_gsbi.func = GPIOMUX_FUNC_GPIO;
 		break;
 	case GPIO_MODE_GSBI:
-		emu_det_gsbi12.func = GPIOMUX_FUNC_1;
+		emu_det_gsbi.func = GPIOMUX_FUNC_1;
 		break;
 	}
-	msm_gpiomux_install(emu_det_msm_gpio_configs, 2);
+
+	if (uart_over_gsbi12)
+		msm_gpiomux_install(emu_det_msm_gpio_gsbi12_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_gsbi12_configs));
+	else
+		msm_gpiomux_install(emu_det_msm_gpio_gsbi4_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_gsbi4_configs));
 }
 
 static int emu_det_adc_id(void)
@@ -640,6 +687,48 @@ static int emu_det_adc_id(void)
 	return (int)res.physical/1000;
 }
 
+static void configure_gsbi_ctrl(bool restore)
+{
+	void *gsbi_ctrl;
+	uint32_t new;
+	static uint32_t value;
+	static bool stored;
+	unsigned gsbi_phys;
+
+	if (uart_over_gsbi12)
+		gsbi_phys = MSM_GSBI12_PHYS;
+	else
+		gsbi_phys = MSM_GSBI4_PHYS;
+
+	gsbi_ctrl = ioremap_nocache(gsbi_phys, 4);
+	if (IS_ERR_OR_NULL(gsbi_ctrl)) {
+		pr_err("cannot map GSBI ctrl reg\n");
+		return;
+	} else {
+		if (restore) {
+			if (stored) {
+				writel_relaxed(value, gsbi_ctrl);
+				stored = false;
+				pr_info("GSBI reg 0x%x restored\n",
+					value);
+			}
+		} else {
+			new = value = readl_relaxed(gsbi_ctrl);
+			stored = true;
+			new &= ~GSBI_PROTOCOL_UNDEFINED;
+			if (uart_over_gsbi12)
+				new |= GSBI_PROTOCOL_I2C_UART;
+			else
+				new |= GSBI_PROTOCOL_UART;
+			writel_relaxed(new, gsbi_ctrl);
+			mb();
+			pr_info("GSBI reg 0x%x updated, "
+				"stored value 0x%x\n", new, value);
+		}
+	}
+	iounmap(gsbi_ctrl);
+}
+
 static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.enable_5v = emu_det_enable_5v,
 	.core_power = emu_det_core_power,
@@ -648,25 +737,16 @@ static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.gpio_mode = emu_det_gpio_mode,
 	.adc_id = emu_det_adc_id,
 	.dp_dm_mode = emu_det_dp_dm_mode,
+	.gsbi_ctrl = configure_gsbi_ctrl,
 };
 
 #define MSM8960_HSUSB_PHYS	0x12500000
 #define MSM8960_HSUSB_SIZE	SZ_4K
 
-#define MSM_UART_NAME		"msm_serial_hs"
-#define MSM_DSPS_HCLK           "dsps_hclk"
-#define MSM_GSBI12_PHYS		0x12480000
-#define MSM_UART12DM_PHYS	(MSM_GSBI12_PHYS + 0x10000)
-
 static struct resource resources_emu_det[] = {
 	{
 		.start	= MSM8960_HSUSB_PHYS,
 		.end	= MSM8960_HSUSB_PHYS + MSM8960_HSUSB_SIZE,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.start	= MSM_GSBI12_PHYS,
-		.end	= MSM_GSBI12_PHYS,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -689,8 +769,8 @@ static struct resource resources_emu_det[] = {
 	},
 	{
 		.name	= "EMU_SCI_OUT_GPIO",
-		.start	= 90,	/* MSM GPIO */
-		.end	= 90,
+		.start	= EMU_SCI_OUT,	/* MSM GPIO */
+		.end	= EMU_SCI_OUT,
 		.flags	= IORESOURCE_IO,
 	},
 	{
@@ -701,14 +781,14 @@ static struct resource resources_emu_det[] = {
 	},
 	{
 		.name	= "EMU_MUX_CTRL1_GPIO",
-		.start	= 96,	/* MSM GPIO */
-		.end	= 96,
+		.start	= EMU_MUX_CTRL1,	/* MSM GPIO */
+		.end	= EMU_MUX_CTRL1,
 		.flags	= IORESOURCE_IO,
 	},
 	{
 		.name	= "EMU_MUX_CTRL0_GPIO",
-		.start	= 107,	/* MSM GPIO */
-		.end	= 107,
+		.start	= EMU_MUX_CTRL0,	/* MSM GPIO */
+		.end	= EMU_MUX_CTRL0,
 		.flags	= IORESOURCE_IO,
 	},
 	{
@@ -743,14 +823,14 @@ static struct resource resources_emu_det[] = {
 	},
 	{
 		.name	= "WHISPER_UART_TX_GPIO",
-		.start	= WHISPER_UART_TX_GPIO,	/* MSM GPIO */
-		.end	= WHISPER_UART_TX_GPIO,
+		.start	= GSBI4_WHISPER_TX,	/* MSM GPIO */
+		.end	= GSBI4_WHISPER_TX,
 		.flags	= IORESOURCE_IO,
 	},
 	{
 		.name	= "WHISPER_UART_RX_GPIO",
-		.start	= WHISPER_UART_RX_GPIO,	/* MSM GPIO */
-		.end	= WHISPER_UART_RX_GPIO,
+		.start	= GSBI4_WHISPER_RX,	/* MSM GPIO */
+		.end	= GSBI4_WHISPER_RX,
 		.flags	= IORESOURCE_IO,
 	},
 
@@ -791,6 +871,38 @@ static __init void emu_mux_ctrl_config_pin(const char *res_name, int value)
 	}
 }
 
+static struct resource resources_uart_gsbi4[] = {
+	{
+		.start	= GSBI4_UARTDM_IRQ,
+		.end	= GSBI4_UARTDM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART4DM_PHYS,
+		.end	= MSM_UART4DM_PHYS + PAGE_SIZE - 1,
+		.name	= "uartdm_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start  = MSM_GSBI4_PHYS,
+		.end    = MSM_GSBI4_PHYS + 4 - 1,
+		.name   = "gsbi_resource",
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start	= DMOV_WHISPER_TX_CHAN,
+		.end	= DMOV_WHISPER_RX_CHAN,
+		.name	= "uartdm_channels",
+		.flags	= IORESOURCE_DMA,
+	},
+	{
+		.start	= DMOV_WHISPER_TX_CRCI_GSBI4,
+		.end	= DMOV_WHISPER_RX_CRCI_GSBI4,
+		.name	= "uartdm_crci",
+		.flags	= IORESOURCE_DMA,
+	},
+};
+
 static struct resource resources_uart_gsbi12[] = {
 	{
 		.start	= GSBI12_UARTDM_IRQ,
@@ -810,26 +922,26 @@ static struct resource resources_uart_gsbi12[] = {
 		.flags	= IORESOURCE_DMA,
 	},
 	{
-		.start	= DMOV_WHISPER_TX_CRCI,
-		.end	= DMOV_WHISPER_RX_CRCI,
+		.start	= DMOV_WHISPER_TX_CRCI_GSBI12,
+		.end	= DMOV_WHISPER_RX_CRCI_GSBI12,
 		.name	= "uartdm_crci",
 		.flags	= IORESOURCE_DMA,
 	},
 };
 
-static u64 msm_uart_dm12_dma_mask = DMA_BIT_MASK(32);
-struct platform_device msm8960_device_uart_gsbi12 = {
+static u64 msm_uart_dm_dma_mask = DMA_BIT_MASK(32);
+struct platform_device msm8960_device_uart_gsbi = {
 	.name	= MSM_UART_NAME,
 	.id	= 1,
-	.num_resources	= ARRAY_SIZE(resources_uart_gsbi12),
-	.resource	= resources_uart_gsbi12,
+	.num_resources	= ARRAY_SIZE(resources_uart_gsbi4),
+	.resource	= resources_uart_gsbi4,
 	.dev	= {
-		.dma_mask		= &msm_uart_dm12_dma_mask,
+		.dma_mask		= &msm_uart_dm_dma_mask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
 	},
 };
 
-static __init void mot_set_gsbi12_clk(const char *con_id,
+static __init void mot_set_gsbi_clk(const char *con_id,
 		struct clk *clk_entity, const char *dev_id)
 {
 	int num_lookups;
@@ -851,19 +963,46 @@ static __init void mot_setup_gsbi12_clk(void)
 {
 	struct clk *clk;
 	if (!msm_gsbi12_uart_clk_ptr(&clk))
-		mot_set_gsbi12_clk("core_clk", clk, MSM_UART_NAME ".1");
+		mot_set_gsbi_clk("core_clk", clk, MSM_UART_NAME ".1");
 	if (!msm_gsbi12_qup_clk_ptr(&clk))
-		mot_set_gsbi12_clk("core_clk", clk, NULL);
+		mot_set_gsbi_clk("core_clk", clk, NULL);
 	if (!msm_gsbi12_p_clk_ptr(&clk))
-		mot_set_gsbi12_clk("iface_clk", clk, MSM_DSPS_HCLK);
+		mot_set_gsbi_clk("iface_clk", clk, MSM_DSPS_HCLK);
 }
+
+static __init void mot_setup_gsbi4_clk(void)
+{
+	struct clk *clk;
+	if (!msm_gsbi4_uart_clk_ptr(&clk))
+		mot_set_gsbi_clk("core_clk", clk, MSM_UART_NAME ".1");
+	if (!msm_gsbi4_qup_clk_ptr(&clk))
+		mot_set_gsbi_clk("core_clk", clk, NULL);
+	if (!msm_gsbi4_p_clk_ptr(&clk))
+		mot_set_gsbi_clk("iface_clk", clk, MSM_UART_NAME ".1");
+}
+
+static void __init set_emu_detection_resource(const char *res_name, int value);
 
 static __init void emu_det_gpio_init(void)
 {
 	struct resource *res;
 
-	msm_gpiomux_install(emu_det_msm_gpio_configs,
-			    ARRAY_SIZE(emu_det_msm_gpio_configs));
+	if (uart_over_gsbi12) {
+		set_emu_detection_resource("WHISPER_UART_TX_GPIO",
+					   GSBI12_WHISPER_TX);
+		set_emu_detection_resource("WHISPER_UART_RX_GPIO",
+					   GSBI12_WHISPER_RX);
+		msm8960_device_uart_gsbi.num_resources =
+			ARRAY_SIZE(resources_uart_gsbi12);
+		msm8960_device_uart_gsbi.resource = resources_uart_gsbi12;
+		msm_gpiomux_install(emu_det_msm_gpio_gsbi12_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_gsbi12_configs));
+	} else
+		msm_gpiomux_install(emu_det_msm_gpio_gsbi4_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_gsbi4_configs));
+
+	msm_gpiomux_install(emu_det_msm_gpio_mux_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_mux_configs));
 
 	res = platform_get_resource_byname(&emu_det_device,
 					   IORESOURCE_IO, "EMU_ID_GPIO");
@@ -2244,7 +2383,7 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
 #ifdef CONFIG_EMU_DETECTION
-	&msm8960_device_uart_gsbi12,
+	&msm8960_device_uart_gsbi,
 #endif
 	&pm8xxx_rgb_leds_device,
 };
@@ -2252,8 +2391,6 @@ static struct platform_device *mmi_devices[] __initdata = {
 static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
 	.mode = MSM_PM_BOOT_CONFIG_TZ,
 };
-
-static void __init set_emu_detection_resource(const char *res_name, int value);
 
 static __init void config_emu_det_from_dt(void)
 {
@@ -2283,7 +2420,7 @@ out:
  * HACK: Ideally all clocks would be configured directly from the device tree.
  * Don't use this as a template for future device tree changes.
  */
-static __init void config_gsbi12_clk_from_dt(void)
+static __init void config_clk_from_dt(void)
 {
 #ifdef CONFIG_EMU_DETECTION
 	struct device_node *chosen;
@@ -2296,7 +2433,12 @@ static __init void config_gsbi12_clk_from_dt(void)
 
 	prop = of_get_property(chosen, "setup_gsbi12_clock", &len);
 	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+		uart_over_gsbi12 = *(u8 *)prop;
+
+	if (uart_over_gsbi12)
 		mot_setup_gsbi12_clk();
+	else
+		mot_setup_gsbi4_clk();
 
 	of_node_put(chosen);
 
@@ -2786,7 +2928,9 @@ out:
 static void __init register_i2c_devices(void)
 {
 	register_i2c_devices_from_dt(MSM_8960_GSBI3_QUP_I2C_BUS_ID);
-	register_i2c_devices_from_dt(MSM_8960_GSBI4_QUP_I2C_BUS_ID);
+	if (uart_over_gsbi12)
+		register_i2c_devices_from_dt(
+			     MSM_8960_GSBI4_QUP_I2C_BUS_ID);
 	register_i2c_devices_from_dt(MSM_8960_GSBI10_QUP_I2C_BUS_ID);
 }
 
@@ -3076,7 +3220,7 @@ static void __init msm8960_mmi_init(void)
 
 	config_keyboard_from_dt();
 
-	config_gsbi12_clk_from_dt();
+	config_clk_from_dt();
 
 	/* load panel_name from device tree, if present */
 	load_panel_name_from_dt();
@@ -3147,6 +3291,8 @@ static void __init msm8960_mmi_init(void)
 	msm_fb_add_devices();
 	msm8960_init_slim();
 	msm8960_init_dsps();
+	if (!uart_over_gsbi12)
+		msm8960_init_gsbi4();
 
 	msm8960_pm_init(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	mot_tcmd_export_gpio();

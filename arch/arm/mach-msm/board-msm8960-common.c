@@ -2901,6 +2901,34 @@ void __init msm8960_init_dsps(void)
 #endif /* CONFIG_MSM_DSPS */
 }
 
+#define MSM_GSBI4_PHYS  0x16300000
+#define MSM_UART_NAME   "msm_serial_hs"
+#define UART_PROTOCOL	(0x4<<4)
+
+void msm8960_init_gsbi4(void)
+{
+	struct clk *uart_clk;
+
+	void *gsbi4_ctrl = ioremap_nocache(MSM_GSBI4_PHYS, 4);
+
+	/* Enable GSBI4_ */
+	uart_clk = clk_get_sys(MSM_UART_NAME ".1", "iface_clk");
+	if (IS_ERR(uart_clk)) {
+		printk(KERN_ERR "%s: Error getting gsbi4 clk\n",
+		       __func__);
+		return;
+	}
+	/* Enable the clock and leave it on */
+	clk_enable(uart_clk);
+
+	/* Write the protocol. */
+	writel_relaxed(UART_PROTOCOL, gsbi4_ctrl);
+	/* Ensure that the data is completely written. */
+	mb();
+
+	iounmap(gsbi4_ctrl);
+}
+
 static int hsic_peripheral_status = 1;
 static DEFINE_MUTEX(hsic_status_lock);
 
@@ -2961,9 +2989,9 @@ struct platform_device *common_devices[] __initdata = {
 	&msm8960_device_ssbi_pmic,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
-	&msm8960_device_qup_i2c_gsbi4,
 	&msm8960_device_qup_i2c_gsbi10,
 #ifndef CONFIG_MSM_DSPS
+	&msm8960_device_qup_i2c_gsbi4,
 	&msm8960_device_qup_i2c_gsbi12,
 #endif
 	&msm_slim_ctrl,
