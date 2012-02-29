@@ -276,6 +276,16 @@ static struct msm_actuator_ctrl_t dw9714_act_t = {
 		.actuator_set_lens_mode =  msm_actuator_set_lens_mode,
 	},
 
+	.get_info = {
+		.focal_length_num = 483,
+		.focal_length_den = 100,
+		.f_number_num = 24,
+		.f_number_den = 10,
+		.f_pix_num = 14,
+		.f_pix_den = 10,
+		.total_f_dist_num = 347,
+		.total_f_dist_den = 1,
+	},
 };
 
 static int dw9714_actuator_set_delay(void *data, u64 val)
