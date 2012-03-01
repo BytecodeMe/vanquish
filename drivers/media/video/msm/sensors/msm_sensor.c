@@ -437,23 +437,22 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 
 		case CFG_GET_SNAPSHOTDATA:
 			{
-				/* Sensor code is not in place.. following
-				   is testing the flow, TODO  s_ctrl->func_tbl->
-				   sensor_get_snapshotdata()  */
-				struct msm_sensor_snapshotdata testing;
-				struct msm_sensor_snapshotdata *ptr_data
-					= cdata.cfg.snapshotdata.data;
-				size_t size_data =
-					sizeof(struct msm_sensor_snapshotdata);
 				size_t size_cfg  =
 					sizeof(struct sensor_cfg_data);
-				testing.exposure_time = 200;
-				testing.iso_speed = 100;
-				testing.metering_mode = 1;
-				if (copy_to_user(
-							(void *)ptr_data,
-							&testing, size_data))
-					rc = -EFAULT;
+				uint32_t *data_ptr =
+					&cdata.cfg.data.exposure_time;
+				if (s_ctrl->func_tbl->sensor_get_exposure_time)
+					s_ctrl->func_tbl->
+						sensor_get_exposure_time(s_ctrl,
+								data_ptr);
+				else {
+					 rc = -EFAULT;
+					 break;
+				}
+
+				cdata.cfg.data.metering_mode = -1;
+				cdata.cfg.data.light_source = -1;
+				cdata.cfg.data.flash = -1;
 
 				if (copy_to_user((void *)argp,
 							&cdata, size_cfg))

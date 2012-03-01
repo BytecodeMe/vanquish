@@ -708,6 +708,53 @@ static int32_t ov7736_set_target_exposure(struct msm_sensor_ctrl_t *s_ctrl,
 	return rc;
 }
 
+static int32_t ov7736_get_exposure_time(struct msm_sensor_ctrl_t *s_ctrl,
+		uint32_t *ex_time)
+{
+	uint32_t exposure_time = 0;
+	uint16_t  reg16_19 = 0;
+	uint16_t  reg8_15 = 0;
+	uint16_t  reg0_7 = 0;
+	int32_t rc = 0;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3500, &reg16_19,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read id failed\n", __func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3501, &reg8_15,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read id failed\n", __func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3502, &reg0_7,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read id failed\n", __func__);
+		return rc;
+	}
+	exposure_time = (exposure_time | (uint8_t)(reg16_19 & 0x0F)) << 16;
+	exposure_time = exposure_time | (reg8_15 << 8);
+	exposure_time = exposure_time | (uint8_t) reg0_7;
+
+	pr_debug("exposure_time %x\n", exposure_time);
+	*ex_time = exposure_time;
+	return rc;
+}
+
 static const struct i2c_device_id ov7736_i2c_id[] = {
 	{SENSOR_NAME, (kernel_ulong_t)&ov7736_s_ctrl},
 	{ }
@@ -762,6 +809,7 @@ static struct msm_sensor_fn_t ov7736_func_tbl = {
 	.sensor_set_sharpening         = ov7736_set_sharpening,
 	.sensor_set_lens_shading       = ov7736_set_lens_shading,
 	.sensor_set_target_exposure    = ov7736_set_target_exposure,
+	.sensor_get_exposure_time      = ov7736_get_exposure_time,
 };
 
 static struct msm_sensor_reg_t ov7736_regs = {

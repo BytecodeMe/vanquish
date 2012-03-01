@@ -137,6 +137,8 @@ struct msm_sensor_fn_t {
 		(struct msm_sensor_ctrl_t *, uint8_t);
 	int32_t (*sensor_set_target_exposure)
 		(struct msm_sensor_ctrl_t *, uint8_t);
+	int32_t (*sensor_get_exposure_time)
+		(struct msm_sensor_ctrl_t *, uint32_t *);
 };
 
 struct msm_sensor_ctrl_t {

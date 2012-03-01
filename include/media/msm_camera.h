@@ -765,7 +765,7 @@ struct msm_snapshot_pp_status {
 #define CFG_SET_SHARPENING		39
 #define CFG_SET_LENSSHADING		40
 #define CFG_SET_TARGET_EXPOSURE		41
-#define CFG_MAX			        42
+#define CFG_MAX				42
 
 
 #define MOVE_NEAR	0
@@ -1067,14 +1067,11 @@ struct cord {
 	uint32_t y;
 };
 
-struct msm_sensor_snapshotdata {
-	int exposure_time;
-	uint32_t iso_speed;
-	uint32_t metering_mode;
-};
-
-struct sensor_snapshotdata {
-	struct msm_sensor_snapshotdata *data;
+struct snapshotdata {
+	uint32_t exposure_time;
+	int light_source;
+	int metering_mode;
+	int flash;
 };
 
 struct factory_settings {
@@ -1121,8 +1118,8 @@ struct sensor_cfg_data {
 		struct cord aec_cord;
 		int is_autoflash;
 		struct mirror_flip mirror_flip;
-		struct sensor_snapshotdata snapshotdata;
 		struct factory_settings fact_set;
+		struct snapshotdata data;
 	} cfg;
 };
 

@@ -286,6 +286,81 @@ static int32_t mt9m114_set_target_exposure(struct msm_sensor_ctrl_t *s_ctrl,
 	return rc;
 }
 
+static int32_t mt9m114_get_exposure_time(struct msm_sensor_ctrl_t *s_ctrl,
+		uint32_t *exposure_time)
+{
+	int32_t rc = 0;
+	uint16_t coarse_time = 0;
+	uint16_t line_len_pclk = 0;
+	uint16_t fine_time = 0;
+	uint16_t pixel_clk0 = 0;
+	uint16_t pixel_clk1 = 0;
+	uint32_t pixel_clk = 0;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3012, &coarse_time,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read coarse integration time failed\n",
+				__func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x300C,
+			&line_len_pclk,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read line length pclk  failed\n",
+				__func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3014, &fine_time,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read fine integration time failed\n",
+				__func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0xC808, &pixel_clk0,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read pixel clk  failed\n",
+				__func__);
+		return rc;
+	}
+	pixel_clk = (pixel_clk | pixel_clk0) << 16;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0xC80A, &pixel_clk1,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read pixel clk  failed\n",
+				__func__);
+		return rc;
+	}
+	pixel_clk = pixel_clk | pixel_clk1;
+
+	*exposure_time  =
+		(((uint32_t)(coarse_time * line_len_pclk)) + fine_time)
+		* 1000 / (uint32_t)(pixel_clk);
+
+	return rc;
+}
 
 static struct msm_camera_i2c_reg_conf mt9m114_1280x960_settings[] = {
 	{0xdc00, 0x50, MSM_CAMERA_I2C_BYTE_DATA, MSM_CAMERA_I2C_CMD_WRITE},
@@ -1534,6 +1609,7 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_set_sharpening = mt9m114_set_sharpening,
 	.sensor_set_lens_shading = mt9m114_set_lens_shading,
 	.sensor_set_target_exposure = mt9m114_set_target_exposure,
+	.sensor_get_exposure_time = mt9m114_get_exposure_time,
 };
 
 static struct msm_sensor_reg_t mt9m114_regs = {
