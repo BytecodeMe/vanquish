@@ -536,7 +536,6 @@ static int __devinit pmic8xxx_kp_probe(struct platform_device *pdev)
 	struct pmic8xxx_kp *kp;
 	int rc;
 	u8 ctrl_val;
-	int keycode;
 
 	struct pm_gpio kypd_drv = {
 		.direction	= PM_GPIO_DIR_OUT,
@@ -650,12 +649,6 @@ static int __devinit pmic8xxx_kp_probe(struct platform_device *pdev)
 
 	matrix_keypad_build_keymap(keymap_data, PM8XXX_ROW_SHIFT,
 					kp->input->keycode, kp->input->keybit);
-
-	for (keycode = KEY_RESERVED+1; keycode < KEY_UNKNOWN; keycode++)
-		__set_bit(keycode, kp->input->keybit);
-
-	__set_bit(KEY_NUMERIC_STAR, kp->input->keybit);
-	__set_bit(KEY_NUMERIC_POUND, kp->input->keybit);
 
 	input_set_capability(kp->input, EV_MSC, MSC_SCAN);
 	input_set_drvdata(kp->input, kp);
