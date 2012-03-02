@@ -191,10 +191,10 @@ static int32_t mt9m114_set_sharpening(struct msm_sensor_ctrl_t *s_ctrl,
 		return rc;
 	}
 
-	if (sharpening) {
+	if (sharpening != 0x00) {
 		/* Enable sharpening */
-		data1 |= 0x0100;
-		data2 |= 0x0100;
+		data1 |= 0x0010;
+		data2 |= 0x0010;
 	} else {
 		/* Disable sharpening */
 		data1 &= 0xFFEF;
