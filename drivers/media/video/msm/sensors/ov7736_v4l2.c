@@ -26,6 +26,9 @@ static struct msm_sensor_ctrl_t ov7736_s_ctrl;
 
 static struct regulator *reg_1p8;
 
+static uint16_t sharpening_saved_5300;
+static uint16_t sharpening_saved_5301;
+
 /*=============================================================
   SENSOR REGISTER DEFINES
   ==============================================================*/
@@ -510,6 +513,201 @@ static int32_t ov7736_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 	pr_info("ov7736: match_id success\n");
 	return 0;
 }
+
+static int32_t ov7736_set_gamma(struct msm_sensor_ctrl_t *s_ctrl, uint8_t unity)
+{
+	int32_t rc = 0;
+	uint16_t readdata;
+	uint8_t data;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x5000, &readdata,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read gamma register failed\n", __func__);
+		return rc;
+	}
+
+	data = (uint8_t)readdata;
+
+	if (unity)
+		data |= 0x40;
+	else
+		data &= 0xBF;
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0x5000, data,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: write gamma register failed\n", __func__);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int32_t ov7736_set_sharpening(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t sharpening)
+{
+	int32_t rc = 0;
+	uint8_t data = 0x00;
+	uint16_t readdata;
+
+	if (sharpening == 0) {
+		rc = msm_camera_i2c_read(
+				s_ctrl->sensor_i2c_client,
+				0x5300, &readdata,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0) {
+			pr_err("%s: read sharpening 1 register failed\n",
+					__func__);
+			return rc;
+		}
+
+		sharpening_saved_5300 = readdata;
+
+		rc = msm_camera_i2c_read(
+				s_ctrl->sensor_i2c_client,
+				0x5301, &readdata,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0) {
+			pr_err("%s: read sharpening 2 register failed\n",
+					__func__);
+			return rc;
+		}
+
+		sharpening_saved_5301 = readdata;
+
+		rc = msm_camera_i2c_write(
+				s_ctrl->sensor_i2c_client,
+				0x5300, data,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0) {
+			pr_err("%s: write sharpening 1 register failed\n",
+					__func__);
+			return rc;
+		}
+
+		rc = msm_camera_i2c_write(
+				s_ctrl->sensor_i2c_client,
+				0x5301, data,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0) {
+			pr_err("%s: write sharpening 2 register failed\n",
+					__func__);
+			return rc;
+		}
+	} else {
+
+		if ((sharpening_saved_5300 != 0x0000) &&
+				(sharpening_saved_5301 != 0x0000)) {
+			data = (uint8_t)sharpening_saved_5300;
+			rc = msm_camera_i2c_write(
+					s_ctrl->sensor_i2c_client,
+					0x5300, data,
+					MSM_CAMERA_I2C_BYTE_DATA);
+
+			if (rc < 0) {
+				pr_err("%s: write sharpening 1 reg failed\n",
+						__func__);
+				return rc;
+			}
+
+			data = (uint8_t)sharpening_saved_5301;
+			rc = msm_camera_i2c_write(
+					s_ctrl->sensor_i2c_client,
+					0x5301, data,
+					MSM_CAMERA_I2C_BYTE_DATA);
+
+			if (rc < 0) {
+				pr_err("%s: write sharpening 2 reg failed\n",
+						__func__);
+				return rc;
+			}
+		} else {
+			pr_err("%s: write sharpening failed\n",
+					__func__);
+			return -EINVAL;
+		}
+
+	}
+
+	return rc;
+}
+
+static int32_t ov7736_set_lens_shading(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t enable)
+{
+	int32_t rc = 0;
+	uint16_t readdata;
+	uint8_t data;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x5000, &readdata,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read lens shading register failed\n", __func__);
+		return rc;
+	}
+
+	data = (uint8_t)readdata;
+
+	if (enable)
+		data |= 0x80;
+	else
+		data &= 0x7F;
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0x5000, data,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: write gamma register failed\n", __func__);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int32_t ov7736_set_target_exposure(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t target_exposure)
+{
+	int32_t rc = 0;
+
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0x3A0F, target_exposure,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: Write tgt exp average luma register failed\n",
+				__func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0x3A10, target_exposure,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: Write tgt exp average luma dark register failed\n",
+				__func__);
+		return rc;
+	}
+
+	return rc;
+}
+
 static const struct i2c_device_id ov7736_i2c_id[] = {
 	{SENSOR_NAME, (kernel_ulong_t)&ov7736_s_ctrl},
 	{ }
@@ -550,16 +748,20 @@ static struct v4l2_subdev_ops ov7736_subdev_ops = {
 };
 
 static struct msm_sensor_fn_t ov7736_func_tbl = {
-	.sensor_start_stream    = msm_sensor_start_stream,
-	.sensor_stop_stream     = msm_sensor_stop_stream,
-	.sensor_setting         = msm_sensor_setting,
-	.sensor_set_sensor_mode = msm_sensor_set_sensor_mode,
-	.sensor_mode_init       = msm_sensor_mode_init,
-	.sensor_get_output_info = msm_sensor_get_output_info,
-	.sensor_config          = msm_sensor_config,
-	.sensor_power_up        = ov7736_power_up,
-	.sensor_power_down      = ov7736_power_down,
-	.sensor_match_id        = ov7736_match_id,
+	.sensor_start_stream           = msm_sensor_start_stream,
+	.sensor_stop_stream            = msm_sensor_stop_stream,
+	.sensor_setting                = msm_sensor_setting,
+	.sensor_set_sensor_mode        = msm_sensor_set_sensor_mode,
+	.sensor_mode_init              = msm_sensor_mode_init,
+	.sensor_get_output_info        = msm_sensor_get_output_info,
+	.sensor_config                 = msm_sensor_config,
+	.sensor_power_up               = ov7736_power_up,
+	.sensor_power_down             = ov7736_power_down,
+	.sensor_match_id               = ov7736_match_id,
+	.sensor_set_gamma              = ov7736_set_gamma,
+	.sensor_set_sharpening         = ov7736_set_sharpening,
+	.sensor_set_lens_shading       = ov7736_set_lens_shading,
+	.sensor_set_target_exposure    = ov7736_set_target_exposure,
 };
 
 static struct msm_sensor_reg_t ov7736_regs = {

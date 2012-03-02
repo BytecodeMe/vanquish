@@ -108,7 +108,7 @@ static int32_t mt9m114_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 	return 0;
 }
 
-int32_t mt9m114_match_id(struct msm_sensor_ctrl_t *s_ctrl)
+static int32_t mt9m114_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 	uint16_t chipid = 0;
@@ -129,6 +129,163 @@ int32_t mt9m114_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 	pr_info("mt9m114: match_id success\n");
 	return 0;
 }
+
+static int32_t mt9m114_set_gamma(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t unity)
+{
+	int32_t rc = 0;
+	uint16_t data = 0;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3210, &data,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read gamma register failed\n", __func__);
+		return rc;
+	}
+
+	if (unity)
+		data &= 0xFF7F;
+	else
+		data |= 0x0080;
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0x3210, data,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: write gamma register failed\n", __func__);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int32_t mt9m114_set_sharpening(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t sharpening)
+{
+	int32_t rc = 0;
+	uint16_t data1 = 0;
+	uint16_t data2 = 0;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0xBC04, &data1,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read algo register failed\n", __func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0x3210, &data2,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read sharpening register failed\n", __func__);
+		return rc;
+	}
+
+	if (sharpening) {
+		/* Enable sharpening */
+		data1 |= 0x0100;
+		data2 |= 0x0100;
+	} else {
+		/* Disable sharpening */
+		data1 &= 0xFFEF;
+		data2 &= 0xFFEF;
+	}
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0xBC04, data1,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: write algo register failed\n", __func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0x3210, data2,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: write sharpening register failed\n", __func__);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int32_t mt9m114_set_lens_shading(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t enable)
+{
+	int32_t rc = 0;
+	uint16_t data = 0;
+
+	rc = msm_camera_i2c_read(
+			s_ctrl->sensor_i2c_client,
+			0xC95E, &data,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read lens shading register failed\n", __func__);
+		return rc;
+	}
+
+	if (enable)
+		data |= 0x0003;
+	else
+		data &= 0xFFFC;
+
+	rc = msm_camera_i2c_write(
+			s_ctrl->sensor_i2c_client,
+			0xC95E, data,
+			MSM_CAMERA_I2C_WORD_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: read lens shading register failed\n", __func__);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int32_t mt9m114_set_target_exposure(struct msm_sensor_ctrl_t *s_ctrl,
+		uint8_t target_exposure)
+{
+	int32_t rc = 0;
+
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0xC87A, target_exposure,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: Write tgt exp average luma register failed\n",
+				__func__);
+		return rc;
+	}
+
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0xC87B, target_exposure,
+			MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: Write tgt exp average luma dark register failed\n",
+				__func__);
+		return rc;
+	}
+
+	return rc;
+}
+
 
 static struct msm_camera_i2c_reg_conf mt9m114_1280x960_settings[] = {
 	{0xdc00, 0x50, MSM_CAMERA_I2C_BYTE_DATA, MSM_CAMERA_I2C_CMD_WRITE},
@@ -1373,6 +1530,10 @@ static struct msm_sensor_fn_t mt9m114_func_tbl = {
 	.sensor_power_up = mt9m114_power_up,
 	.sensor_power_down = mt9m114_power_down,
 	.sensor_match_id = mt9m114_match_id,
+	.sensor_set_gamma = mt9m114_set_gamma,
+	.sensor_set_sharpening = mt9m114_set_sharpening,
+	.sensor_set_lens_shading = mt9m114_set_lens_shading,
+	.sensor_set_target_exposure = mt9m114_set_target_exposure,
 };
 
 static struct msm_sensor_reg_t mt9m114_regs = {

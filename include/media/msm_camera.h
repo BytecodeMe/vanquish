@@ -760,8 +760,12 @@ struct msm_snapshot_pp_status {
 #define CFG_SET_ACTUATOR_INFO		34
 #define CFG_GET_ACTUATOR_INFO		35
 #define CFG_SET_LENS_MODE		36
-#define CFG_GET_SNAPSHOTDATA	37
-#define CFG_MAX			38
+#define CFG_GET_SNAPSHOTDATA            37
+#define CFG_SET_GAMMA			38
+#define CFG_SET_SHARPENING		39
+#define CFG_SET_LENSSHADING		40
+#define CFG_SET_TARGET_EXPOSURE		41
+#define CFG_MAX			        42
 
 
 #define MOVE_NEAR	0
@@ -1073,6 +1077,13 @@ struct sensor_snapshotdata {
 	struct msm_sensor_snapshotdata *data;
 };
 
+struct factory_settings {
+	uint8_t gamma_unity;
+	uint8_t lens_shading;
+	uint8_t sharpening;
+	uint8_t target_exposure;
+};
+
 struct sensor_cfg_data {
 	int cfgtype;
 	int mode;
@@ -1111,6 +1122,7 @@ struct sensor_cfg_data {
 		int is_autoflash;
 		struct mirror_flip mirror_flip;
 		struct sensor_snapshotdata snapshotdata;
+		struct factory_settings fact_set;
 	} cfg;
 };
 
