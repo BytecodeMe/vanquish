@@ -219,18 +219,6 @@ static struct msm_bus_vectors cam_init_vectors[] = {
 		.ab  = 0,
 		.ib  = 0,
 	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 0,
-		.ib  = 0,
-	},
 };
 
 static struct msm_bus_vectors cam_preview_vectors[] = {
@@ -249,18 +237,6 @@ static struct msm_bus_vectors cam_preview_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
 		.ab  = 0,
 		.ib  = 0,
 	},
@@ -285,18 +261,6 @@ static struct msm_bus_vectors cam_video_vectors[] = {
 		.ab  = 0,
 		.ib  = 0,
 	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 0,
-		.ib  = 0,
-	},
 };
 
 static struct msm_bus_vectors cam_snapshot_vectors[] = {
@@ -318,18 +282,6 @@ static struct msm_bus_vectors cam_snapshot_vectors[] = {
 		.ab  = 540000000,
 		.ib  = 1350000000,
 	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 43200000,
-		.ib  = 69120000,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 43200000,
-		.ib  = 69120000,
-	},
 };
 
 static struct msm_bus_vectors cam_zsl_vectors[] = {
@@ -350,18 +302,6 @@ static struct msm_bus_vectors cam_zsl_vectors[] = {
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 540000000,
 		.ib  = 1350000000,
-	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 43200000,
-		.ib  = 69120000,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_MM_IMEM,
-		.ab  = 43200000,
-		.ib  = 69120000,
 	},
 };
 
