@@ -623,12 +623,12 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 
 static struct led_info pm8921_led_info[] = {
 	[0] = {
-		.name			= "led:battery_charging",
-		.default_trigger	= "battery-charging",
+		.name			= "charging",
+		/* Trigger is set to blink when charging, solid when full */
+		.default_trigger	= "battery-charging-blink-full-solid",
 	},
 	[1] = {
-		.name			= "led:battery_full",
-		/*.default_trigger	= "battery-full", */
+		.name			= "reserved",
 	},
 };
 
