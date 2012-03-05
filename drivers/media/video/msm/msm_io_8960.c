@@ -349,7 +349,7 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 	case CAMIO_JPEG_CLK:
 		camio_jpeg_clk =
 		clk = clk_get(NULL, "ijpeg_clk");
-		clk_set_rate(clk, 153600000);
+		clk_set_rate(clk, 228571000);
 		break;
 
 	case CAMIO_JPEG_PCLK:
@@ -424,6 +424,11 @@ int msm_camio_jpeg_clk_disable(void)
 	if (rc < 0)
 		return rc;
 	rc = msm_camio_clk_disable(CAMIO_JPEG_CLK);
+	if (rc < 0)
+		return rc;
+	rc = msm_camio_clk_disable(CAMIO_IMEM_CLK);
+	if (rc < 0)
+		return rc;
 
 	if (fs_ijpeg) {
 		rc = regulator_disable(fs_ijpeg);
@@ -455,6 +460,10 @@ int msm_camio_jpeg_clk_enable(void)
 	if (rc < 0)
 		return rc;
 	rc = msm_camio_clk_enable(CAMIO_JPEG_PCLK);
+	if (rc < 0)
+		return rc;
+
+	rc = msm_camio_clk_enable(CAMIO_IMEM_CLK);
 	if (rc < 0)
 		return rc;
 
