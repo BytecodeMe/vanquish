@@ -30,6 +30,7 @@
 #include <mach/socinfo.h>
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
+#include <linux/emu-accy.h>
 
 /* 8960 machine driver */
 
@@ -60,6 +61,14 @@
 #define TABLA_MBHC_DEF_BUTTONS 8
 #define TABLA_MBHC_DEF_RLOADS 5
 
+static int emu_state = NO_DEVICE;
+
+static int emu_audio_accy_notify(struct notifier_block *,
+				  unsigned long, void *);
+static struct notifier_block emu_accy_notifier = {
+	.notifier_call = emu_audio_accy_notify,
+};
+
 static u32 top_spk_pamp_gpio  = PM8921_GPIO_PM_TO_SYS(18);
 static u32 bottom_spk_pamp_gpio = PM8921_GPIO_PM_TO_SYS(19);
 static int msm8960_spk_control;
@@ -67,6 +76,7 @@ static int msm8960_ext_bottom_spk_pamp;
 static int msm8960_ext_top_spk_pamp;
 static int msm8960_slim_0_rx_ch = 1;
 static int msm8960_slim_0_tx_ch = 1;
+static int msm8960_mic_on;
 
 static int msm8960_btsco_rate = BTSCO_RATE_8KHZ;
 static int msm8960_btsco_ch = 1;
@@ -264,12 +274,51 @@ static int msm8960_set_spk(struct snd_kcontrol *kcontrol,
 	msm8960_ext_control(codec);
 	return 1;
 }
+
+static int emu_audio_accy_notify(struct notifier_block *nb,
+		unsigned long status, void *unused)
+{
+	pr_debug("%s(), status = %d\n", __func__, (int)status);
+	emu_state = status;
+	return 0;
+}
+
+static int msm8960_check_for_emu_audio(void)
+{
+	if (emu_state == EMU_OUT) {
+		pr_debug("%s(), state = %d\n", __func__, emu_state);
+		return 1;
+	} else {
+		pr_debug("%s(), state = %d\n", __func__, emu_state);
+		return 0;
+	}
+}
+
+static int msm8960_mic_event(struct snd_soc_dapm_widget *w,
+				struct snd_kcontrol *k, int event)
+{
+	pr_debug("%s() %x\n", __func__, SND_SOC_DAPM_EVENT_ON(event));
+
+	if (SND_SOC_DAPM_EVENT_ON(event))
+		msm8960_mic_on = 1;
+	else
+		msm8960_mic_on = 0;
+
+	return 0;
+}
+
 static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *k, int event)
 {
 	pr_debug("%s() %x\n", __func__, SND_SOC_DAPM_EVENT_ON(event));
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		if (msm8960_check_for_emu_audio()) {
+			pr_debug("EMU dock connected, don't enable speaker, route to dock\n");
+			set_mux_ctrl_mode_for_audio(MUXMODE_AUDIO);
+			return 0;
+		}
+
 		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18))
 			msm8960_ext_spk_power_amp_on(BOTTOM_SPK_AMP_POS);
 		else if (!strncmp(w->name, "Ext Spk Bottom Neg", 18))
@@ -362,11 +411,10 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Ext Spk Top Pos", msm8960_spkramp_event),
 	SND_SOC_DAPM_SPK("Ext Spk Top Neg", msm8960_spkramp_event),
 
-	SND_SOC_DAPM_MIC("Primary Mic", NULL),
-	SND_SOC_DAPM_MIC("Secondary Mic", NULL),
-	SND_SOC_DAPM_MIC("Tertiary Mic", NULL),
-	SND_SOC_DAPM_MIC("Headset Mic", NULL),
-
+	SND_SOC_DAPM_MIC("Primary Mic", msm8960_mic_event),
+	SND_SOC_DAPM_MIC("Secondary Mic", msm8960_mic_event),
+	SND_SOC_DAPM_MIC("Tertiary Mic", msm8960_mic_event),
+	SND_SOC_DAPM_MIC("Headset Mic", msm8960_mic_event),
 };
 
 static const struct snd_soc_dapm_route common_audio_map_version1[] = {
@@ -1272,10 +1320,11 @@ static int msm8960_configure_headset_mic_gpios(void)
 	else
 		gpio_direction_output(PM8921_GPIO_PM_TO_SYS(35), 0);
 */
-	pr_err("%s: US_EURO_SWITCH and AV_SWITCH gpios not configured!!!\n", __func__);
+	pr_err("%s: US_EURO_, AV_SWITCH gpios not configured!!!\n", __func__);
 
-	return -1;
+	return -EINVAL;
 }
+
 static void msm8960_free_headset_mic_gpios(void)
 {
 	if (msm8960_headset_gpios_configured) {
@@ -1320,8 +1369,9 @@ static int __init msm8960_audio_init(void)
 	} else
 		msm8960_headset_gpios_configured = 1;
 
-	return ret;
+	semu_audio_register_notify(&emu_accy_notifier);
 
+	return ret;
 }
 module_init(msm8960_audio_init);
 
