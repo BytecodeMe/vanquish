@@ -290,6 +290,7 @@ void mipi_dsi_post_kickoff_del(struct dsi_kickoff_action *act);
 void mipi_dsi_controller_cfg(int enable);
 void mipi_dsi_sw_reset(void);
 void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd);
+void mipi_bklight_pwm_cfg(void);
 
 int mipi_reg_write(struct msm_fb_data_type *mfd, __u16 size,
 	__u8 *buf, __u8 use_hs_mode);
