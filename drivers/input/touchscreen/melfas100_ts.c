@@ -901,6 +901,35 @@ static ssize_t melfas_latency_debug_store(struct device *dev,
 static DEVICE_ATTR(latency_debug, S_IWUSR | S_IRUGO, \
 			melfas_latency_debug_show, melfas_latency_debug_store);
 
+static ssize_t melfas_ts_hw_reset_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct mms_ts_info *ts = dev_get_drvdata(dev);
+	unsigned long value;
+	int err = kstrtoul(buf, 0, &value);
+	if (err < 0) {
+		pr_err("%s: illegal sysfs data\n", __func__);
+		return -EINVAL;
+	}
+
+	disable_irq_nosync(ts->client->irq);
+
+	if (value) {
+		gpio_set_value(ts->pdata->gpio_reset, 0);
+		msleep(50);
+		gpio_set_value(ts->pdata->gpio_reset, 1);
+		msleep(150);
+		pr_info("%s: IC has been reset\n", __func__);
+	}
+
+	enable_irq(ts->client->irq);
+
+	return size;
+}
+static DEVICE_ATTR(hw_reset, S_IWUSR | S_IRUGO, NULL,
+			melfas_ts_hw_reset_store);
+
+
 /* interrupt status */
 static ssize_t melfas_ts_hw_irqstat_show(struct device *dev,
 			struct device_attribute *attr, char *buf)
@@ -1232,6 +1261,13 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 				"New firmware is not going to be downloaded!");
 		}
 	}
+	ret = device_create_file(&info->client->dev, &dev_attr_hw_reset);
+	if (ret) {
+		pr_err("%s:File device creation failed: %d\n", __func__, ret);
+		ret = -ENODEV;
+		goto err_create_hw_reset_device_failed;
+	}
+
 	ret = device_create_file(&info->client->dev, &dev_attr_drv_reset);
 	if (ret) {
 		pr_err("%s:File device creation failed: %d\n", __func__, ret);
@@ -1310,6 +1346,8 @@ err_create_irq_enabled_device_failed:
 err_create_dbg_device_failed:
 	device_remove_file(&info->client->dev, &dev_attr_drv_reset);
 err_create_drv_reset_device_failed:
+	device_remove_file(&info->client->dev, &dev_attr_hw_reset);
+err_create_hw_reset_device_failed:
 err_config:
 	input_unregister_device(info->input_dev);
 err_input_register_device_failed:
