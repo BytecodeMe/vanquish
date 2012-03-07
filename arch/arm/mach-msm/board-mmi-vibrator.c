@@ -81,8 +81,11 @@ struct vib_pwm vib_pwm_config[] =
 	{   32999,   40000,   40000,   25000 },
 	{   39999,   52000,   52000,   33000 },
 	{   60000,   60000,   60000,   40000 },
+	/* Default vibration, also used for factory Test - Forward direction */
 	{ 29000001,  40000,   39500,   40000 },
-	/* reverse vibration for factory test */
+	/* Used for factory Test - Virtual Stop */
+	{ 29001001,  10000,   10000,    5000 },
+	/* Used for factory Test - Reverse direction */
 	{ 30000000,  40000,   39500,       0 }
 };
 
