@@ -1111,8 +1111,8 @@ static struct msm_bus_vectors rotator_1080p_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_ROTATOR,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = (1920 * 1088 * 2 * 2 * 30),
-		.ib  = (1920 * 1088 * 2 * 2 * 30 * 1.5),
+		.ab  = 2000000000UL,
+		.ib  = 2000000000UL,
 	},
 };
 
@@ -1159,8 +1159,8 @@ static struct msm_bus_vectors dtv_bus_def_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 2000000000,
-		.ib = 2000000000,
+		.ab = 2000000000UL,
+		.ib = 2000000000UL,
 	},
 };
 #else
@@ -1212,8 +1212,8 @@ static struct msm_bus_vectors hdmi_as_primary_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 2000000000,
-		.ib = 2000000000,
+		.ab = 2000000000UL,
+		.ib = 2000000000UL,
 	},
 };
 static struct msm_bus_paths mdp_bus_scale_usecases[] = {
@@ -1277,8 +1277,8 @@ static struct msm_bus_vectors mdp_1080p_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 334080000 * 2,
-		.ib = 417600000 * 2,
+		.ab = 2000000000UL,
+		.ib = 2000000000UL,
 	},
 };
 
