@@ -14,8 +14,6 @@
 #ifndef _ARCH_ARM_MACH_MSM_RESTART_H_
 #define _ARCH_ARM_MACH_MSM_RESTART_H_
 
-#define TEMP_BP_APR_NOTIF 1
-
 #ifdef TEMP_BP_APR_NOTIF
 extern void set_in_bp_panic(void);
 #endif
