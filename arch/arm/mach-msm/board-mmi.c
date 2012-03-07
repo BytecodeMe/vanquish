@@ -3352,9 +3352,25 @@ static void __init msm8960_fixup(struct machine_desc *desc,
 	}
 }
 
+static void (*msm8960_common_cal_rsv_sizes)(void) __initdata;
+
+static void __init msm8960_mmi_cal_rsv_sizes(void)
+{
+	if (msm8960_common_cal_rsv_sizes)
+		msm8960_common_cal_rsv_sizes();
+	reserve_memory_for_watchdog();
+}
+
+static void __init msm8960_mmi_reserve(void)
+{
+	msm8960_common_cal_rsv_sizes = reserve_info->calculate_reserve_sizes;
+	reserve_info->calculate_reserve_sizes = msm8960_mmi_cal_rsv_sizes;
+	msm8960_reserve();
+}
+
 MACHINE_START(TEUFEL, "Teufel")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3366,7 +3382,7 @@ MACHINE_END
 
 MACHINE_START(QINARA, "Qinara")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3378,7 +3394,7 @@ MACHINE_END
 
 MACHINE_START(VANQUISH, "Vanquish")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3390,7 +3406,7 @@ MACHINE_END
 
 MACHINE_START(BECKER, "Becker")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3402,7 +3418,7 @@ MACHINE_END
 
 MACHINE_START(ASANTI, "Asanti")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3414,7 +3430,7 @@ MACHINE_END
 
 MACHINE_START(ORDOG, "Ordog")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,
@@ -3426,7 +3442,7 @@ MACHINE_END
 /* for use by products that are completely configured through device tree */
 MACHINE_START(MSM8960DT, "msm8960dt")
 	.map_io = msm8960_map_io,
-	.reserve = msm8960_reserve,
+	.reserve = msm8960_mmi_reserve,
 	.init_irq = msm8960_init_irq,
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_timer,

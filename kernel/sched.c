@@ -9443,6 +9443,14 @@ struct cgroup_subsys cpuacct_subsys = {
 };
 #endif	/* CONFIG_CGROUP_CPUACCT */
 
+u32 cpu_curr_ptr_addr(int cpu)
+{
+	u32 ret = 0;
+	if (cpu_present(cpu))
+		ret = (unsigned long)&cpu_curr(cpu);
+	return ret;
+}
+
 void show_cpu_current_stack_mem(void)
 {
 	struct rq *rq;
