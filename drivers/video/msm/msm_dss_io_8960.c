@@ -95,6 +95,14 @@ void mipi_dsi_clk_init(struct device *dev)
 		goto mipi_dsi_clk_err;
 	}
 
+	if (!cont_splash_done) {
+		clk_enable(amp_pclk); /* clock for AHB-master to AXI */
+		clk_enable(dsi_m_pclk);
+		clk_enable(dsi_s_pclk);
+		clk_enable(dsi_byte_div_clk);
+		clk_enable(dsi_esc_clk);
+	}
+
 	return;
 
 mipi_dsi_clk_err:

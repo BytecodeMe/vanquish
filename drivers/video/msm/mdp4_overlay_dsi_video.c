@@ -149,7 +149,18 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	}
 
 	/* MDP cmd block enable */
+
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
+	if (!cont_splash_done) {
+		cont_splash_done = 1;
+		mdp4_overlay_dsi_video_wait4event(mfd, INTR_DMA_P_DONE);
+		/* disable timing generator */
+		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+		mipi_dsi_controller_cfg(0);
+	}
+#endif
+
 	if (is_mdp4_hw_reset()) {
 		mdp4_hw_init();
 		outpdw(MDP_BASE + 0x0038, mdp4_display_intf);
