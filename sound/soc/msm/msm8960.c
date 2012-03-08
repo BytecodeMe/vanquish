@@ -58,7 +58,7 @@
 
 #define TABLA_EXT_CLK_RATE 12288000
 
-#define TABLA_MBHC_DEF_BUTTONS 8
+#define TABLA_MBHC_DEF_BUTTONS 3
 #define TABLA_MBHC_DEF_RLOADS 5
 
 static int emu_state = NO_DEVICE;
@@ -654,11 +654,12 @@ static void *def_tabla_mbhc_cal(void)
 	btn_low = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_LOW);
 	btn_high = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_HIGH);
 	btn_low[0] = -50;
-	btn_high[0] = 10;
-	btn_low[1] = 11;
-	btn_high[1] = 38;
-	btn_low[2] = 39;
-	btn_high[2] = 64;
+	btn_high[0] = 83;
+	btn_low[1] = 84;
+	btn_high[1] = 201;
+	btn_low[2] = 202;
+	btn_high[2] = 434;
+#if 0
 	btn_low[3] = 65;
 	btn_high[3] = 91;
 	btn_low[4] = 92;
@@ -669,6 +670,7 @@ static void *def_tabla_mbhc_cal(void)
 	btn_high[6] = 163;
 	btn_low[7] = 164;
 	btn_high[7] = 250;
+#endif
 	n_ready = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_N_READY);
 	n_ready[0] = 48;
 	n_ready[1] = 38;

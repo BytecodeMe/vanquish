@@ -143,7 +143,7 @@ static irqreturn_t tabla_irq_thread(int irq, void *data)
 	int ret;
 	struct tabla *tabla = data;
 	u8 status[TABLA_NUM_IRQ_REGS];
-	unsigned int i;
+	int i;
 
 	tabla_lock_sleep(tabla);
 	ret = tabla_bulk_read(tabla, TABLA_A_INTR_STATUS0,
@@ -161,7 +161,7 @@ static irqreturn_t tabla_irq_thread(int irq, void *data)
 	/* Find out which interrupt was triggered and call that interrupt's
 	 * handler function
 	 */
-	for (i = 0; i < TABLA_NUM_IRQS; i++) {
+	for (i = TABLA_NUM_IRQS - 1; i >= 0; i--) {
 		if (status[BIT_BYTE(i)] & BYTE_BIT_MASK(i)) {
 			if ((i <= TABLA_IRQ_MBHC_INSERTION) &&
 				(i >= TABLA_IRQ_MBHC_REMOVAL)) {

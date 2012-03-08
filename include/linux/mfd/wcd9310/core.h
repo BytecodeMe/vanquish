@@ -122,18 +122,21 @@ static inline int tabla_request_irq(struct tabla *tabla, int irq,
 				    IRQF_TRIGGER_RISING, name,
 				    data);
 }
+
 static inline void tabla_free_irq(struct tabla *tabla, int irq, void *data)
 {
 	if (!tabla->irq_base)
 		return;
 	free_irq(tabla->irq_base + irq, data);
 }
+
 static inline void tabla_enable_irq(struct tabla *tabla, int irq)
 {
 	if (!tabla->irq_base)
 		return;
 	enable_irq(tabla->irq_base + irq);
 }
+
 static inline void tabla_disable_irq(struct tabla *tabla, int irq)
 {
 	if (!tabla->irq_base)
@@ -141,4 +144,10 @@ static inline void tabla_disable_irq(struct tabla *tabla, int irq)
 	disable_irq_nosync(tabla->irq_base + irq);
 }
 
+static inline void tabla_disable_irq_sync(struct tabla *tabla, int irq)
+{
+	if (!tabla->irq_base)
+		return;
+	disable_irq(tabla->irq_base + irq);
+}
 #endif
