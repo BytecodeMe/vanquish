@@ -1042,6 +1042,8 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 	host->curr.got_dataend = 0;
 	host->curr.got_auto_prog_done = 0;
 
+	memset(&host->pio, 0, sizeof(host->pio));
+
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
 
 	if (host->curr.wait_for_auto_prog_done)
@@ -1076,21 +1078,17 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 
 	/* Is data transfer in PIO mode required? */
 	if (!(datactrl & MCI_DPSM_DMAENABLE)) {
-		unsigned int sg_miter_flags = SG_MITER_ATOMIC;
+		host->pio.sg = data->sg;
+		host->pio.sg_len = data->sg_len;
+		host->pio.sg_off = 0;
 
 		if (data->flags & MMC_DATA_READ) {
-			sg_miter_flags |= SG_MITER_TO_SG;
 			pio_irqmask = MCI_RXFIFOHALFFULLMASK;
 			if (host->curr.xfer_remain < MCI_FIFOSIZE)
 				pio_irqmask |= MCI_RXDATAAVLBLMASK;
-		} else {
-			sg_miter_flags |= SG_MITER_FROM_SG;
+		} else
 			pio_irqmask = MCI_TXFIFOHALFEMPTYMASK |
 					MCI_TXFIFOEMPTYMASK;
-		}
-
-		sg_miter_start(&host->sg_miter, data->sg, data->sg_len,
-				sg_miter_flags);
 	}
 
 	if (data->flags & MMC_DATA_READ)
@@ -1256,7 +1254,6 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 	struct msmsdcc_host	*host = dev_id;
 	void __iomem		*base = host->base;
 	uint32_t		status;
-	unsigned long flags;
 
 	spin_lock(&host->lock);
 
@@ -1271,10 +1268,9 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 #if IRQ_DEBUG
 	msmsdcc_print_status(host, "irq1-r", status);
 #endif
-	local_irq_save(flags);
 
-	while (sg_miter_next(&host->sg_miter)) {
-
+	do {
+		unsigned long flags;
 		unsigned int remain, len;
 		char *buffer;
 
@@ -1282,8 +1278,12 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 				| MCI_RXDATAAVLBL)))
 			break;
 
-		buffer = host->sg_miter.addr;
-		remain = host->sg_miter.length;
+		/* Map the current scatter buffer */
+		local_irq_save(flags);
+		buffer = kmap_atomic(sg_page(host->pio.sg),
+				     KM_BIO_SRC_IRQ) + host->pio.sg->offset;
+		buffer += host->pio.sg_off;
+		remain = host->pio.sg->length - host->pio.sg_off;
 
 		len = 0;
 		if (status & MCI_RXACTIVE)
@@ -1294,7 +1294,11 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		if (len > remain)
 			len = remain;
 
-		host->sg_miter.consumed = len;
+		/* Unmap the buffer */
+		kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+		local_irq_restore(flags);
+
+		host->pio.sg_off += len;
 		host->curr.xfer_remain -= len;
 		host->curr.data_xfered += len;
 		remain -= len;
@@ -1302,11 +1306,20 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		if (remain) /* Done with this page? */
 			break; /* Nope */
 
-		status = readl_relaxed(base + MMCISTATUS);
-	}
+		if (status & MCI_RXACTIVE && host->curr.user_pages)
+			flush_dcache_page(sg_page(host->pio.sg));
 
-	sg_miter_stop(&host->sg_miter);
-	local_irq_restore(flags);
+		if (!--host->pio.sg_len) {
+			memset(&host->pio, 0, sizeof(host->pio));
+			break;
+		}
+
+		/* Advance to next sg */
+		host->pio.sg++;
+		host->pio.sg_off = 0;
+
+		status = readl_relaxed(base + MMCISTATUS);
+	} while (1);
 
 	if (status & MCI_RXACTIVE && host->curr.xfer_remain < MCI_FIFOSIZE) {
 		writel_relaxed((readl_relaxed(host->base + MMCIMASK0) &
@@ -2287,6 +2300,10 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	/* Select free running MCLK as input clock of cm_dll_sdc4 */
 	clk |= (2 << 23);
 
+	/* Clear IO_PAD_PWR_SWITCH while powering off the card */
+	if (!ios->vdd)
+		host->io_pad_pwr_switch = 0;
+
 	if (host->io_pad_pwr_switch)
 		clk |= IO_PAD_PWR_SWITCH;
 
@@ -2561,6 +2578,10 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 	struct msmsdcc_host *host = mmc_priv(mmc);
 	unsigned long flags;
 	int rc = 0;
+
+	spin_lock_irqsave(&host->lock, flags);
+	host->io_pad_pwr_switch = 0;
+	spin_unlock_irqrestore(&host->lock, flags);
 
 	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
 		/* Change voltage level of VDDPX to high voltage */

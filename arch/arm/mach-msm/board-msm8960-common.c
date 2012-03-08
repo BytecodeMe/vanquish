@@ -1414,6 +1414,18 @@ static struct msm_bus_vectors cam_init_vectors[] = {
 		.ab  = 0,
 		.ib  = 0,
 	},
+	{
+		.src = MSM_BUS_MASTER_JPEG_ENC,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_VFE,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 0,
+		.ib  = 0,
+	},
 };
 
 static struct msm_bus_vectors cam_preview_vectors[] = {
@@ -1432,6 +1444,18 @@ static struct msm_bus_vectors cam_preview_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_JPEG_ENC,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_VFE,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
 		.ab  = 0,
 		.ib  = 0,
 	},
@@ -1456,6 +1480,18 @@ static struct msm_bus_vectors cam_video_vectors[] = {
 		.ab  = 0,
 		.ib  = 0,
 	},
+	{
+		.src = MSM_BUS_MASTER_JPEG_ENC,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_VFE,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 0,
+		.ib  = 0,
+	},
 };
 
 static struct msm_bus_vectors cam_snapshot_vectors[] = {
@@ -1477,6 +1513,18 @@ static struct msm_bus_vectors cam_snapshot_vectors[] = {
 		.ab  = 540000000,
 		.ib  = 1350000000,
 	},
+	{
+		.src = MSM_BUS_MASTER_JPEG_ENC,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 43200000,
+		.ib  = 69120000,
+	},
+	{
+		.src = MSM_BUS_MASTER_VFE,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 43200000,
+		.ib  = 69120000,
+	},
 };
 
 static struct msm_bus_vectors cam_zsl_vectors[] = {
@@ -1497,6 +1545,18 @@ static struct msm_bus_vectors cam_zsl_vectors[] = {
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 540000000,
 		.ib  = 1350000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_JPEG_ENC,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 43200000,
+		.ib  = 69120000,
+	},
+	{
+		.src = MSM_BUS_MASTER_VFE,
+		.dst = MSM_BUS_SLAVE_MM_IMEM,
+		.ab  = 43200000,
+		.ib  = 69120000,
 	},
 };
 
@@ -2626,62 +2686,62 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		true,
-		100, 8000, 100000, 1,
+		100, 650, 801, 200,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		true,
-		2000, 6000, 60100000, 3000,
+		2000, 200, 576000, 2000,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(ON, GDHS, MAX, ACTIVE),
 		false,
-		4200, 5000, 60350000, 3500,
+		4200, 51, 1122000, 8500,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, MAX, ACTIVE),
 		false,
-		6300, 4500, 65350000, 4800,
+		6300, 51, 1130300, 9000,
 	},
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, ACTIVE, RET_HIGH),
 		false,
-		7000, 3500, 66600000, 5150,
+		7000, 51, 1130300, 10000,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(OFF, GDHS, MAX, ACTIVE),
 		false,
-		11700, 2500, 67850000, 5500,
+		11700, 14, 2205900, 12000,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, MAX, ACTIVE),
 		false,
-		13800, 2000, 71850000, 6800,
+		13800, 12, 2364250, 18000,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, ACTIVE, RET_HIGH),
 		false,
-		29700, 500, 75850000, 8800,
+		29700, 10, 2667000, 23500,
 	},
 
 	{
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, RET_HIGH, RET_LOW),
 		false,
-		29700, 0, 76350000, 9800,
+		29700, 5, 2867000, 30000,
 	},
 };
 
@@ -3043,7 +3103,7 @@ struct platform_device *common_devices[] __initdata = {
 	&msm_etb_device,
 	&msm_tpiu_device,
 	&msm_funnel_device,
-	&msm_ptm_device,
+	&msm_etm_device,
 #endif
 	&msm_device_dspcrashd_8960,
 	&msm8960_device_watchdog,

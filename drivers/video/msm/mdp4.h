@@ -20,7 +20,6 @@ extern struct mdp_dma_data dma_e_data;
 extern struct mdp_dma_data dma_wb_data;
 extern unsigned int mdp_hist_frame_cnt;
 extern struct completion mdp_hist_comp;
-extern boolean mdp_is_hist_start;
 extern boolean mdp_is_in_isr;
 extern uint32 mdp_intr_mask;
 extern spinlock_t mdp_spin_lock;
@@ -706,12 +705,20 @@ void mdp4_writeback_dma_stop(struct msm_fb_data_type *mfd);
 int mdp4_writeback_init(struct fb_info *info);
 int mdp4_writeback_terminate(struct fb_info *info);
 
+uint32_t mdp_block2base(uint32_t block);
+int mdp_hist_lut_config(struct mdp_hist_lut_data *data);
+
 void mdp4_hsic_set(struct mdp4_overlay_pipe *pipe, struct dpp_ctrl *ctrl);
 void mdp4_hsic_update(struct mdp4_overlay_pipe *pipe);
 int mdp4_csc_config(struct mdp_csc_cfg_data *config);
+void mdp4_csc_write(struct mdp_csc_cfg *data, uint32_t base);
+int mdp4_csc_enable(struct mdp_csc_cfg_data *config);
+int mdp4_pcc_cfg(struct mdp_pcc_cfg_data *cfg_ptr);
+int mdp4_pgc_cfg(struct mdp_pgc_lut_data *pgc_ptr);
 
 u32  mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
 void mdp4_init_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
 void mdp4_free_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num);
 
+int mdp4_igc_lut_config(struct mdp_igc_lut_data *cfg);
 #endif /* MDP_H */

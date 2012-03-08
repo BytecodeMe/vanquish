@@ -51,7 +51,8 @@
 #define MIPI_DSI_PANEL_QHD_PT 5
 #define MIPI_DSI_PANEL_WXGA	6
 #define MIPI_DSI_PANEL_HD	7
-#define DSI_PANEL_MAX	7
+#define MIPI_DSI_PANEL_WUXGA	8
+#define DSI_PANEL_MAX	8
 
 enum {		/* mipi dsi panel */
 	DSI_VIDEO_MODE,
