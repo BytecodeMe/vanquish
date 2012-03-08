@@ -1577,7 +1577,14 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 	bool changed = TRUE;
 
 #ifdef MSM_FB_US_DVI_SUPPORT
+	uint32 new_pix_freq = mfd->var_pixclock / 1000;
+	bool us_timing_changed = false;
+
 	if (var->reserved[3] == HDMI_VFRMT_US_TIMING) {
+		us_timing_changed = ((us_timing.active_h != mfd->var_xres) ||
+				     (us_timing.active_v != mfd->var_yres) ||
+				     (us_timing.pixel_freq != new_pix_freq)
+				     ) ? true : false;
 		format = HDMI_VFRMT_US_TIMING;
 		us_timing.video_format  = format;
 		us_timing.active_h      = mfd->var_xres;
@@ -1592,7 +1599,7 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 		us_timing.back_porch_v  = mfd->var_upper_margin;
 		us_timing.active_low_v  =
 			(mfd->var_sync & FB_SYNC_VERT_HIGH_ACT) ? 0 : 1;
-		us_timing.pixel_freq    = mfd->var_pixclock / 1000;
+		us_timing.pixel_freq    = new_pix_freq;
 		us_timing.refresh_rate  = 60000; /* Just hack */
 		us_timing.interlaced    =
 			(mfd->var_vmode & FB_VMODE_INTERLACED) ? 1 : 0;
@@ -1635,6 +1642,11 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 	}
 
 	changed = external_common_state->video_resolution != format;
+#ifdef MSM_FB_US_DVI_SUPPORT
+	if (!changed && format == HDMI_VFRMT_US_TIMING)
+		changed = us_timing_changed;
+#endif
+
 	if (external_common_state->video_resolution != format)
 		DEV_DBG("switching %s => %s", video_format_2string(
 			external_common_state->video_resolution),

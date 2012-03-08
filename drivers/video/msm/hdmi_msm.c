@@ -1349,26 +1349,24 @@ static boolean hdmi_msm_is_dvi_mode(void)
 void hdmi_msm_set_mode(boolean power_on)
 {
 	uint32 reg_val = 0;
-#ifdef MSM_FB_US_DVI_SUPPORT
-	int force_hdmi = 0;
+	boolean hdmi_sink = external_common_state->hdmi_sink;
 
+#ifdef MSM_FB_US_DVI_SUPPORT
 	/* If user space requires audio for a DVI resolution
 	 * force the HW into HDMI mode, regardless of the EDID
-	 * and the IEEE value.
+	 * and the IEEE value.  This also handles the case where
+	 * a DVI resolution without audio is requested on a
+	 * HDMI capable display.
 	 */
 	if (external_common_state->video_resolution == HDMI_VFRMT_US_TIMING) {
-		force_hdmi = external_common_state->dvi_audio;
+		hdmi_sink = external_common_state->dvi_audio;
 	}
 #endif
 
 	if (power_on) {
 		/* ENABLE */
 		reg_val |= 0x00000001; /* Enable the block */
-#ifdef MSM_FB_US_DVI_SUPPORT
-		if (external_common_state->hdmi_sink == 0 && !force_hdmi) {
-#else
-		if (external_common_state->hdmi_sink == 0) {
-#endif
+		if (hdmi_sink == 0) {
 			/* HDMI_DVI_SEL */
 			reg_val |= 0x00000002;
 			if (external_common_state->present_hdcp)
@@ -2596,12 +2594,6 @@ static int hdcp_authentication_part1(void)
 			(HDMI_INP_ND(0x011C) & BIT(9)) >> 9);
 			goto error;
 		}
-
-		/*
-		 * A small delay is needed here to avoid device crash observed
-		 * during reauthentication in MSM8960
-		 */
-		msleep(20);
 
 		/* 0x0168 HDCP_RCVPORT_DATA12
 		   [23:8] BSTATUS
@@ -4260,6 +4252,7 @@ static void hdmi_msm_hpd_off(void)
 
 	hdmi_msm_set_mode(FALSE);
 	hdmi_msm_state->hpd_initialized = FALSE;
+	hdmi_msm_powerdown_phy();
 	hdmi_msm_state->pd->cec_power(0);
 	hdmi_msm_state->pd->enable_5v(0);
 	hdmi_msm_state->pd->core_power(0, 1);
