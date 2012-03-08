@@ -350,7 +350,6 @@ struct emu_det_data {
 	void __iomem *regs;
 	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
-	unsigned char low_pwr_mode;
 	int requested_muxmode;
 };
 
@@ -360,24 +359,6 @@ static DEFINE_MUTEX(switch_access);
 static DEFINE_MUTEX(mux_mode_switch);
 static char buffer[512];
 static int driver_mode;
-
-static void disable_low_power_mode(struct emu_det_data *data)
-{
-	if (data->low_pwr_mode) {
-		pm_runtime_get_noresume(data->trans->dev);
-		pr_emu_det(DEBUG, "low power mode disabled\n");
-		data->low_pwr_mode = 0;
-	}
-}
-
-static void enable_low_power_mode(struct emu_det_data *data)
-{
-	if (!data->low_pwr_mode) {
-		pm_runtime_put_noidle(data->trans->dev);
-		pr_emu_det(DEBUG, "low power mode enabled\n");
-		data->low_pwr_mode = 1;
-	}
-}
 
 static ssize_t dock_print_name(struct switch_dev *switch_dev, char *buf)
 {
@@ -956,7 +937,6 @@ static void notify_otg(enum emu_det_accy accy)
 
 	switch (accy) {
 	case ACCY_NONE:
-		enable_low_power_mode(data);
 		atomic_notifier_call_chain(&data->trans->notifier,
 					USB_EVENT_NONE, NULL);
 		break;
@@ -968,14 +948,8 @@ static void notify_otg(enum emu_det_accy accy)
 		break;
 
 	case ACCY_CHARGER:
-		disable_low_power_mode(data);
 		atomic_notifier_call_chain(&data->trans->notifier,
 					USB_EVENT_CHARGER, NULL);
-		break;
-
-	case ACCY_WHISPER_PPD:
-		if (!data->spd_ppd_transition)
-			enable_low_power_mode(data);
 		break;
 
 	case ACCY_USB_DEVICE:
@@ -1210,7 +1184,7 @@ static void detection_work(void)
 			notify_accy(ACCY_NONE);
 			notify_whisper_switch(ACCY_NONE);
 			if (data->otg_enabled) {
-				ret = pm_runtime_put(data->trans->dev);
+				ret = pm_runtime_put_sync(data->trans->dev);
 				if (ret < 0) {
 					pr_emu_det(ERROR,
 					"pm_runtime_put failed, err %d\n", ret);
@@ -2044,7 +2018,6 @@ static int emu_det_probe(struct platform_device *pdev)
 	data->accy = ACCY_NONE;
 	data->whisper_auth = AUTH_NOT_STARTED;
 	data->otg_enabled = false;
-	data->low_pwr_mode = 1;
 	data->requested_muxmode = MUXMODE_UNDEFINED;
 	dev_set_drvdata(&pdev->dev, data);
 

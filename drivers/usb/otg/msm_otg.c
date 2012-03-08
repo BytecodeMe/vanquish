@@ -1849,8 +1849,11 @@ static void msm_otg_sm_work(struct work_struct *w)
 				case USB_DCP_CHARGER:
 					msm_otg_notify_charger(motg,
 							IDEV_CHG_MAX);
-					pm_runtime_put_noidle(otg->dev);
-					pm_runtime_suspend(otg->dev);
+					if (motg->pdata->otg_control
+						!= OTG_ACCY_CONTROL) {
+						pm_runtime_put_noidle(otg->dev);
+						pm_runtime_suspend(otg->dev);
+					}
 					break;
 				case USB_ACA_B_CHARGER:
 					msm_otg_notify_charger(motg,
@@ -2092,7 +2095,7 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 
 	if (event == USB_EVENT_ID)
 		req_state = OTG_STATE_A_HOST;
-	else if (event == USB_EVENT_VBUS || event == USB_EVENT_CHARGER)
+	else if (event == USB_EVENT_VBUS)
 		req_state = OTG_STATE_B_PERIPHERAL;
 	else
 		req_state = OTG_STATE_B_IDLE;
@@ -2106,9 +2109,21 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
-			goto out;
+			if (event != USB_EVENT_CHARGER)
+				goto out;
+			else
+				pm_runtime_get_noresume(otg->dev);
 		case OTG_STATE_B_IDLE:
-			if (motg->chg_type != USB_DCP_CHARGER) {
+			if (event == USB_EVENT_CHARGER) {
+				if (motg->chg_type != USB_DCP_CHARGER) {
+					set_bit(ID, &motg->inputs);
+					set_bit(B_SESS_VLD, &motg->inputs);
+					motg->chg_state = USB_CHG_STATE_DETECTED;
+					motg->chg_type = USB_DCP_CHARGER;
+					break;
+				} else
+					goto out;
+			} else if (motg->chg_type != USB_DCP_CHARGER) {
 				/* balances usage count increase from resume */
 				pm_runtime_put_noidle(otg->dev);
 				goto out;
@@ -2127,15 +2142,13 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
+			pm_runtime_get_noresume(otg->dev);
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_A_HOST:
 			set_bit(ID, &motg->inputs);
 			set_bit(B_SESS_VLD, &motg->inputs);
 			motg->chg_state = USB_CHG_STATE_DETECTED;
-			if (event == USB_EVENT_VBUS)
-				motg->chg_type = USB_SDP_CHARGER;
-			else
-				motg->chg_type = USB_DCP_CHARGER;
+			motg->chg_type = USB_SDP_CHARGER;
 			break;
 		default:
 			goto out;
@@ -2146,6 +2159,7 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
+			pm_runtime_get_noresume(otg->dev);
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_B_PERIPHERAL:
 			clear_bit(ID, &motg->inputs);
