@@ -1669,7 +1669,7 @@ static int __devinit request_gpios(struct platform_device *pdev)
 
 		if (emu_det_gpio_data[i].exprt == true) {
 			ret = gpio_export(
-			      emud->emu_gpio[emu_det_gpio_data[i].idx], 0);
+			      emud->emu_gpio[emu_det_gpio_data[i].idx], true);
 			pr_emu_det(DEBUG, "exporting gpio %s-%d\n",
 				   emu_det_gpio_data[i].name,
 				   emud->emu_gpio[emu_det_gpio_data[i].idx]);
@@ -1809,6 +1809,7 @@ static ssize_t mode_show(struct device *dev,
 static ssize_t mode_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
+	struct emu_det_data *emud = the_emud;
 	int value = (int)simple_strtoul(buf, NULL, 0);
 	switch (value) {
 	case MODE_F_USB:
@@ -1821,6 +1822,10 @@ static ssize_t mode_store(struct device *dev,
 		pr_emu_det(TRANSITION, "FACTORY (MUX-UART) mode\n");
 		driver_mode = MODE_F_UART;
 		whisper_gpio_mode(GPIO_MODE_GPIO);
+		gpio_direction_output(emud->emu_gpio[WHISPER_UART_TX_GPIO], 0);
+		gpio_direction_input(emud->emu_gpio[WHISPER_UART_RX_GPIO]);
+		alternate_mode_enable();
+		gpio_direction_output(emud->emu_gpio[SEMU_ALT_MODE_EN_GPIO], 0);
 		mux_ctrl_mode(MUXMODE_UART);
 		break;
 	case MODE_F_AUDIO:
@@ -1833,6 +1838,7 @@ static ssize_t mode_store(struct device *dev,
 		pr_emu_det(TRANSITION, "NORMAL (MUX-AUTO) mode\n");
 		driver_mode = MODE_NORMAL;
 		whisper_gpio_mode(GPIO_MODE_GSBI);
+		standard_mode_enable();
 		mux_ctrl_mode(MUXMODE_USB);
 		detection_work();
 	default:
