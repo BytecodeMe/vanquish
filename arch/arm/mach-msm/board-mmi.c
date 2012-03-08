@@ -3022,6 +3022,14 @@ out:
 	return;
 }
 
+static void __init msm8960_init_watchdog(void)
+{
+	struct msm_watchdog_pdata *mmi_watchdog_pdata = msm8960_device_watchdog.dev.platform_data;
+
+	/* Re-init pet time to half of bark time. */
+	mmi_watchdog_pdata->bark_time = 41000;
+	mmi_watchdog_pdata->pet_time = 21000;
+}
 
 static int mot_tcmd_export_gpio(void)
 {
@@ -3109,8 +3117,6 @@ static uint32_t mbm_protocol_version;
 
 static void __init msm8960_mmi_init(void)
 {
-	struct msm_watchdog_pdata *mmi_watchdog_pdata;
-
 	msm_otg_pdata.phy_init_seq = phy_settings;
 
 	if (mbm_protocol_version == 0)
@@ -3160,10 +3166,8 @@ static void __init msm8960_mmi_init(void)
 
 	/* Init the bus, but no devices at this time */
 	msm8960_spi_init(&msm8960_qup_spi_gsbi1_pdata, NULL, 0);
-	mmi_watchdog_pdata = msm8960_device_watchdog.dev.platform_data;
-	mmi_watchdog_pdata->bark_time = 41000;
-	mmi_watchdog_pdata->pet_time = 40000;
 
+	msm8960_init_watchdog();
 	msm8960_i2c_init(400000);
 	msm8960_gfx_init();
 	msm8960_spm_init();
