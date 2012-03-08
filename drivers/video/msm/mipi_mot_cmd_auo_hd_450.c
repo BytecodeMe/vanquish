@@ -158,7 +158,7 @@ static int __init mipi_cmd_mot_auo_qhd_450_init(void)
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
-	mot_panel->esd_enabled = true;
+	mot_panel->esd_enabled = false;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM,
 						MIPI_DSI_PANEL_HD);
