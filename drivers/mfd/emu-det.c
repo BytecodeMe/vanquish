@@ -84,6 +84,9 @@
 
 #define PM8921_IRQ_BASE		(NR_MSM_IRQS + NR_GPIO_IRQS)
 
+#define GSBI_PROTOCOL_UNDEFINED	0x70
+#define GSBI_PROTOCOL_I2C_UART	0x60
+
 #define MSM_USB_BASE		(emud->regs)
 
 #define PRINT_STATUS	(1U << 2)
@@ -345,6 +348,7 @@ struct emu_det_data {
 	bool otg_enabled;
 	bool spd_ppd_transition;
 	void __iomem *regs;
+	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
 	unsigned char low_pwr_mode;
 	int requested_muxmode;
@@ -437,8 +441,36 @@ static void whisper_gpio_mode(int mode)
 
 static void gsbi_ctrl_register(bool restore)
 {
-	if (emu_pdata && emu_pdata->gsbi_ctrl)
-		emu_pdata->gsbi_ctrl(restore);
+	struct emu_det_data *emud = the_emud;
+	void *gsbi_ctrl;
+	uint32_t new;
+	static uint32_t value;
+	static bool stored;
+
+	gsbi_ctrl = ioremap_nocache(emud->gsbi_phys, 4);
+	if (IS_ERR_OR_NULL(gsbi_ctrl)) {
+		pr_emu_det(ERROR, "cannot map GSBI ctrl reg\n");
+		return;
+	} else {
+		if (restore) {
+			if (stored) {
+				writel_relaxed(value, gsbi_ctrl);
+				stored = false;
+				pr_emu_det(DEBUG, "GSBI reg 0x%x restored\n",
+									value);
+			}
+		} else {
+			new = value = readl_relaxed(gsbi_ctrl);
+			stored = true;
+			new &= ~GSBI_PROTOCOL_UNDEFINED;
+			new |= GSBI_PROTOCOL_I2C_UART;
+			writel_relaxed(new, gsbi_ctrl);
+			mb();
+			pr_emu_det(DEBUG, "GSBI reg 0x%x updated, "
+					"stored value 0x%x\n", new, value);
+		}
+	}
+	iounmap(gsbi_ctrl);
 }
 
 void switch_mux_mode(int mode, int check_valid_req)
@@ -574,8 +606,9 @@ static void emu_id_protection_setup(bool on)
 	}
 
 	if (on == emud->protection_forced_off) {
-		if (emu_pdata && emu_pdata->id_protect)
+		if (emu_pdata && emu_pdata->id_protect) {
 			emu_pdata->id_protect(on);
+		}
 		if (on) {
 			gpio_direction_input(
 				emud->emu_gpio[EMU_ID_EN_GPIO]);
@@ -594,8 +627,9 @@ static void emu_id_protection_setup(bool on)
 static void alt_mode_setup(bool on)
 {
 	struct emu_det_data *emud = the_emud;
-	if (emu_pdata && emu_pdata->alt_mode)
+	if (emu_pdata && emu_pdata->alt_mode) {
 		emu_pdata->alt_mode(on);
+	}
 	emud->semu_alt_mode = on;
 	pr_emu_det(DEBUG, "SEMU_ALT_MODE_EN is %s\n",
 		on ? "alternate" : "standard");
@@ -1962,6 +1996,14 @@ static int emu_det_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto free_data;
 	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res) {
+		pr_err("failed to get platform resource mem\n");
+		ret = -ENODEV;
+		goto free_data;
+	}
+	data->gsbi_phys = res->start;
 
 	if (emu_pdata && emu_pdata->core_power)
 		emu_pdata->core_power(1);

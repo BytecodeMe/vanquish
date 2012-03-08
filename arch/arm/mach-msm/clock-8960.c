@@ -1388,12 +1388,6 @@ int __init msm_gsbi12_uart_clk_ptr(struct clk **ptr)
 	return 0;
 }
 
-int __init msm_gsbi4_uart_clk_ptr(struct clk **ptr)
-{
-	*ptr = &gsbi4_uart_clk.c;
-	return 0;
-}
-
 #define CLK_GSBI_QUP(i, n, h_r, h_b) \
 	struct rcg_clk i##_clk = { \
 		.b = { \
@@ -1456,12 +1450,6 @@ static CLK_GSBI_QUP(gsbi12_qup, 12, CLK_HALT_CFPB_STATEC_REG, 11);
 int __init msm_gsbi12_qup_clk_ptr(struct clk **ptr)
 {
 	*ptr = &gsbi12_qup_clk.c;
-	return 0;
-}
-
-int __init msm_gsbi4_qup_clk_ptr(struct clk **ptr)
-{
-	*ptr = &gsbi4_qup_clk.c;
 	return 0;
 }
 
@@ -2265,12 +2253,6 @@ static struct branch_clk gsbi12_p_clk = {
 int __init msm_gsbi12_p_clk_ptr(struct clk **ptr)
 {
 	*ptr = &gsbi12_p_clk.c;
-	return 0;
-}
-
-int __init msm_gsbi4_p_clk_ptr(struct clk **ptr)
-{
-	*ptr = &gsbi4_p_clk.c;
 	return 0;
 }
 

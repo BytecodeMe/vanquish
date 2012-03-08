@@ -229,7 +229,6 @@ extern void msm8960_init_hdmi(struct platform_device *hdmi_dev,
 
 extern void __init msm8960_init_usb(void);
 extern void __init msm8960_init_dsps(void);
-extern void __init msm8960_init_gsbi4(void);
 
 extern void __init msm8960_init_hsic(void);
 

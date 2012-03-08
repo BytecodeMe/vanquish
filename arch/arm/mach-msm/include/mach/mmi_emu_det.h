@@ -27,7 +27,6 @@ struct mmi_emu_det_platform_data {
 	void (*gpio_mode)(int mode);
 	int (*adc_id)(void);
 	void (*dp_dm_mode)(int mode);
-	void (*gsbi_ctrl)(bool restore);
 };
 
 #define GPIO_MODE_GPIO	0
