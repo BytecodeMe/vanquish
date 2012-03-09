@@ -62,6 +62,7 @@
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
 static int bksv_error;
+static boolean about_to_reauth;
 #endif
 #endif
 
@@ -937,6 +938,7 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 	if (external_common_state->present_hdcp) {
 		hdcp_deauthenticate();
 #ifdef SUPPORT_NON_HDCP_DEVICES
+		about_to_reauth = true;
 		if (bksv_error)
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ + HZ/2);
@@ -4193,6 +4195,12 @@ static void hdmi_msm_hpd_state_timer(unsigned long data)
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_timer(unsigned long data)
 {
+#ifdef SUPPORT_NON_HDCP_DEVICES
+	if (!about_to_reauth)
+		return;
+	about_to_reauth = false;
+#endif
+
 	queue_work(hdmi_work_queue, &hdmi_msm_state->hdcp_work);
 }
 #endif
