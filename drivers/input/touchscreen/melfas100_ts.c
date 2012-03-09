@@ -1215,8 +1215,13 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 			MMS_TSP_REVISION,
 			sizeof(info->version_info),
 			(u8 *)&info->version_info);
-	if (ret < 0)
+	if (ret < 0) {
+		if (ret == -ENOTCONN) {
+			pr_err("%s: device not found\n", __func__);
+			goto err_device_not_found;
+		}
 		pr_err("%s: i2c version read fail, force reflash\n", __func__);
+	}
 
 	if (tsdebug >= TS_DBG_LVL_2) {
 		dev_info(&client->dev,
@@ -1349,6 +1354,7 @@ err_create_drv_reset_device_failed:
 	device_remove_file(&info->client->dev, &dev_attr_hw_reset);
 err_create_hw_reset_device_failed:
 err_config:
+err_device_not_found:
 	input_unregister_device(info->input_dev);
 err_input_register_device_failed:
 	input_free_device(info->input_dev);
