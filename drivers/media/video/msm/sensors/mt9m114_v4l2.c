@@ -147,9 +147,9 @@ static int32_t mt9m114_set_gamma(struct msm_sensor_ctrl_t *s_ctrl,
 	}
 
 	if (unity)
-		data &= 0xFF7F;
-	else
 		data |= 0x0080;
+	else
+		data &= 0xFF7F;
 
 	rc = msm_camera_i2c_write(
 			s_ctrl->sensor_i2c_client,
