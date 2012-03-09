@@ -29,6 +29,7 @@
 #define LM3556_I2C_RETRY_DELAY	10
 #define LM3556_TORCH_STEP	32
 #define LM3556_STROBE_STEP	16
+#define LM3556_STANDBY_VAL     0x00
 
 
 #define LM3556_SI_REV_AND_FILTER_TIME_REG	0x00
@@ -51,9 +52,13 @@
 #define VOLTAGE_MONITOR_FAULT		0x80
 #define UNDER_VOLTAGE_FAULT		0x10
 
+#define LM3556_MIN_STROBE_POWER		1
+#define LM3556_MIN_TORCH_POWER		1
+
 #define STROBE_CURRENT_MASK	0x0F
 #define TORCH_CURRENT_MASK	0x70
 
+#define TORCH_CURRENT_SHIFT    4
 
 struct lm3556_data {
 	struct i2c_client *client;
@@ -61,6 +66,8 @@ struct lm3556_data {
 	struct led_classdev led_dev;
 	int camera_strobe_brightness;
 	int flash_light_brightness;
+	unsigned int max_strobe_power;
+	unsigned int max_torch_power;
 };
 
 static struct lm3556_data *torch_data;
@@ -170,6 +177,9 @@ static ssize_t ld_lm3556_registers_store(struct device *dev,
 		const char *buf, size_t count)
 {
 	unsigned i, reg_count, value;
+	uint8_t torch_val, strobe_val;
+	uint8_t reg_addr;
+	uint8_t temp_torch_val, temp_strobe_val;
 	int error;
 	char name[30];
 
@@ -187,19 +197,56 @@ static ssize_t ld_lm3556_registers_store(struct device *dev,
 	reg_count = sizeof(lm3556_regs) / sizeof(lm3556_regs[0]);
 	for (i = 0; i < reg_count; i++) {
 		if (!strcmp(name, lm3556_regs[i].name)) {
-			error = lm3556_write_reg(lm3556_regs[i].reg,
-					value);
-			if (error) {
-				pr_err("%s:Failed to write register %s\n",
-						__func__, name);
-				return -EINVAL;
-			}
-			return count;
+			reg_addr = lm3556_regs[i].reg;
+			goto reg_found;
 		}
 	}
 
 	pr_err("%s:no such register %s\n", __func__, name);
 	return -EINVAL;
+
+reg_found:
+	switch (reg_addr) {
+	case LM3556_CURRENT_CTRL_REG:
+		torch_val = TORCH_CURRENT_MASK &
+			torch_data->pdata->current_cntrl_reg_def;
+
+		strobe_val = STROBE_CURRENT_MASK &
+			torch_data->pdata->current_cntrl_reg_def;
+
+		temp_torch_val = TORCH_CURRENT_MASK & value;
+
+		temp_strobe_val = STROBE_CURRENT_MASK & value;
+
+		/* Check for exceeding torch/strobe current and
+		 * if yes then limit the current values to max
+		 * values set from device tree
+		 */
+
+		if (temp_torch_val > torch_val)
+			temp_torch_val = torch_val;
+		if (temp_strobe_val > strobe_val)
+			temp_strobe_val = strobe_val;
+
+		value = (temp_torch_val | temp_strobe_val);
+		break;
+
+		/*
+		 * In future, here we can do register specific settings
+		 * in the value to be written to the corresponding register
+		 */
+	default:
+		break;
+	}
+
+	error = lm3556_write_reg(reg_addr, value);
+	if (error) {
+		pr_err("%s:Failed to write register %s\n",
+			__func__, name);
+		return -EIO;
+	}
+
+	return count;
 }
 
 static DEVICE_ATTR(registers, 0644, ld_lm3556_registers_show,
@@ -261,22 +308,10 @@ EXPORT_SYMBOL(lm3556_enable_torch_mode);
 int lm3556_disable_mode(void)
 {
 	int err;
-	uint8_t temp_val;
-	uint8_t val;
-
 	if (!lm3556_probe_success)
 		return -ENODEV;
 
-	err = lm3556_read_reg(LM3556_ENABLE_REG, &val);
-	if (err) {
-		pr_err("%s: Reading 0x%X failed %i\n",
-				__func__, LM3556_ENABLE_REG,
-				err);
-		return -EIO;
-	}
-	/* Do not turn off the message indicator if on */
-	temp_val = (val & 0x01);
-	err = lm3556_write_reg(LM3556_ENABLE_REG, temp_val);
+	err = lm3556_write_reg(LM3556_ENABLE_REG, LM3556_STANDBY_VAL);
 	return err;
 }
 EXPORT_SYMBOL(lm3556_disable_mode);
@@ -288,16 +323,18 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 	uint8_t err_flags;
 	uint8_t val = 0;
 	uint8_t temp_val = 0;
+	uint8_t prev_flash_val, torch_brightness = 0;
+	uint8_t prev_torch_val, strobe_brightness = 0;
 
 	switch (mode) {
 	case LM3556_TORCH_MODE:
 		if (flash_val) {
-			uint8_t prev_flash_val;
-			uint8_t torch_brightness = 0;
+			if (flash_val > torch_data->max_torch_power)
+				flash_val = torch_data->max_torch_power;
 
 			temp_val = flash_val / LM3556_TORCH_STEP;
 
-			val |= temp_val << 4;
+			val |= temp_val << TORCH_CURRENT_SHIFT;
 
 			err = lm3556_read_reg(LM3556_CURRENT_CTRL_REG,
 					&prev_flash_val);
@@ -324,13 +361,16 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 			}
 
 			err = lm3556_enable_torch_mode();
-			if (err)
+			if (err) {
+				pr_err("Failed to enable torch");
 				return err;
-
+			}
 		} else {
 			err = lm3556_disable_mode();
-			if (err)
+			if (err) {
+				pr_err("Failed to disable torch");
 				return err;
+			}
 		}
 		torch_data->flash_light_brightness = flash_val;
 		break;
@@ -354,42 +394,36 @@ static int lm3556_led_write(unsigned long flash_val, uint8_t mode)
 				return err_flags;
 			}
 		}
-		if (flash_val) {
-			uint8_t prev_torch_val;
-			uint8_t strobe_brightness = 0;
+		if (flash_val > torch_data->max_strobe_power)
+			flash_val = torch_data->max_strobe_power;
 
-			val = flash_val / LM3556_STROBE_STEP;
+		val = flash_val / LM3556_STROBE_STEP;
 
-			err = lm3556_read_reg(LM3556_CURRENT_CTRL_REG,
-					&prev_torch_val);
-			if (err) {
-				pr_err("%s: Reading 0x%X failed %i\n",
-						__func__,
-						LM3556_CURRENT_CTRL_REG,
-						err);
-				return -EIO;
-			}
-
-			prev_torch_val &= TORCH_CURRENT_MASK;
-			val = (val & 0x0f);
-			strobe_brightness = (val | prev_torch_val);
-
-			err = lm3556_write_reg(LM3556_CURRENT_CTRL_REG,
-					strobe_brightness);
-
-			if (err) {
-				pr_err("%s: Writing to 0x%X failed %i\n",
-						__func__,
-						LM3556_CURRENT_CTRL_REG,
-						err);
-				return -EIO;
-			}
-
-		} else {
-			err = lm3556_disable_mode();
-			if (err)
-				return err;
+		err = lm3556_read_reg(LM3556_CURRENT_CTRL_REG,
+				&prev_torch_val);
+		if (err) {
+			pr_err("%s: Reading 0x%X failed %i\n",
+					__func__,
+					LM3556_CURRENT_CTRL_REG,
+					err);
+			return -EIO;
 		}
+
+		prev_torch_val &= TORCH_CURRENT_MASK;
+		val = (val & 0x0f);
+		strobe_brightness = (val | prev_torch_val);
+
+		err = lm3556_write_reg(LM3556_CURRENT_CTRL_REG,
+				strobe_brightness);
+
+		if (err) {
+			pr_err("%s: Writing to 0x%X failed %i\n",
+					__func__,
+					LM3556_CURRENT_CTRL_REG,
+					err);
+			return -EIO;
+		}
+
 		torch_data->camera_strobe_brightness = flash_val;
 		break;
 	}
@@ -476,15 +510,7 @@ static DEVICE_ATTR(strobe_err, 0644, lm3556_strobe_err_show, NULL);
 static ssize_t lm3556_max_strobe_power_range_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	unsigned int max_strobe_power_val;
-	uint8_t strobe_val;
-
-	strobe_val = (torch_data->pdata->current_cntrl_reg_def &
-				STROBE_CURRENT_MASK);
-
-	max_strobe_power_val = LM3556_STROBE_STEP * strobe_val;
-
-	return sprintf(buf, "%u\n", max_strobe_power_val);
+	return sprintf(buf, "%u\n", torch_data->max_strobe_power);
 }
 
 static DEVICE_ATTR(max_strobe_power, 0644,
@@ -493,17 +519,7 @@ static DEVICE_ATTR(max_strobe_power, 0644,
 static ssize_t lm3556_max_torch_power_range_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	unsigned int max_torch_power_val;
-	uint8_t torch_val;
-
-	torch_val = (torch_data->pdata->current_cntrl_reg_def &
-				TORCH_CURRENT_MASK);
-
-	torch_val >>= 4;
-
-	max_torch_power_val = LM3556_TORCH_STEP * torch_val;
-
-	return sprintf(buf, "%u\n", max_torch_power_val);
+	return sprintf(buf, "%u\n", torch_data->max_torch_power);
 }
 
 static DEVICE_ATTR(max_torch_power, 0644,
@@ -554,6 +570,31 @@ static int lm3556_init_registers(void)
 				}
 	return err;
 }
+
+static void evaluate_max_power(void)
+{
+	uint8_t strobe_val;
+	uint8_t torch_val;
+
+	strobe_val = (torch_data->pdata->current_cntrl_reg_def &
+				STROBE_CURRENT_MASK);
+
+	torch_data->max_strobe_power = LM3556_STROBE_STEP * strobe_val;
+
+	if (torch_data->max_strobe_power == 0)
+		torch_data->max_strobe_power = LM3556_MIN_STROBE_POWER;
+
+	torch_val = (torch_data->pdata->current_cntrl_reg_def &
+				TORCH_CURRENT_MASK);
+
+	torch_val >>= TORCH_CURRENT_SHIFT;
+
+	torch_data->max_torch_power = LM3556_TORCH_STEP * torch_val;
+
+	if (torch_data->max_torch_power == 0)
+		torch_data->max_strobe_power = LM3556_MIN_TORCH_POWER;
+}
+
 
 static int lm3556_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
@@ -612,6 +653,8 @@ static int lm3556_probe(struct i2c_client *client,
 	err = lm3556_init_registers();
 	if (err < 0)
 		goto err_init_failed_release_gpio;
+
+	evaluate_max_power();
 
 	torch_data->led_dev.name = LM3556_LED_DEV;
 	torch_data->led_dev.brightness_set = NULL;
