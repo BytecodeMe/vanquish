@@ -12,6 +12,7 @@
  */
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
+#include <linux/android_alarm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
@@ -276,6 +277,9 @@ struct pm8921_chg_chip {
 	unsigned int			batt_alarm_delta;
 	unsigned int			lower_battery_threshold;
 	int64_t				batt_valid;
+	struct alarm			alarm;
+	struct wake_lock		heartbeat_wake_lock;
+	struct work_struct		wakeup_alarm_work;
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);
@@ -298,6 +302,9 @@ static struct notifier_block alarm_notifier = {
 	.notifier_call = pm8921_battery_gauge_alarm_notify,
 };
 static enum pm8921_btm_state btm_state = BTM_NORM;
+static void pm8921_chg_program_alarm(struct pm8921_chg_chip *chip, int seconds);
+static int calculate_suspend_time(struct pm8921_chg_chip *chip, int fcc,
+				  int soc, int temperature);
 #endif
 #ifdef CONFIG_EMU_DETECTION
 static int pm8921_chg_accy_notify(struct notifier_block *,
@@ -2626,6 +2633,10 @@ static void update_heartbeat(struct work_struct *work)
 	int batt_mvolt = (get_prop_battery_uvolts(chip) / 1000);
 	int batt_temp = (get_prop_batt_temp(chip) / 10);
 	int percent_soc = pm8921_bms_get_percent_charge();
+	int fcc = pm8921_bms_get_fcc() / 1000;
+	int seconds = 0;
+
+	wake_lock(&chip->heartbeat_wake_lock);
 
 	if ((percent_soc <= 5) &&
 	    (alarm_state == PM_BATT_ALARM_NORMAL)) {
@@ -2687,9 +2698,17 @@ static void update_heartbeat(struct work_struct *work)
 #endif
 
 	power_supply_changed(&chip->batt_psy);
+
 	schedule_delayed_work(&chip->update_heartbeat_work,
 			      round_jiffies_relative(msecs_to_jiffies
 						     (chip->update_time)));
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	pr_debug("Heartbeat Current Time %d secs\n",
+		 (int)(ktime_to_timespec(alarm_get_elapsed_realtime()).tv_sec));
+	seconds = calculate_suspend_time(chip, fcc, percent_soc, batt_temp);
+	pm8921_chg_program_alarm(chip, seconds);
+	wake_unlock(&chip->heartbeat_wake_lock);
+#endif
 }
 
 enum {
@@ -2897,6 +2916,7 @@ static void battery_cool(bool enter)
 		the_chip->dev->platform_data;
 
 	if (pdata->temp_range_cb) {
+		wake_lock(&the_chip->heartbeat_wake_lock);
 		cancel_delayed_work(&the_chip->update_heartbeat_work);
 		schedule_delayed_work(&the_chip->update_heartbeat_work,
 				      msecs_to_jiffies(0));
@@ -2933,6 +2953,7 @@ static void battery_warm(bool enter)
 		the_chip->dev->platform_data;
 
 	if (pdata->temp_range_cb) {
+		wake_lock(&the_chip->heartbeat_wake_lock);
 		cancel_delayed_work(&the_chip->update_heartbeat_work);
 		schedule_delayed_work(&the_chip->update_heartbeat_work,
 				      msecs_to_jiffies(0));
@@ -3698,6 +3719,100 @@ static int pm8921_battery_gauge_alarm_notify(struct notifier_block *nb,
 
 	return 0;
 }
+
+#define COOLDOWN_NORMAL 60
+#define COOLDOWN_WARN 65
+#define COOLDOWN_COOL 70
+#define SOC_SLOW_WAKE 26 /* 26% */
+#define SOC_MID_WAKE 12 /* 12% */
+#define SOC_SLOW_INT 100 /* 10% */
+#define SOC_MID_INT 25 /* 2.5% */
+#define SOC_FAST_INT 10 /* 1% */
+#define HOUR_TO_SEC 3600
+#define MIN_TO_SEC 60
+#define ASSUMED_DRAW 5 /* ASSUMED_DRAW * CURRENT_DIV = MA */
+#define PERCENT_DIV 1000
+#define CURRENT_DIV 100
+#define UNIT_ADJUST (PERCENT_DIV * CURRENT_DIV)
+static int calculate_suspend_time(struct pm8921_chg_chip *chip, int fcc,
+				  int soc, int temperature)
+{
+	int temp_wakeup, soc_wakeup;
+
+	if (!chip)
+		return 0;
+
+	pr_debug("FCC %d mAh\n", fcc);
+	pr_debug("SOC %d\n", soc);
+	pr_debug("Temp %d C\n", temperature);
+
+	if (temperature >= COOLDOWN_COOL)
+		temp_wakeup = chip->update_time / 1000;
+	else if (temperature >= COOLDOWN_WARN)
+		temp_wakeup = ((COOLDOWN_COOL - temperature) * MIN_TO_SEC);
+	else
+		temp_wakeup = ((COOLDOWN_WARN - temperature) * MIN_TO_SEC);
+	pr_debug("Temp Wake %d secs\n", temp_wakeup);
+
+	if (soc >= SOC_SLOW_WAKE)
+		soc_wakeup = ((fcc / ASSUMED_DRAW) *
+			      SOC_SLOW_INT * HOUR_TO_SEC) / UNIT_ADJUST;
+	else if (soc >= SOC_MID_WAKE)
+		soc_wakeup = ((fcc / ASSUMED_DRAW) *
+			      SOC_MID_INT * HOUR_TO_SEC) / UNIT_ADJUST;
+	else
+		soc_wakeup = ((fcc / ASSUMED_DRAW) *
+			      SOC_FAST_INT * HOUR_TO_SEC) / UNIT_ADJUST;
+	pr_debug("SOC Wake %d secs\n", soc_wakeup);
+
+	if (soc_wakeup < (chip->update_time / 1000))
+		soc_wakeup = chip->update_time / 1000;
+
+	if (temp_wakeup > soc_wakeup)
+		return soc_wakeup;
+
+	return temp_wakeup;
+}
+
+static void wakeup_alarm_work(struct work_struct *work)
+{
+	struct pm8921_chg_chip *chip = container_of(work,
+				struct pm8921_chg_chip, wakeup_alarm_work);
+
+	cancel_delayed_work(&chip->update_heartbeat_work);
+	schedule_delayed_work(&chip->update_heartbeat_work,
+			      msecs_to_jiffies(0));
+}
+
+static void pm8921_chg_program_alarm(struct pm8921_chg_chip *chip, int seconds)
+{
+	ktime_t low_interval, slack, next;
+
+	if (!chip)
+		return;
+	pr_debug("Program Alarm Current Time %d secs\n",
+		 (int)(ktime_to_timespec(alarm_get_elapsed_realtime()).tv_sec));
+
+	low_interval = ktime_set(seconds - 10, 0);
+	slack = ktime_set(20, 0);
+
+	next = ktime_add(alarm_get_elapsed_realtime(), low_interval);
+	pr_debug("Program Alarm for %d secs\n", seconds);
+	alarm_cancel(&chip->alarm);
+	alarm_start_range(&chip->alarm, next, ktime_add(next, slack));
+}
+
+static void pm8921_chg_battery_alarm(struct alarm *alarm)
+{
+	struct pm8921_chg_chip *chip =
+		container_of(alarm, struct pm8921_chg_chip, alarm);
+
+	wake_lock(&chip->heartbeat_wake_lock);
+	pr_info("pm8921-charger: Alarm BUZZ, Time %d secs!!!!!\n",
+		(int)(ktime_to_timespec(alarm_get_elapsed_realtime()).tv_sec));
+
+	schedule_work(&chip->wakeup_alarm_work);
+}
 #endif
 
 static int get_rt_status(void *data, u64 * val)
@@ -4274,6 +4389,7 @@ static int pm8921_charger_resume(struct device *dev)
 		disable_irq_wake(chip->pmic_chg_irq[LOOP_CHANGE_IRQ]);
 		pm8921_chg_disable_irq(chip, LOOP_CHANGE_IRQ);
 	}
+
 	return 0;
 }
 
@@ -4564,6 +4680,15 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 
 	/* determine what state the charger is in */
 	determine_initial_state(chip);
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	INIT_WORK(&chip->wakeup_alarm_work, wakeup_alarm_work);
+	wake_lock_init(&chip->heartbeat_wake_lock, WAKE_LOCK_SUSPEND,
+			"pm8921-charger-heartbeat");
+	alarm_init(&chip->alarm, ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
+			pm8921_chg_battery_alarm);
+	wake_lock(&chip->heartbeat_wake_lock);
+#endif
 
 	if (chip->update_time) {
 		INIT_DELAYED_WORK(&chip->update_heartbeat_work,
