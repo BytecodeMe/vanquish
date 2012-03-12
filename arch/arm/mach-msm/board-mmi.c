@@ -183,6 +183,8 @@ static int phy_settings[] = {0x34, 0x82, 0x3f, 0x81, -1};
 static bool	bare_board;
 bool camera_single_mclk;
 
+static int  mmi_feature_hdmi = 1;
+
 /*
  * HACK: Ideally all clocks would be configured directly from the device tree.
  * Don't use this as a template for future device tree changes.
@@ -1819,9 +1821,8 @@ static int msm_fb_detect_panel(const char *name)
 		pr_info("%s: detected %s\n", __func__, name);
 		return 0;
 	}
-	if (!strncmp(name, HDMI_PANEL_NAME,
-			strnlen(HDMI_PANEL_NAME,
-				PANEL_NAME_MAX_LEN)))
+	if (mmi_feature_hdmi && !strncmp(name, HDMI_PANEL_NAME,
+		strnlen(HDMI_PANEL_NAME,PANEL_NAME_MAX_LEN)))
 		return 0;
 
 	pr_warning("%s: not supported '%s'", __func__, name);
@@ -2296,9 +2297,6 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&msm_cpudai_afe_02_rx,
 	&msm_cpudai_afe_02_tx,
 	&msm_pcm_afe,
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL	/* HDMI support */
-	&hdmi_msm_device,
-#endif
 	&msm_compr_dsp,
 	&msm_cpudai_incall_music_rx,
 	&msm_cpudai_incall_record_rx,
@@ -2314,6 +2312,12 @@ static struct platform_device *mmi_devices[] __initdata = {
 #endif
 	&pm8xxx_rgb_leds_device,
 };
+
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL	/* HDMI support */
+static struct platform_device *mmi_hdmi_devices[] __initdata = {
+	&hdmi_msm_device,
+};
+#endif
 
 static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
 	.mode = MSM_PM_BOOT_CONFIG_TZ,
@@ -2343,6 +2347,22 @@ static __init void config_emu_det_from_dt(void)
 
 out:
 	return;
+}
+
+static int mmi_dt_get_hdmi_feature(int *value)
+{
+	struct device_node *panel_node;
+	const void *panel_prop;
+
+	panel_node = of_find_node_by_path("/System@0/Feature@0");
+	if (panel_node == NULL)
+		return -ENODEV;
+
+	panel_prop = of_get_property(panel_node, "feature_hdmi", NULL);
+	if (panel_prop != NULL)
+		 *value = *(u8 *)panel_prop;
+
+	return 0;
 }
 
 /*
@@ -3221,6 +3241,13 @@ static void __init msm8960_mmi_init(void)
 #endif
 
 	platform_add_devices(mmi_devices, ARRAY_SIZE(mmi_devices));
+
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+	mmi_dt_get_hdmi_feature(&mmi_feature_hdmi);
+	if (mmi_feature_hdmi)
+		platform_add_devices(mmi_hdmi_devices, ARRAY_SIZE(mmi_hdmi_devices));
+#endif
+
 #ifdef CONFIG_MSM_CAMERA
 	msm8960_init_cam();
 #endif
