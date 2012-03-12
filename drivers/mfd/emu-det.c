@@ -351,6 +351,7 @@ struct emu_det_data {
 	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
 	int requested_muxmode;
+	bool vbus_adc_delay;
 };
 
 static struct mmi_emu_det_platform_data *emu_pdata;
@@ -659,13 +660,20 @@ static void dp_dm_pm_gpio_mode(int mode)
 static void emu_det_vbus_state(int online)
 {
 	struct emu_det_data *emud = the_emud;
+	int delay_ms = 50;
+
+	if (emud->vbus_adc_delay) {
+		if (online)
+			delay_ms = 500;
+		emud->vbus_adc_delay = false;
+	}
 
 	pr_emu_det(DEBUG, "PM8921 USBIN callback: %s\n",
 					online ? "in" : "out");
 	emud->usb_present = online;
 	if (driver_mode == MODE_NORMAL)
 		queue_delayed_work(emud->wq, &emud->work,
-					msecs_to_jiffies(50));
+					msecs_to_jiffies(delay_ms));
 }
 
 #define external_5V_enable()	external_5V_setup(1)
@@ -1042,7 +1050,7 @@ static int whisper_audio_check(struct emu_det_data *data)
 			alternate_mode_enable();
 			audio = EMU_OUT;
 			pr_emu_det(DEBUG, "HEADSET attached\n");
-		} else {
+		} else if (test_bit(PD_100K_BIT, &data->sense)) {
 			standard_mode_enable();
 			pr_emu_det(DEBUG, "HEADSET detached\n");
 		}
@@ -1201,7 +1209,6 @@ static void detection_work(void)
 		    SENSE_WHISPER_LD2) {
 			pr_emu_det(STATUS,
 				"detection_work: SMART Identified\n");
-			notify_accy(ACCY_WHISPER_SMART);
 			if (SENSE_WHISPER_SMART)
 				data->state = WHISPER_SMART;
 			else {
@@ -1209,6 +1216,7 @@ static void detection_work(void)
 						AUTH_REQUIRED);
 				data->state = WHISPER_SMART_LD2_OPEN;
 			}
+			notify_accy(ACCY_WHISPER_SMART);
 			notify_whisper_switch(ACCY_WHISPER_SMART);
 		} else if (SENSE_USB_ADAPTER) {
 			pr_emu_det(STATUS,
@@ -2019,6 +2027,7 @@ static int emu_det_probe(struct platform_device *pdev)
 	data->whisper_auth = AUTH_NOT_STARTED;
 	data->otg_enabled = false;
 	data->requested_muxmode = MUXMODE_UNDEFINED;
+	data->vbus_adc_delay = true;
 	dev_set_drvdata(&pdev->dev, data);
 
 	data->trans = otg_get_transceiver();

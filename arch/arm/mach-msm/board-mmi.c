@@ -283,7 +283,7 @@ static struct pm8xxx_mpp_config_data emu_det_pm_mpp_config[] = {
 	{       /* EMU_ID_EN - protection Off */
 		.type           = PM8XXX_MPP_TYPE_D_OUTPUT,
 		.level          = PM8921_MPP_DIG_LEVEL_L17,
-		.control        = PM8XXX_MPP_DOUT_CTRL_LOW,
+		.control        = PM8XXX_MPP_DOUT_CTRL_HIGH,
 	},
 	{	/* DMB_PPD_DET */
 		.type		= PM8XXX_MPP_TYPE_D_INPUT,
@@ -909,7 +909,7 @@ static __init void emu_det_gpio_init(void)
 static __init void mot_init_emu_detection(
 			struct msm_otg_platform_data *ctrl_data)
 {
-	if (ctrl_data && !boot_mode_is_factory()) {
+	if (ctrl_data) {
 		ctrl_data->otg_control = OTG_ACCY_CONTROL;
 		ctrl_data->pmic_id_irq = 0;
 		ctrl_data->accy_pdev = &emu_det_device;
