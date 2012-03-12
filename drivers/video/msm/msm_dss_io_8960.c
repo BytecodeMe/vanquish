@@ -647,7 +647,15 @@ void hdmi_msm_init_phy(int video_format)
 	pr_err("Video format is : %u\n", video_format);
 
 	HDMI_OUTP(HDMI_PHY_REG_0, 0x1B);
+
+#ifdef MSM_FB_US_DVI_SUPPORT
+	if (external_common_state->min_ds)
+		HDMI_OUTP(HDMI_PHY_REG_1, 0xf1);
+	else
+		HDMI_OUTP(HDMI_PHY_REG_1, 0xf2);
+#else
 	HDMI_OUTP(HDMI_PHY_REG_1, 0xf2);
+#endif
 
 	offset = HDMI_PHY_REG_4;
 	while (offset <= HDMI_PHY_REG_11) {

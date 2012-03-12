@@ -1714,6 +1714,9 @@ static int msm_fb_set_par(struct fb_info *info)
 		mfd->var_yres = var->yres;
 		mfd->var_pixclock = var->pixclock;
 		blank = 1;
+#ifdef MSM_FB_US_DVI_SUPPORT
+		mfd->var_vmode = var->vmode;
+#endif
 	}
 
 #ifdef MSM_FB_US_DVI_SUPPORT

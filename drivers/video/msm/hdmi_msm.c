@@ -806,7 +806,7 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		mutex_unlock(&external_common_state_hpd_mutex);
 		hdmi_msm_state->hpd_stable = 0;
 		mutex_unlock(&hdmi_msm_state_mutex);
-		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/2);
+		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/20);
 		return;
 	}
 	mutex_unlock(&external_common_state_hpd_mutex);
@@ -1035,7 +1035,7 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		hdmi_msm_state->hpd_prev_state = cable_detected ? 0 : 1;
 		external_common_state->hpd_state = cable_detected ? 1 : 0;
 		hdmi_msm_state->hpd_stable = 0;
-		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/2);
+		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/20);
 		mutex_unlock(&hdmi_msm_state_mutex);
 		/*
 		 * HDCP Compliance 1A-01:
@@ -4321,7 +4321,7 @@ static int hdmi_msm_hpd_on(bool trigger_handler)
 			hdmi_msm_state->hpd_cable_chg_detected = TRUE;
 			mutex_unlock(&hdmi_msm_state_mutex);
 			mod_timer(&hdmi_msm_state->hpd_state_timer,
-				jiffies + HZ/2);
+				jiffies + HZ/20);
 		}
 
 		hdmi_msm_state->hpd_initialized = TRUE;

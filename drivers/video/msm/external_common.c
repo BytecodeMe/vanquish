@@ -1580,6 +1580,7 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 	uint32 new_pix_freq = mfd->var_pixclock / 1000;
 	bool us_timing_changed = false;
 
+	external_common_state->min_ds = 0;
 	if (var->reserved[3] == HDMI_VFRMT_US_TIMING) {
 		us_timing_changed = ((us_timing.active_h != mfd->var_xres) ||
 				     (us_timing.active_v != mfd->var_yres) ||
@@ -1609,6 +1610,8 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 		external_common_state->min_ds =
 			(mfd->var_vmode & FB_VMODE_MIN_DS) ? true : false;
 	} else if (var->reserved[3]) {
+		external_common_state->min_ds =
+			(mfd->var_vmode & FB_VMODE_MIN_DS) ? true : false;
 #else
 	if (var->reserved[3]) {
 #endif
