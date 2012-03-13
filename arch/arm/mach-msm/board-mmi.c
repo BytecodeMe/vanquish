@@ -2355,7 +2355,7 @@ static __init void config_keyboard_from_dt(void)
 				"keyboard-backlight",
 				sizeof(mp_lm3532_pdata.ctrl_b_name)-1);
 		mp_lm3532_pdata.led2_controller = LM3532_CNTRL_B;
-		mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE;
+		mp_lm3532_pdata.ctrl_b_usage = LM3532_LED_DEVICE_FDBCK;
 	}
 
 	of_node_put(chosen);
