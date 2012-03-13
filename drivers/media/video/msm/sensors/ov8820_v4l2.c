@@ -630,21 +630,23 @@ static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 	if (rc < 0)
 		goto power_up_done;
 
+	usleep(10000);
+
 	/* Enable AVDD supply*/
 	gpio_direction_output(pinfo->analog_en, 1);
 
 	/*Enable MCLK*/
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
 	msm_camio_clk_rate_set(OV8820_DEFAULT_MCLK_RATE);
-	usleep(5000);
+	usleep(20000);
 
 	/*set PWRDWN high*/
 	gpio_direction_output(pinfo->sensor_pwd, 1);
-	usleep_range(1000, 2000);
+	usleep(26000);
 
 	/*Set Reset high*/
 	gpio_direction_output(pinfo->sensor_reset, 1);
-	usleep(20000);
+	usleep(35000);
 
 power_up_done:
 	return rc;
@@ -660,12 +662,15 @@ static int32_t ov8820_power_down(
 
 	/*Set Reset Low*/
 	gpio_direction_output(pinfo->sensor_reset, 0);
+	usleep(10000);
 
-	/*Set PWRDWN Low*/
-	gpio_direction_output(pinfo->sensor_pwd, 0);
+	/*Disable MCLK*/
+	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
+	usleep(10000);
 
 	/*Disable AVDD*/
 	gpio_direction_output(pinfo->analog_en, 0);
+	usleep(15000);
 
 	/*Disable VDDIO*/
 	if (pinfo->digital_en)
@@ -674,6 +679,10 @@ static int32_t ov8820_power_down(
 		ov8820_regulator_off(reg_1p8, "1.8");
 
 	ov8820_regulator_off(reg_2p8, "2.8");
+	usleep(10000);
+
+	/*Set PWRDWN Low*/
+	gpio_direction_output(pinfo->sensor_pwd, 0);
 
 	/*Clean up*/
 	if (pinfo->digital_en)
@@ -681,7 +690,6 @@ static int32_t ov8820_power_down(
 	gpio_free(pinfo->sensor_pwd);
 	gpio_free(pinfo->sensor_reset);
 	gpio_free(pinfo->analog_en);
-	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 
 	return 0;
 }
