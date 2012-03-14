@@ -3082,7 +3082,7 @@ struct platform_device *common_devices[] __initdata = {
 #ifdef CONFIG_MSM_RTB
 	&msm_rtb_device,
 #endif
-	&msm8960_device_l2_erp,
+	&msm8960_device_cache_erp,
 #ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
 	&wfd_panel_device,
 	&wfd_device,
