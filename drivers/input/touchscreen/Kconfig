@@ -842,4 +842,14 @@ config TOUCHSCREEN_MELFAS100_TS
 	  Say Y here if you have a Melfas touchscreen controller.
 
 	  If unsure, say N.
+
+config TOUCHSCREEN_DEBUG
+	tristate "Enable/Disable debugging in the touchscreen drivers"
+	default n
+	depends on TOUCHSCREEN_CYTTSP3 || TOUCHSCREEN_ATMXT || TOUCHSCREEN_MELFAS100_TS
+	help
+	  Say Y here only for Cypress-3, Atmel and Melfas-100 touchscreens.
+
+	  If unsure, say N.
+
 endif
