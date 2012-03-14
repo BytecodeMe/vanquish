@@ -13,4 +13,4 @@
 
 #include "utags_internal.h"
 
-const char *utags_blkdev = "/dev/block/mmcblk0p16";
+const char *utags_blkdev = UTAGS_PARTITION;

@@ -30,4 +30,6 @@ struct frozen_utag {
 
 extern const char *utags_blkdev;
 
+#define UTAGS_PARTITION "/dev/block/platform/msm_sdcc.1/by-name/utags"
+
 #endif
