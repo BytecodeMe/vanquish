@@ -4215,7 +4215,8 @@ static void hdmi_msm_cec_read_timer_func(unsigned long data)
 #ifdef CONFIG_DEBUG_FS
 void hdmi_msm_test(int en)
 {
-	hdmi_msm_state->pd->enable_5v(en);
+	if (hdmi_msm_state->pd->test)
+		hdmi_msm_state->pd->test(en);
 }
 #endif
 

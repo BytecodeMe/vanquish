@@ -1380,13 +1380,29 @@ static void __init msm_fb_add_devices(void)
 static int hdmi_enable_5v(int on);
 static int hdmi_core_power(int on, int show);
 static int hdmi_cec_power(int on);
+#ifdef CONFIG_DEBUG_FS
+static void hdmi_test(int en);
+#endif
 
 static struct msm_hdmi_platform_data hdmi_msm_data = {
 	.irq = HDMI_IRQ,
 	.enable_5v = hdmi_enable_5v,
 	.core_power = hdmi_core_power,
 	.cec_power = hdmi_cec_power,
+#ifdef CONFIG_DEBUG_FS
+	.test = hdmi_test,
+#endif
+
 };
+
+#ifdef CONFIG_DEBUG_FS
+static int block_5v_enable;
+static void hdmi_test(int en)
+{
+	block_5v_enable = en;
+	hdmi_enable_5v((en) ? 0 : 1);
+}
+#endif
 
 static int hdmi_enable_5v(int on)
 {
@@ -1394,6 +1410,11 @@ static int hdmi_enable_5v(int on)
 	static struct regulator *reg_8921_hdmi_mvs;	/* HDMI_5V */
 	static int prev_on;
 	int rc;
+
+#ifdef CONFIG_DEBUG_FS
+	if (block_5v_enable && on)
+		return 0;
+#endif
 
 	if (on == prev_on)
 		return 0;

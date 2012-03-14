@@ -436,7 +436,7 @@ static ssize_t hdmi_common_wta_test(struct device *dev,
 
 	test_active = (int) test;
 
-	hdmi_msm_test( (test_active) ? 0 : 1 );
+	hdmi_msm_test(test_active);
 
 	return count;
 }
