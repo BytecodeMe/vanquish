@@ -2597,6 +2597,16 @@ static int hdcp_authentication_part1(void)
 			goto error;
 		}
 
+		/*
+		 * A small delay is needed here to avoid device crash observed
+		 * during reauthentication in MSM8960
+		 *
+		 * Without this delay we see occasional hangs reading the AN
+		 * value below, which can result in watchdogs resets.  We need
+		 * to keep this even if QC removes it.
+		 */
+		msleep(20);
+
 		/* 0x0168 HDCP_RCVPORT_DATA12
 		   [23:8] BSTATUS
 		   [7:0] BCAPS */
