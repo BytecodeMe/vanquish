@@ -342,11 +342,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	return ret;
 }
 
-void mipi_bklight_pwm_cfg(void)
-{
-	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_pwm_cfg)
-		mipi_dsi_pdata->dsi_pwm_cfg();
-}
 
 static int mipi_dsi_resource_initialized;
 
