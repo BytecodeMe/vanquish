@@ -1223,11 +1223,17 @@ static int mipi_dsi_panel_power(int on)
 		}
 
 		gpio_set_value(disp_5v_en, 1);
+		msleep(5);
+
 		if (is_smd() && system_rev < HWREV_P1)
 			gpio_set_value_cansleep(12, 1);
 		if (is_smd() && system_rev >= HWREV_P1)
 			gpio_set_value_cansleep(0, 1);
-		msleep(10);
+
+		if (is_smd())
+			msleep(30);
+		else
+			msleep(10);
 
 		gpio_set_value_cansleep(lcd_reset, 1);
 

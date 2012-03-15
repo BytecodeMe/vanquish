@@ -437,11 +437,16 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds1,
 					ARRAY_SIZE(mot_video_on_cmds1));
 
-	usleep(5000);
+	msleep(20);
 	ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2,
 					ARRAY_SIZE(mot_video_on_cmds2));
-	msleep(120);
+	/*
+	 * 120msec require after exit_sleep mode till display_on command
+	 * but another requirement that exit_sleep mode till the first init
+	 * command is 10 (min) therefore we only need 120 - 20 = 100msec here
+	 */
+	msleep(100);
 
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds3,
 					ARRAY_SIZE(mot_video_on_cmds3));
