@@ -47,7 +47,6 @@ extern struct mdp_csc_cfg mdp_csc_convert[4];
 extern struct workqueue_struct *mdp_hist_wq;
 extern struct work_struct mdp_histogram_worker;
 extern boolean mdp_is_hist_valid;
-extern int cont_splash_done;
 
 #define MDP4_REVISION_V1		0
 #define MDP4_REVISION_V2		1

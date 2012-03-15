@@ -142,7 +142,6 @@ static struct early_suspend early_suspend;
 #endif
 
 static u32 mdp_irq;
-int cont_splash_done;
 
 static uint32 mdp_prim_panel_type = NO_PANEL;
 #ifndef CONFIG_FB_MSM_MDP22
@@ -1161,12 +1160,10 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 				if (mdp_lut_clk != NULL)
 					clk_disable(mdp_lut_clk);
 			} else {
-				if (cont_splash_done) {
-					/* send wq to turn off mdp power */
-					queue_delayed_work(mdp_pipe_ctrl_wq,
+				/* send workqueue to turn off mdp power */
+				queue_delayed_work(mdp_pipe_ctrl_wq,
 						   &mdp_pipe_ctrl_worker,
 						   mdp_timer_duration);
-				}
 			}
 			mutex_unlock(&mdp_suspend_mutex);
 		} else if ((!mdp_all_blocks_off) && (!mdp_current_clk_on)) {
@@ -1724,34 +1721,16 @@ static int mdp_irq_clk_setup(void)
 	 * mdp_clk should greater than mdp_pclk always
 	 */
 	if (mdp_pdata && mdp_pdata->mdp_core_clk_rate) {
-		if (!cont_splash_done)
-			mdp_clk_rate = clk_get_rate(mdp_clk);
-		else
-			mdp_clk_rate = mdp_pdata->mdp_core_clk_rate;
-
 		mutex_lock(&mdp_clk_lock);
-		clk_set_rate(mdp_clk, mdp_clk_rate);
+		clk_set_rate(mdp_clk, mdp_pdata->mdp_core_clk_rate);
 		if (mdp_lut_clk != NULL)
-			clk_set_rate(mdp_lut_clk, mdp_clk_rate);
-
+			clk_set_rate(mdp_lut_clk, mdp_pdata->mdp_core_clk_rate);
 		mutex_unlock(&mdp_clk_lock);
 	}
-
 	MSM_FB_DEBUG("mdp_clk: mdp_clk=%d\n", (int)clk_get_rate(mdp_clk));
 #endif
 	return 0;
 }
-
-/*
- * - This is a work around for the panel SOL mooth transition feature
- * QCOm has provided patch to make this feature to work for video mode panel
- * but this will break MOT's feature for command mode.
- * - While waiting for QCOm to delivery a patch that can make this feature
- * to work for both pane; types. We will use this in the mean time
- */
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-extern bool mipi_mot_panel_is_cmd_mode(void);
-#endif
 
 static int mdp_probe(struct platform_device *pdev)
 {
@@ -1768,6 +1747,7 @@ static int mdp_probe(struct platform_device *pdev)
 #if defined(CONFIG_FB_MSM_MIPI_DSI) && defined(CONFIG_FB_MSM_MDP40)
 	struct mipi_panel_info *mipi;
 #endif
+
 	if ((pdev->id == 0) && (pdev->num_resources > 0)) {
 
 		mdp_pdata = pdev->dev.platform_data;
@@ -1788,13 +1768,6 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 
 		mdp_rev = mdp_pdata->mdp_rev;
-
-#ifndef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-		cont_splash_done = 1;
-#else
-		if (mipi_mot_panel_is_cmd_mode() == true)
-			cont_splash_done = 1;
-#endif
 		rc = mdp_irq_clk_setup();
 
 		if (rc)
@@ -1804,12 +1777,7 @@ static int mdp_probe(struct platform_device *pdev)
 
 		/* initializing mdp hw */
 #ifdef CONFIG_FB_MSM_MDP40
-#ifndef config_FB_MSM_CONT_SPLASH_SCREEN
 		mdp4_hw_init();
-#else
-		if (mipi_mot_panel_is_cmd_mode() == true)
-			mdp4_hw_init();
-#endif
 #else
 		mdp_hw_init();
 #endif
@@ -1857,6 +1825,7 @@ static int mdp_probe(struct platform_device *pdev)
 		mfd->ov1_wb_buf->size = 0;
 		mfd->mem_hid = 0;
 	}
+
 	mfd->ov0_blt_state  = 0;
 	mfd->use_ov0_blt = 0 ;
 
@@ -1867,7 +1836,7 @@ static int mdp_probe(struct platform_device *pdev)
 	if (platform_device_add_data
 	    (msm_fb_dev, pdev->dev.platform_data,
 	     sizeof(struct msm_fb_panel_data))) {
-		printk(KERN_ERR "mdp_probe:platform_device_add_data failed!\n");
+		printk(KERN_ERR "mdp_probe: platform_device_add_data failed!\n");
 		rc = -ENOMEM;
 		goto mdp_probe_err;
 	}
@@ -2122,12 +2091,6 @@ static int mdp_probe(struct platform_device *pdev)
 			return -ENOMEM;
 		}
 	}
-
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	/* req bus bandwidth immediately */
-	mdp_bus_scale_update_request(5);
-#endif
-
 #endif
 
 	/* set driver data */
