@@ -51,7 +51,7 @@ struct platform_device mmi_keyreset_device = {
 
 
 static const unsigned int mmi_keymap[] = {
-	KEY(0, 0, 0),
+	KEY(0, 0, KEY_CAMERA),
 	KEY(0, 1, 0),
 	KEY(0, 2, KEY_VOLUMEDOWN),
 	KEY(0, 3, 0),
