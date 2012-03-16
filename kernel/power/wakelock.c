@@ -165,20 +165,27 @@ static void wake_unlock_stat_locked(struct wake_lock *lock, int expired)
 	if (expired)
 		lock->stat.expire_count++;
 	if (early_suspend_called) {
+		if (ktime_to_ns(lock->stat.last_unlock_time)
+				< ktime_to_ns(early_suspend_time))
+				lock->stat.background_locked_time
+						= ktime_set(0, 0);
+		/* If last_time is later than early_suspend_time, then this lock
+		   was held after early_suspend called */
 		if (ktime_to_ns(lock->stat.last_time) >
 			ktime_to_ns(early_suspend_time))
 			duration = ktime_sub(now, lock->stat.last_time);
 		else
 			duration = ktime_sub(now, early_suspend_time);
 	} else {
+		/* If last_unlock_time is earlier than wakeup_time, then this
+		   lock was held for the first time after system resumed*/
 		if (ktime_to_ns(lock->stat.last_unlock_time)
 				< ktime_to_ns(wakeup_time)) {
-				duration = ktime_sub(now, wakeup_time);
-		} else {
-			duration = ktime_sub(
-					now,
-					lock->stat.last_unlock_time);
+				lock->stat.background_locked_time
+						= ktime_set(0, 0);
 		}
+		duration = ktime_sub(
+				now, lock->stat.last_time);
 	}
 	lock->stat.background_locked_time = ktime_add(
 			lock->stat.background_locked_time,
