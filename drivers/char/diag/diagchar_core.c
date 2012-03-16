@@ -998,6 +998,7 @@ static ssize_t diag_logging_mode_store(struct device *dev,
 	return size;
 }
 
+#ifdef CONFIG_DIAG_INTERNAL
 static ssize_t diag_dbg_ftm_show(struct device *dev,
 		struct device_attribute *attr, char *buff)
 {
@@ -1026,11 +1027,12 @@ static ssize_t diag_dbg_ftm_store(struct device *dev,
 	return size;
 }
 
-static DEVICE_ATTR(logging_mode, S_IRUGO | S_IWUSR, diag_logging_mode_show,
-						 diag_logging_mode_store);
-
 static DEVICE_ATTR(dbg_ftm, S_IRUGO | S_IWUSR, diag_dbg_ftm_show,
 						diag_dbg_ftm_store);
+#endif
+
+static DEVICE_ATTR(logging_mode, S_IRUGO | S_IWUSR, diag_logging_mode_show,
+						 diag_logging_mode_store);
 
 static int diagchar_setup_cdev(dev_t devno)
 {
@@ -1067,6 +1069,7 @@ static int diagchar_setup_cdev(dev_t devno)
 		return -1;
 	}
 
+#ifdef CONFIG_DIAG_INTERNAL
 	if (dev)
 		err = device_create_file(dev, &dev_attr_dbg_ftm);
 
@@ -1074,6 +1077,7 @@ static int diagchar_setup_cdev(dev_t devno)
 		printk(KERN_ERR "Error creating diag sysfs on dbg_ftm_mode\n");
 		return -ENXIO;
 	}
+#endif
 
 	return 0;
 }
