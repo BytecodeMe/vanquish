@@ -375,6 +375,15 @@ __enable_mmu:
 #endif
 	mcr	p15, 0, r5, c3, c0, 0		@ load domain access register
 	mcr	p15, 0, r4, c2, c0, 0		@ load page table pointer
+
+	/* MMI HACK HACK HACK:
+	 * Temporarily disable branch predictor to workaround
+	 * watchdog issues.
+	 */
+	mrc    p15, 0, r4, c1, c0, 0      //; RCP15_SCTLR  r2
+	bic    r4, r4, #0x00000800
+	mcr    p15, 0, r4, c1, c0, 0      //; WCP15_SCTLR  r2
+
 	b	__turn_mmu_on
 ENDPROC(__enable_mmu)
 
