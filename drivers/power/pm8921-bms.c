@@ -30,6 +30,7 @@
 #define BMS_CONTROL		0x224
 #define BMS_OUTPUT0		0x230
 #define BMS_OUTPUT1		0x231
+#define BMS_TOLERANCES		0x232
 #define BMS_TEST1		0x237
 
 #define ADC_ARB_SECP_CNTRL	0x190
@@ -1323,6 +1324,10 @@ int pm8921_bms_get_aged_capacity(int *result)
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_aged_capacity);
 
+#define IBAT_TOL_MASK		0x0F
+#define OCV_TOL_MASK			0xF0
+#define IBAT_TOL_DEFAULT	0x03
+#define IBAT_TOL_NOCHG		0x0F
 void pm8921_bms_charging_began(void)
 {
 	int batt_temp, rc;
@@ -1351,7 +1356,8 @@ void pm8921_bms_charging_began(void)
 	bms_start_percent = the_chip->start_percent;
 	bms_start_ocv_uv = raw.last_good_ocv_uv;
 	calculate_cc_uah(the_chip, raw.cc, &bms_start_cc_uah);
-
+	pm_bms_masked_write(the_chip, BMS_TOLERANCES,
+			IBAT_TOL_MASK, IBAT_TOL_DEFAULT);
 	pr_debug("start_percent = %u%%\n", the_chip->start_percent);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_began);
@@ -1441,6 +1447,8 @@ calculate_percent:
 			last_chargecycles);
 	the_chip->start_percent = -EINVAL;
 	the_chip->end_percent = -EINVAL;
+	pm_bms_masked_write(the_chip, BMS_TOLERANCES,
+				IBAT_TOL_MASK, IBAT_TOL_NOCHG);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
 
@@ -1640,6 +1648,9 @@ static int __devinit pm8921_bms_hw_init(struct pm8921_bms_chip *chip)
 				BMS_CONTROL, rc);
 	}
 
+	/* The charger will call start charge later if usb is present */
+	pm_bms_masked_write(chip, BMS_TOLERANCES,
+				IBAT_TOL_MASK, IBAT_TOL_NOCHG);
 	return 0;
 }
 
