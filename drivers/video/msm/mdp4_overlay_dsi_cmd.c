@@ -662,6 +662,8 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 	mdp_pipe_kickoff(MDP_OVERLAY0_TERM, mfd);
 	mdp4_stat.kickoff_ov0++;
+
+	mdp4_dsi_panel_on(mfd);
 }
 
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
@@ -688,8 +690,6 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 			mfd->pan_waiting = FALSE;
 			complete(&mfd->pan_comp);
 		}
-
-		mdp4_dsi_panel_on(mfd);
 	}
 
 	mutex_unlock(&mfd->dma->ov_mutex);
@@ -698,15 +698,12 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 void mdp4_dsi_panel_on(struct msm_fb_data_type *mfd)
 {
 #ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-	uint32 panel;
 	struct msm_fb_panel_data *pdata =
 		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
 	if (dsi_panel_on == false) {
-		if (pdata->panel_on) {
-			panel = mdp4_overlay_panel_list();
+		if (pdata->panel_on)
 			pdata->panel_on(mfd->pdev);
-		}
 
 		dsi_panel_on = true;
 	}
