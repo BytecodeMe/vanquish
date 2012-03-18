@@ -54,6 +54,8 @@
 #include <linux/gpio_event.h>
 #include <linux/of_fdt.h>
 #include <linux/of.h>
+#include <linux/sysfs.h>
+#include <linux/kobject.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -854,10 +856,6 @@ static __init void mot_setup_gsbi12_clk(void)
 	struct clk *clk;
 	if (!msm_gsbi12_uart_clk_ptr(&clk))
 		mot_set_gsbi12_clk("core_clk", clk, MSM_UART_NAME ".1");
-	if (!msm_gsbi12_qup_clk_ptr(&clk))
-		mot_set_gsbi12_clk("core_clk", clk, NULL);
-	if (!msm_gsbi12_p_clk_ptr(&clk))
-		mot_set_gsbi12_clk("iface_clk", clk, MSM_DSPS_HCLK);
 }
 
 static __init void emu_det_gpio_init(void)
@@ -3115,6 +3113,49 @@ static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 #define EXPECTED_MBM_PROTOCOL_VERSION 1
 static uint32_t mbm_protocol_version;
 
+/* This sysfs allows sensor TCMD to switch the control of I2C-12
+ *  from DSPS to Krait at runtime by issuing the following command:
+ *	echo 1 > /sys/kernel/factory_gsbi12_mode/install
+ * Upon phone reboot, everything will be back to normal.
+ */
+static ssize_t factory_gsbi12_mode_install_set(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
+{
+	int Error;
+
+	Error = platform_device_register(&msm8960_device_qup_i2c_gsbi12);
+
+	if (Error)
+	  printk(KERN_ERR "factory_gsbi12_mode_install_set: failed to register gsbi12\n");
+
+	/* We must return # of bytes used from buffer
+	(do not return 0,it will throw an error) */
+	return count;
+}
+
+static struct kobj_attribute factory_gsbi12_mode_install_attribute =
+	__ATTR(install, S_IRUGO|S_IWUSR, NULL, factory_gsbi12_mode_install_set);
+static struct kobject *factory_gsbi12_mode_kobj;
+
+static int sysfs_factory_gsbi12_mode_init(void)
+{
+	int retval;
+
+	/* creates a new folder(node) factory_gsbi12_mode under /sys/kernel */
+	factory_gsbi12_mode_kobj = kobject_create_and_add("factory_gsbi12_mode", kernel_kobj);
+	if (!factory_gsbi12_mode_kobj)
+		return -ENOMEM;
+
+	/* creates a file named install under /sys/kernel/factory_gsbi12_mode */
+	retval = sysfs_create_file(factory_gsbi12_mode_kobj,
+				&factory_gsbi12_mode_install_attribute.attr);
+	if (retval)
+		kobject_put(factory_gsbi12_mode_kobj);
+
+	return retval;
+}
+
 static void __init msm8960_mmi_init(void)
 {
 	msm_otg_pdata.phy_init_seq = phy_settings;
@@ -3212,6 +3253,7 @@ static void __init msm8960_mmi_init(void)
 	msm_fb_add_devices();
 	msm8960_init_slim();
 	msm8960_init_dsps();
+	sysfs_factory_gsbi12_mode_init();
 
 	msm8960_pm_init(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	mot_tcmd_export_gpio();

@@ -169,9 +169,15 @@ static struct gpiomux_setting gsbi10 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting gsbi12 = {
+static struct gpiomux_setting gsbi12_active = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi12_suspend = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
 
@@ -293,13 +299,15 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 	{
 		.gpio      = 44,	/* GSBI12 I2C QUP SDA */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi12,
+			[GPIOMUX_SUSPENDED] = &gsbi12_suspend,
+			[GPIOMUX_ACTIVE] = &gsbi12_active,
 		},
 	},
 	{
 		.gpio      = 45,	/* GSBI12 I2C QUP SCL */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi12,
+			[GPIOMUX_SUSPENDED] = &gsbi12_suspend,
+			[GPIOMUX_ACTIVE] = &gsbi12_active,
 		},
 	},
 	{
@@ -2658,6 +2666,7 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi12_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
+	.use_gsbi_shared_mode = 1,
 };
 
 struct msm_rpm_platform_data msm_rpm_data = {
