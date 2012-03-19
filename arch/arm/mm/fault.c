@@ -690,6 +690,11 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	if (!inf->fn(addr, fsr & ~FSR_LNX_PF, regs))
 		return;
 
+	if (oops_in_progress) {
+		if (!user_mode(regs) && !fixup_exception(regs))
+			regs->ARM_pc += (thumb_mode(regs) ? 2 : 4);
+		return;
+	}
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
 
