@@ -228,6 +228,11 @@ static int32_t dw9714_act_probe(
 		(struct v4l2_subdev *)sdev);
 }
 
+static int dw9714_act_power_down(void *act_info)
+{
+	return (int) msm_actuator_af_power_down(&dw9714_act_t);
+}
+
 static struct msm_actuator_ctrl_t dw9714_act_t = {
 	.i2c_driver = &dw9714_act_i2c_driver,
 	.i2c_addr = 0x18,
@@ -236,6 +241,7 @@ static struct msm_actuator_ctrl_t dw9714_act_t = {
 		.a_init_table = dw9714_i2c_add_driver_table,
 		.a_create_subdevice = dw9714_act_probe,
 		.a_config = dw9714_act_config,
+		.a_power_down = dw9714_act_power_down,
 	},
 
 	.i2c_client = {
