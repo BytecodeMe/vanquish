@@ -71,7 +71,6 @@
 #include <linux/ioport.h>
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
-#include <linux/pm_runtime.h>
 #include <linux/emu-accy.h>
 #include <linux/usb/otg.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
@@ -322,6 +321,7 @@ struct emu_det_data {
 	struct platform_device *charger_connected_dev;
 	struct regulator *regulator;
 	struct wake_lock wake_lock;
+	bool suspend_disabled;
 	unsigned char is_vusb_enabled;
 	struct switch_dev wsdev; /* Whisper switch */
 	struct switch_dev dsdev; /* Standard Dock switch */
@@ -345,7 +345,6 @@ struct emu_det_data {
 	bool semu_alt_mode;
 	int se1_mode;
 	bool ext_5v_switch_enabled;
-	bool otg_enabled;
 	bool spd_ppd_transition;
 	void __iomem *regs;
 	unsigned  gsbi_phys;
@@ -945,6 +944,7 @@ static void notify_otg(enum emu_det_accy accy)
 
 	switch (accy) {
 	case ACCY_NONE:
+	case ACCY_WHISPER_PPD:
 		atomic_notifier_call_chain(&data->trans->notifier,
 					USB_EVENT_NONE, NULL);
 		break;
@@ -1076,7 +1076,6 @@ static void detection_work(void)
 	struct emu_det_data *data = the_emud;
 	int last_irq;
 	unsigned long delay = 0;
-	int ret;
 
 	static unsigned long last_run;
 
@@ -1091,13 +1090,9 @@ static void detection_work(void)
 
 	switch (data->state) {
 	case CONFIG:
-		if (!data->otg_enabled) {
-			data->otg_enabled = true;
-			ret = pm_runtime_get_sync(data->trans->dev);
-			if (ret < 0) {
-				pr_emu_det(ERROR,
-				"pm_runtime_get_sync failed, err %d\n", ret);
-			}
+		if (!data->suspend_disabled) {
+			data->suspend_disabled = true;
+			wake_lock(&data->wake_lock);
 		}
 		memset(&data->sense, 0, sizeof(data->sense));
 
@@ -1191,13 +1186,9 @@ static void detection_work(void)
 			pr_emu_det(DEBUG, "no accessory\n");
 			notify_accy(ACCY_NONE);
 			notify_whisper_switch(ACCY_NONE);
-			if (data->otg_enabled) {
-				ret = pm_runtime_put_sync(data->trans->dev);
-				if (ret < 0) {
-					pr_emu_det(ERROR,
-					"pm_runtime_put failed, err %d\n", ret);
-				}
-				data->otg_enabled = false;
+			if (data->suspend_disabled) {
+				data->suspend_disabled = false;
+				wake_unlock(&data->wake_lock);
 			}
 		}
 		break;
@@ -2025,9 +2016,9 @@ static int emu_det_probe(struct platform_device *pdev)
 	data->semu_alt_mode = false;
 	data->accy = ACCY_NONE;
 	data->whisper_auth = AUTH_NOT_STARTED;
-	data->otg_enabled = false;
 	data->requested_muxmode = MUXMODE_UNDEFINED;
 	data->vbus_adc_delay = true;
+	data->suspend_disabled = false;
 	dev_set_drvdata(&pdev->dev, data);
 
 	data->trans = otg_get_transceiver();

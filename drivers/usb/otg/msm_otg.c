@@ -1849,11 +1849,8 @@ static void msm_otg_sm_work(struct work_struct *w)
 				case USB_DCP_CHARGER:
 					msm_otg_notify_charger(motg,
 							IDEV_CHG_MAX);
-					if (motg->pdata->otg_control
-						!= OTG_ACCY_CONTROL) {
-						pm_runtime_put_noidle(otg->dev);
-						pm_runtime_suspend(otg->dev);
-					}
+					pm_runtime_put_noidle(otg->dev);
+					pm_runtime_suspend(otg->dev);
 					break;
 				case USB_ACA_B_CHARGER:
 					msm_otg_notify_charger(motg,
@@ -2109,10 +2106,10 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
-			if (event != USB_EVENT_CHARGER)
+			if (event != USB_EVENT_CHARGER) {
+				pm_request_idle(otg->dev);
 				goto out;
-			else
-				pm_runtime_get_noresume(otg->dev);
+			}
 		case OTG_STATE_B_IDLE:
 			if (event == USB_EVENT_CHARGER) {
 				if (motg->chg_type != USB_DCP_CHARGER) {
@@ -2123,11 +2120,8 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 					break;
 				} else
 					goto out;
-			} else if (motg->chg_type != USB_DCP_CHARGER) {
-				/* balances usage count increase from resume */
-				pm_runtime_put_noidle(otg->dev);
+			} else if (motg->chg_type != USB_DCP_CHARGER)
 				goto out;
-			}
 		case OTG_STATE_A_HOST:
 		case OTG_STATE_B_PERIPHERAL:
 			set_bit(ID, &motg->inputs);
@@ -2142,7 +2136,6 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
-			pm_runtime_get_noresume(otg->dev);
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_A_HOST:
 			set_bit(ID, &motg->inputs);
@@ -2159,7 +2152,6 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		case OTG_STATE_UNDEFINED:
 			/* set when accy driver init detection completes */
 			otg->state = OTG_STATE_B_IDLE;
-			pm_runtime_get_noresume(otg->dev);
 		case OTG_STATE_B_IDLE:
 		case OTG_STATE_B_PERIPHERAL:
 			clear_bit(ID, &motg->inputs);
