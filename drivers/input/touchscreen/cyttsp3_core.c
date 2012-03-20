@@ -2696,6 +2696,10 @@ static int _cyttsp_wakeup(struct cyttsp *ts) {
 			__func__, (retval < 0) ? "FAIL" : "PASS",
 			xydata.hst_mode, xydata.tt_mode,
 			xydata.tt_stat, tries, retval);
+	if (gpio_get_value(ts->platform_data->gpio_interrupt) == 0) {
+		_cyttsp_hndshk(ts, ts->xy_data.hst_mode);
+		usleep(1000);
+	}
 	_cyttsp_wakeup_exit:
 #endif
 	return retval;
@@ -2716,6 +2720,9 @@ int cyttsp_resume(void *handle)
 		disable_irq_nosync(ts->irq);
 		udelay(5);
 		enable_irq(ts->irq);
+	} else {
+		enable_irq(ts->irq);
+		ts->irq_enabled = true;
 	}
 
 	switch (ts->power_state) {
@@ -2778,6 +2785,9 @@ int cyttsp_suspend(void *handle)
 			ts->power_state = CY_SLEEP_STATE;
 			cyttsp_pr_state(ts);
 		}
+
+		disable_irq_nosync(ts->irq);
+		ts->irq_enabled = false;
 
 		mutex_unlock(&ts->data_lock);
 		break;
