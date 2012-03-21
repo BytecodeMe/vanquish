@@ -30,6 +30,12 @@ struct raw_mmc_panic_ops {
 			unsigned int len);
 };
 
+#ifdef CONFIG_TRACING
+extern unsigned long get_trace_buf_size(void);
+#else
+static inline unsigned long get_trace_buf_size(void) { return 0; }
+#endif
+
 #ifdef CONFIG_APANIC_MMC
 int is_apanic_threads_dump(void);
 void emergency_dump(void);
