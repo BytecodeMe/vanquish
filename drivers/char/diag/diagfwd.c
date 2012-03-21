@@ -1602,19 +1602,19 @@ void diagfwd_init(void)
 	}
 	if (driver->buf_msg_mask_update == NULL) {
 		driver->buf_msg_mask_update = kzalloc(APPS_BUF_SIZE,
-								GFP_KERNEL);
+								 GFP_KERNEL);
 		if (driver->buf_msg_mask_update == NULL)
 			goto err;
 	}
 	if (driver->buf_log_mask_update == NULL) {
 		driver->buf_log_mask_update = kzalloc(APPS_BUF_SIZE,
-								GFP_KERNEL);
+								 GFP_KERNEL);
 		if (driver->buf_log_mask_update == NULL)
 			goto err;
 	}
 	if (driver->buf_event_mask_update == NULL) {
 		driver->buf_event_mask_update = kzalloc(APPS_BUF_SIZE,
-								GFP_KERNEL);
+								 GFP_KERNEL);
 		if (driver->buf_event_mask_update == NULL)
 			goto err;
 	}
@@ -1710,15 +1710,15 @@ void diagfwd_init(void)
 	INIT_WORK(&(driver->diag_proc_hdlc_work), diag_process_hdlc_fn);
 	INIT_WORK(&(driver->diag_read_work), diag_read_work_fn);
 	INIT_WORK(&(driver->diag_msg_mask_update_work),
-						diag_msg_mask_update_fn);
+						 diag_msg_mask_update_fn);
 	INIT_WORK(&(driver->diag_log_mask_update_work),
-						diag_log_mask_update_fn);
+						 diag_log_mask_update_fn);
 	INIT_WORK(&(driver->diag_modem_mask_update_work),
-						diag_modem_mask_update_fn);
+						 diag_modem_mask_update_fn);
 	INIT_WORK(&(driver->diag_qdsp_mask_update_work),
-						diag_qdsp_mask_update_fn);
+						 diag_qdsp_mask_update_fn);
 	INIT_WORK(&(driver->diag_wcnss_mask_update_work),
-						diag_wcnss_mask_update_fn);
+						 diag_wcnss_mask_update_fn);
 	driver->legacy_ch = channel_diag_open(DIAG_LEGACY, driver,
 			diag_legacy_notifier);
 	if (IS_ERR(driver->legacy_ch)) {

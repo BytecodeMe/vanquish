@@ -1566,6 +1566,7 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all)
 {
+	struct mdp4_overlay_pipe *bg_pipe;
 	uint32 bits = 0;
 
 	if (all) {
@@ -1577,6 +1578,11 @@ void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all)
 
 	if (pipe->pipe_num <= OVERLAY_PIPE_RGB2)
 		bits |= 1 << (2 + pipe->pipe_num);
+	if (pipe->is_fg && pipe->alpha == 0xFF) {
+		bg_pipe = mdp4_overlay_stage_pipe(pipe->mixer_num,
+						  MDP4_MIXER_STAGE_BASE);
+		bits |= 1 << (2 + bg_pipe->pipe_num);
+	}
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	outpdw(MDP_BASE + 0x18000, bits);	/* MDP_OVERLAY_REG_FLUSH */
@@ -1904,7 +1910,7 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 
 static int get_img(struct msmfb_data *img, struct fb_info *info,
 	unsigned long *start, unsigned long *len, struct file **srcp_file,
-	struct ion_handle **srcp_ihdl)
+	int *p_need, struct ion_handle **srcp_ihdl)
 {
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
@@ -1914,6 +1920,8 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 #ifdef CONFIG_ANDROID_PMEM
 	unsigned long vstart;
 #endif
+	*p_need = 0;
+
 	if (img->flags & MDP_BLIT_SRC_GEM) {
 		*srcp_file = NULL;
 		return kgsl_gem_obj_addr(img->memory_id, (int) img->priv,
@@ -1929,8 +1937,10 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 			fb_num = MINOR(file->f_dentry->d_inode->i_rdev);
 			if (get_fb_phys_info(start, len, fb_num))
 				ret = -1;
-			else
+			else {
 				*srcp_file = file;
+				*p_need = put_needed;
+			}
 		} else
 			ret = -1;
 		if (ret)
@@ -2499,6 +2509,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 	struct file *srcp1_file = NULL, *srcp2_file = NULL;
 	struct ion_handle *srcp0_ihdl = NULL;
 	struct ion_handle *srcp1_ihdl = NULL, *srcp2_ihdl = NULL;
+	int ps0_need, p_need;
 	uint32_t overlay_version = 0;
 	int ret = 0;
 
@@ -2518,7 +2529,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		return -EINTR;
 
 	img = &req->data;
-	get_img(img, info, &start, &len, &srcp0_file, &srcp0_ihdl);
+	get_img(img, info, &start, &len, &srcp0_file, &ps0_need, &srcp0_ihdl);
 	if (len == 0) {
 		mutex_unlock(&mfd->dma->ov_mutex);
 		pr_err("%s: pmem Error\n", __func__);
@@ -2537,7 +2548,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		if (overlay_version > 0) {
 			img = &req->plane1_data;
 			get_img(img, info, &start, &len, &srcp1_file,
-				&srcp1_ihdl);
+				&p_need, &srcp1_ihdl);
 			if (len == 0) {
 				mutex_unlock(&mfd->dma->ov_mutex);
 				pr_err("%s: Error to get plane1\n", __func__);
@@ -2569,7 +2580,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		if (overlay_version > 0) {
 			img = &req->plane1_data;
 			get_img(img, info, &start, &len, &srcp1_file,
-				&srcp1_ihdl);
+				&p_need, &srcp1_ihdl);
 			if (len == 0) {
 				mutex_unlock(&mfd->dma->ov_mutex);
 				pr_err("%s: Error to get plane1\n", __func__);
@@ -2580,7 +2591,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 
 			img = &req->plane2_data;
 			get_img(img, info, &start, &len, &srcp2_file,
-				&srcp2_ihdl);
+				&p_need, &srcp2_ihdl);
 			if (len == 0) {
 				mutex_unlock(&mfd->dma->ov_mutex);
 				pr_err("%s: Error to get plane2\n", __func__);
@@ -2710,9 +2721,13 @@ end:
 	if (srcp2_file)
 		put_pmem_file(srcp2_file);
 #endif
+	/* only source may use frame buffer */
+	if (img->flags & MDP_MEMORY_ID_TYPE_FB)
+		fput_light(srcp0_file, ps0_need);
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	if (!IS_ERR_OR_NULL(srcp0_ihdl))
+	else if (!IS_ERR_OR_NULL(srcp0_ihdl))
 		ion_free(mfd->iclient, srcp0_ihdl);
+
 	if (!IS_ERR_OR_NULL(srcp1_ihdl))
 		ion_free(mfd->iclient, srcp1_ihdl);
 	if (!IS_ERR_OR_NULL(srcp2_ihdl))
