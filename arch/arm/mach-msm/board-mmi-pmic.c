@@ -624,8 +624,6 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 static struct led_info pm8921_led_info[] = {
 	[0] = {
 		.name			= "charging",
-		/* Trigger is set to blink when charging, solid when full */
-		.default_trigger	= "battery-charging-blink-full-solid",
 	},
 	[1] = {
 		.name			= "reserved",
@@ -907,9 +905,4 @@ void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad,
 	pm8921_platform_data.charger_pdata->arch_reboot_cb = cb;
 #endif
 #endif
-	/* Charging LED is needed only on charge-only mode */
-	if (bi_powerup_reason() != PU_REASON_CHARGER) {
-		pr_debug("%s: disabling charging LED\n", __func__);
-		pm8921_led_info[0].default_trigger = NULL;
-	}
 }
