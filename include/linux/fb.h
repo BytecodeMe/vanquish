@@ -1169,6 +1169,9 @@ extern int fb_find_mode(struct fb_var_screeninfo *var,
 			const struct fb_videomode *default_mode,
 			unsigned int default_bpp);
 
+#define FB_PAD_MAX_X 1024
+#define FB_PAD_MAX_Y 1366
+
 #endif /* __KERNEL__ */
 
 #endif /* _LINUX_FB_H */
