@@ -738,6 +738,9 @@ static int __init wakelocks_init(void)
 		goto err_suspend_work_queue;
 	}
 
+	/* Disable VT switch */
+	pm_set_vt_switch(0);
+
 #ifdef CONFIG_WAKELOCK_STAT
 	proc_create("wakelocks", S_IRUGO, NULL, &wakelock_stats_fops);
 	register_early_suspend(&power_early_suspend_desc);
