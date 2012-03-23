@@ -42,6 +42,9 @@
 #define L2ESR_DSEDB             BIT(5)
 #define L2ESR_MSE		BIT(6)
 #define L2ESR_MPLDREXNOK	BIT(8)
+/* Define a mask of L2 errors we care about. */
+#define L2ESR_ERRMASK		(L2ESR_TSESB | L2ESR_TSEDB | L2ESR_DSESB |\
+				 L2ESR_DSEDB | L2ESR_MSE   | L2ESR_MPLDREXNOK)
 
 #define L2ESR_CPU_MASK		0x0F
 #define L2ESR_CPU_SHIFT		16
@@ -263,6 +266,15 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 	l2esynr1 = get_l2_indirect_reg(L2ESYNR1_IND_ADDR);
 	l2ear0 = get_l2_indirect_reg(L2EAR0_IND_ADDR);
 	l2ear1 = get_l2_indirect_reg(L2EAR1_IND_ADDR);
+
+	/* Neuter this for master port slave errors and decode errors
+	 * until they're cleaned up or serial console is disabled.
+	 * (Only continue if there's an important error)
+	 */
+	if (!(l2esr & L2ESR_ERRMASK)) {
+		set_l2_indirect_reg(L2ESR_IND_ADDR, l2esr);
+		return IRQ_HANDLED;
+	}
 
 	pr_alert("L2 Error detected!\n");
 	pr_alert("\tL2ESR    = 0x%08x\n", l2esr);
