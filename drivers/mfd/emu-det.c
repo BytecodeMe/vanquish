@@ -473,16 +473,16 @@ void switch_mux_mode(int mode, int check_valid_req)
 
 	switch (mode) {
 	case MUXMODE_USB:
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 0);
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 0);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
 		break;
 	case MUXMODE_AUDIO:
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 1);
 		break;
 	case MUXMODE_UART:
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 0);
-		gpio_set_value(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL0_GPIO], 0);
+		gpio_set_value_cansleep(emud->emu_gpio[EMU_MUX_CTRL1_GPIO], 1);
 		break;
 	default:
 		break;
