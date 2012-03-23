@@ -296,9 +296,22 @@ void print_active_locks(int type)
 {
 	struct wake_lock *lock;
 	bool print_expired = true;
+	ktime_t active_time = ktime_set(0, 0);
+	ktime_t total_time;
 
 	BUG_ON(type >= WAKE_LOCK_TYPE_COUNT);
 	list_for_each_entry(lock, &active_wake_locks[type], link) {
+		total_time = lock->stat.total_time;
+		if (lock->flags & WAKE_LOCK_ACTIVE) {
+			ktime_t now, add_time;
+			int expired = get_expired_time(lock, &now);
+			if (!expired)
+				now = ktime_get();
+			add_time = ktime_sub(now, lock->stat.last_time);
+			if (!expired)
+				active_time = add_time;
+			total_time = ktime_add(total_time, add_time);
+		}
 		if (lock->flags & WAKE_LOCK_AUTO_EXPIRE) {
 			long timeout = lock->expires - jiffies;
 			if (timeout > 0)
@@ -307,7 +320,9 @@ void print_active_locks(int type)
 			else if (print_expired)
 				pr_info("wake lock %s, expired\n", lock->name);
 		} else {
-			pr_info("active wake lock %s\n", lock->name);
+			pr_info("active wake lock %s active %lld total %lld\n",
+				lock->name, ktime_to_ns(active_time),
+				ktime_to_ns(total_time));
 			if (!(debug_mask & DEBUG_EXPIRE))
 				print_expired = false;
 		}
