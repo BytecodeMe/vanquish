@@ -259,6 +259,8 @@ static enum w1_ds2502_state w1_ds2502_retry(struct w1_slave *sl,
 	return next_state;
 }
 
+static DEFINE_SPINLOCK(test_lock);
+
 ssize_t w1_ds2502_read_eeprom(struct w1_slave *sl,
 				     char *buf,
 				     size_t count)
@@ -268,8 +270,10 @@ ssize_t w1_ds2502_read_eeprom(struct w1_slave *sl,
 	unsigned char serial_number_index = 0;
 	static bool multiple_devices_found;
 	struct w1_ds2502_data *data = sl->family_data;
+	unsigned long flags;
 
 	mutex_lock(&sl->master->mutex);
+	spin_lock_irqsave(&test_lock, flags);
 
 	data->status = -EINVAL;
 	memset(data->unique_id, 0xFF, UID_SIZE);
@@ -304,7 +308,7 @@ ssize_t w1_ds2502_read_eeprom(struct w1_slave *sl,
 			break;
 		}
 	}
-
+	spin_unlock_irqrestore(&test_lock, flags);
 	mutex_unlock(&sl->master->mutex);
 
 	return (data->status == 0) ? count : 0;

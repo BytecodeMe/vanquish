@@ -160,9 +160,9 @@ static u8 w1_read_bit(struct w1_master *dev)
 	int result;
 
 	dev->bus_master->write_bit(dev->bus_master->data, 0);
-	w1_delay(6);
+	w1_delay(4);
 	dev->bus_master->write_bit(dev->bus_master->data, 1);
-	w1_delay(9);
+	w1_delay(6);
 
 	result = dev->bus_master->read_bit(dev->bus_master->data);
 	w1_delay(55);
