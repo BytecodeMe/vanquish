@@ -31,11 +31,15 @@ struct raw_mmc_panic_ops {
 };
 
 #ifdef CONFIG_APANIC_MMC
+int is_apanic_threads_dump(void);
+void emergency_dump(void);
 void apanic_mmc_parition_add(struct hd_struct *part);
 void apanic_mmc_parition_remove(struct hd_struct *part);
 
 int __init apanic_mmc_init(struct raw_mmc_panic_ops *panic_ops);
 #else
+static inline int is_apanic_threads_dump(void) { return 0; }
+static inline void emergency_dump(void) {}
 static inline void apanic_mmc_parition_add(struct hd_struct *part) {}
 static inline void apanic_mmc_parition_remove(struct hd_struct *part) {}
 

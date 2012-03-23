@@ -34,7 +34,6 @@ void log_buf_clear(void);
 #define memdump_wdt_disable() do {} while (0);
 
 #define MEMDUMP_PLABEL "memdump"
-#define THREADS_PER_PASS 20
 
 struct panic_header {
 	u32 magic;
@@ -66,12 +65,15 @@ struct memdump_header {
 struct apanic_data {
 	struct panic_header curr;
 	void *bounce;
+	int buf_offset;
+	int written;
 	struct proc_dir_entry *apanic_console;
 	struct proc_dir_entry *apanic_threads;
 	struct hd_struct *hd;
 	struct raw_mmc_panic_ops *mmc_panic_ops;
 };
 
+static int start_apanic_threads;
 static struct apanic_data drv_ctx;
 static struct work_struct proc_removal_work;
 /* avoid collision of proc interface operation and proc removal */
@@ -465,21 +467,31 @@ static int apanic_write_console_mmc(unsigned int off)
 	return idx;
 }
 
+int is_apanic_threads_dump(void)
+{
+	return start_apanic_threads;
+}
+
+void emergency_dump(void)
+{
+	struct apanic_data *ctx = &drv_ctx;
+
+	ctx->buf_offset = ALIGN(ctx->written, 512);
+	ctx->written += apanic_write_console_mmc(ctx->buf_offset);
+}
+
 static void apanic_mmc_logbuf_dump(void)
 {
 	struct apanic_data *ctx = &drv_ctx;
 	struct panic_header *hdr = (struct panic_header *) ctx->bounce;
 	int console_offset = 0;
 	int console_len = 0;
-	int threads = 0;
 	int threads_offset = 0;
-	int threads_len = 0;
 	int rc = 0;
 	struct timespec now;
 	struct timespec uptime;
 	struct rtc_time rtc_timestamp;
 	struct console *con;
-	struct task_struct *g, *p;
 
 	if (!ctx->hd || !ctx->mmc_panic_ops ||
 	    !ctx->mmc_panic_ops->panic_probe)
@@ -541,48 +553,21 @@ static void apanic_mmc_logbuf_dump(void)
 	for (con = console_drivers; con; con = con->next)
 		con->flags &= ~CON_ENABLED;
 
-	read_lock(&tasklist_lock);
-	do_each_thread(g, p) {
-		touch_nmi_watchdog();
-		sched_show_task(p);
-		threads++;
-		if (threads % THREADS_PER_PASS == 0) {
-			rc = apanic_write_console_mmc(threads_offset +
-						      threads_len);
-			if (rc < 0) {
-				pr_emerg("failed while "
-				       "writing threads to panic log (%d)\n",
-				       threads_len);
-				read_unlock(&tasklist_lock);
-				goto header;	/* cannot use break */
-			}
-			/*
-			 * Force alignment to work around mmc_simple
-			 * limitations.  Padding will be white space.
-			 */
-			threads_len = ALIGN(threads_len + rc, 1024);
-			log_buf_clear();
-		}
-	} while_each_thread(g, p);
-	read_unlock(&tasklist_lock);
-
-	/* Trick to call sysrq_sched_debug_show() */
-	show_state_filter(0x80000000);
+	ctx->buf_offset = threads_offset;
+	ctx->written = threads_offset;
+	start_apanic_threads = 1;
+	show_state_filter(0);
 	show_cpu_current_stack_mem();
-	rc = apanic_write_console_mmc(threads_offset + threads_len);
-	if (rc < 0) {
-		pr_emerg("Error writing threads to panic log! (%d)\n", rc);
-		rc = 0;
-	}
-
-	threads_len += rc;
+	start_apanic_threads = 0;
+	ctx->buf_offset = ALIGN(ctx->written, 512);
+	ctx->written += apanic_write_console_mmc(ctx->buf_offset);
 
 	for (con = console_drivers; con; con = con->next)
 		con->flags |= CON_ENABLED;
+
 	/*
 	 * Finally write the panic header
 	 */
-header:
 	memset(ctx->bounce, 0, PAGE_SIZE);
 	hdr->magic = PANIC_MAGIC;
 	hdr->version = PHDR_VERSION;
@@ -591,7 +576,7 @@ header:
 	hdr->console_length = console_len;
 
 	hdr->threads_offset = threads_offset;
-	hdr->threads_length = threads_len;
+	hdr->threads_length = ctx->written - threads_offset;
 
 	rc = ctx->mmc_panic_ops->panic_write(ctx->hd, ctx->bounce, 0,
 					     console_offset);
