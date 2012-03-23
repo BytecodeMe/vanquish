@@ -45,6 +45,9 @@ struct panic_header {
 	u32 console_offset;
 	u32 console_length;
 
+	u32 app_threads_offset;
+	u32 app_threads_length;
+
 	u32 threads_offset;
 	u32 threads_length;
 };
@@ -68,6 +71,7 @@ struct apanic_data {
 	int buf_offset;
 	int written;
 	struct proc_dir_entry *apanic_console;
+	struct proc_dir_entry   *apanic_app_threads;
 	struct proc_dir_entry *apanic_threads;
 	struct hd_struct *hd;
 	struct raw_mmc_panic_ops *mmc_panic_ops;
@@ -128,6 +132,10 @@ static int apanic_proc_read_mmc(char *buffer, char **start, off_t offset,
 	case 2:		/* apanic_threads */
 		file_length = ctx->curr.threads_length;
 		file_offset = ctx->curr.threads_offset;
+		break;
+	case 3:	/* apanic_app_threads */
+		file_length = ctx->curr.app_threads_length;
+		file_offset = ctx->curr.app_threads_offset;
 		break;
 	default:
 		pr_err("Bad dat (%d)\n", (int) dat);
@@ -276,6 +284,10 @@ static void apanic_remove_proc_work(struct work_struct *work)
 		remove_proc_entry("apanic_threads", NULL);
 		ctx->apanic_threads = NULL;
 	}
+	if (ctx->apanic_app_threads) {
+		remove_proc_entry("apanic_app_threads", NULL);
+		ctx->apanic_app_threads = NULL;
+	}
 	mutex_unlock(&drv_mutex);
 }
 
@@ -347,9 +359,10 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 
 	memcpy(&ctx->curr, hdr, sizeof(struct panic_header));
 
-	pr_info("apanic: c(%u, %u) t(%u, %u)\n",
+	pr_info("apanic: c(%u, %u) t(%u, %u) a(%u, %u)\n",
 	       hdr->console_offset, hdr->console_length,
-	       hdr->threads_offset, hdr->threads_length);
+	       hdr->threads_offset, hdr->threads_length,
+	       hdr->app_threads_offset, hdr->app_threads_length);
 
 	if (hdr->console_length) {
 		ctx->apanic_console = create_proc_entry("apanic_console",
@@ -383,6 +396,20 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 		}
 	}
 
+	if (hdr->app_threads_length) {
+		ctx->apanic_app_threads = create_proc_entry(
+			"apanic_app_threads", S_IFREG | S_IRUGO, NULL);
+		if (!ctx->apanic_app_threads)
+			pr_err("%s: failed creating procfile\n", __func__);
+		else {
+			ctx->apanic_app_threads->read_proc
+					= apanic_proc_read_mmc;
+			ctx->apanic_app_threads->write_proc = apanic_proc_write;
+			ctx->apanic_app_threads->size = hdr->app_threads_length;
+			ctx->apanic_app_threads->data = (void *) 3;
+		}
+
+	}
 out:
 	return;
 }
@@ -487,6 +514,9 @@ static void apanic_mmc_logbuf_dump(void)
 	int console_offset = 0;
 	int console_len = 0;
 	int threads_offset = 0;
+	int threads_len = 0;
+	int app_threads_offset = 0;
+	int app_threads_len = 0;
 	int rc = 0;
 	struct timespec now;
 	struct timespec uptime;
@@ -544,7 +574,7 @@ static void apanic_mmc_logbuf_dump(void)
 	/*
 	 * Write out all threads
 	 */
-	threads_offset = (ALIGN(console_offset + console_len,
+	app_threads_offset = (ALIGN(console_offset + console_len,
 				1024) == 0) ? 1024 :
 	    ALIGN(console_offset + console_len, 1024);
 
@@ -553,14 +583,26 @@ static void apanic_mmc_logbuf_dump(void)
 	for (con = console_drivers; con; con = con->next)
 		con->flags &= ~CON_ENABLED;
 
+	ctx->buf_offset = app_threads_offset;
+	ctx->written = app_threads_offset;
+	start_apanic_threads = 1;
+	show_state_filter(0, SHOW_APP_THREADS);
+	ctx->buf_offset = ALIGN(ctx->written, 512);
+	start_apanic_threads = 0;
+	ctx->written += apanic_write_console_mmc(ctx->buf_offset);
+	app_threads_len = ctx->written - app_threads_offset;
+
+	log_buf_clear();
+	threads_offset = ALIGN(ctx->written, 512);
 	ctx->buf_offset = threads_offset;
 	ctx->written = threads_offset;
 	start_apanic_threads = 1;
-	show_state_filter(0);
+	show_state_filter(0, SHOW_KTHREADS);
 	show_cpu_current_stack_mem();
 	start_apanic_threads = 0;
 	ctx->buf_offset = ALIGN(ctx->written, 512);
 	ctx->written += apanic_write_console_mmc(ctx->buf_offset);
+	threads_len = ctx->written - threads_offset + 512;
 
 	for (con = console_drivers; con; con = con->next)
 		con->flags |= CON_ENABLED;
@@ -575,8 +617,11 @@ static void apanic_mmc_logbuf_dump(void)
 	hdr->console_offset = console_offset;
 	hdr->console_length = console_len;
 
+	hdr->app_threads_offset = app_threads_offset;
+	hdr->app_threads_length = app_threads_len;
+
 	hdr->threads_offset = threads_offset;
-	hdr->threads_length = ctx->written - threads_offset;
+	hdr->threads_length = threads_len;
 
 	rc = ctx->mmc_panic_ops->panic_write(ctx->hd, ctx->bounce, 0,
 					     console_offset);
@@ -665,6 +710,7 @@ static int apanic_mmc(struct notifier_block *this, unsigned long event,
 	add_preempt_count(PREEMPT_ACTIVE);
 #endif
 	touch_softlockup_watchdog();
+	atomic_notifier_call_chain(&touch_watchdog_notifier_head, 0, NULL);
 
 	apanic_mmc_logbuf_dump();
 
