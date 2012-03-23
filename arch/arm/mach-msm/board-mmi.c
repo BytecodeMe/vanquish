@@ -622,14 +622,12 @@ static void configure_gsbi_ctrl(int restore)
 	uint32_t new;
 	static uint32_t value;
 	static bool stored;
-	unsigned gsbi_phys;
+	unsigned gsbi_phys = MSM_GSBI12_PHYS;
 
-	if (!uart_over_gsbi12) {
+	if (!uart_over_gsbi12)
 		gsbi_phys = MSM_GSBI4_PHYS;
-		if (iface_clock)
-			clk_enable(iface_clock);
-	} else
-		gsbi_phys = MSM_GSBI12_PHYS;
+	if (iface_clock)
+		clk_enable(iface_clock);
 
 	gsbi_ctrl = ioremap_nocache(gsbi_phys, 4);
 	if (IS_ERR_OR_NULL(gsbi_ctrl)) {
@@ -839,12 +837,10 @@ static __init void mot_init_emu_detection(
 		ctrl_data->pmic_id_irq = 0;
 		ctrl_data->accy_pdev = &emu_det_device;
 
-		if (!uart_over_gsbi12) {
-			iface_clock = clk_get_sys(MSM_I2C_NAME ".4",
-							"iface_clk");
-			if (IS_ERR(iface_clock))
-				pr_err("error getting GSBI4 clk\n");
-		}
+		iface_clock = clk_get_sys(uart_over_gsbi12 ?
+			MSM_I2C_NAME ".12" : MSM_I2C_NAME ".4", "iface_clk");
+		if (IS_ERR(iface_clock))
+			pr_err("error getting GSBI iface clk\n");
 
 		emu_det_gpio_init();
 		mot_setup_whisper_uart();
