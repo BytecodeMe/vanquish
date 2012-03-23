@@ -96,6 +96,11 @@
 
 #define hasHoneyBadger() (the_emud->emu_gpio[DMB_PPD_DET_GPIO] >= 0)
 
+#define QUEUE_DWORK_CHK(a, b, c)	{ \
+	if (!queue_delayed_work(a, b, c)) \
+		pr_err("EMU-det: detection work was not scheduled\n"); \
+	}
+
 #undef DEF
 #define LIMITS { \
 	DEF(FACTORY,	2300, 2680), \
@@ -667,11 +672,11 @@ static void emu_det_vbus_state(int online)
 		emud->vbus_adc_delay = false;
 	}
 
-	pr_emu_det(DEBUG, "PM8921 USBIN callback: %s\n",
-					online ? "in" : "out");
+	pr_emu_det(DEBUG, "PM8921 USBIN callback (mode-%d): %s\n",
+				driver_mode, online ? "in" : "out");
 	emud->usb_present = online;
 	if (driver_mode == MODE_NORMAL)
-		queue_delayed_work(emud->wq, &emud->work,
+		QUEUE_DWORK_CHK(emud->wq, &emud->work,
 					msecs_to_jiffies(delay_ms));
 }
 
@@ -1102,7 +1107,7 @@ static void detection_work(void)
 		data->retries = 0;
 		data->state = SAMPLE;
 
-		queue_delayed_work(data->wq, &data->work,
+		QUEUE_DWORK_CHK(data->wq, &data->work,
 					msecs_to_jiffies(WASTE_CYCLE_TIME));
 		break;
 
@@ -1125,7 +1130,7 @@ static void detection_work(void)
 		} else
 			data->state = IDENTIFY;
 
-		queue_delayed_work(data->wq, &data->work, delay);
+		QUEUE_DWORK_CHK(data->wq, &data->work, delay);
 		break;
 
 	case SAMPLE_1:
@@ -1143,7 +1148,7 @@ static void detection_work(void)
 		} else
 			delay = msecs_to_jiffies(WASTE_CYCLE_TIME);
 
-		queue_delayed_work(data->wq, &data->work, delay);
+		QUEUE_DWORK_CHK(data->wq, &data->work, delay);
 		break;
 
 	case IDENTIFY:
@@ -1164,7 +1169,7 @@ static void detection_work(void)
 			pr_emu_det(STATUS,
 					"detection_work: IW Identified\n");
 			data->state = IDENTIFY_WHISPER_SMART;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 
 		} else if (SENSE_CHARGER_FLOAT ||
 			   SENSE_CHARGER) {
@@ -1215,7 +1220,7 @@ static void detection_work(void)
 			notify_accy(ACCY_USB_DEVICE);
 			data->state = USB_ADAPTER;
 		} else
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		break;
 
 	case USB:
@@ -1223,7 +1228,7 @@ static void detection_work(void)
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		}
 		break;
 
@@ -1232,7 +1237,7 @@ static void detection_work(void)
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		}
 		break;
 
@@ -1254,7 +1259,7 @@ static void detection_work(void)
 			    test_bit(SESS_END_BIT, &data->sense)) {
 			/* charger disconnect */
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
 			/* insertion and removal of audio cable */
 			if (data->whisper_auth == AUTH_PASSED)
@@ -1268,7 +1273,7 @@ static void detection_work(void)
 
 		if (test_bit(FLOAT_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 
 		} else if ((last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 			    ((data->whisper_auth == AUTH_PASSED) ||
@@ -1317,13 +1322,13 @@ static void detection_work(void)
 
 		} else if (data->whisper_auth == AUTH_NOT_STARTED) {
 			/* wait for authentication results */
-			queue_delayed_work(data->wq, &data->work,
+			QUEUE_DWORK_CHK(data->wq, &data->work,
 								POLL_TIME);
 		}
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		} else
 			data->state = WHISPER_SMART;
 		break;
@@ -1333,7 +1338,7 @@ static void detection_work(void)
 
 		if (!test_bit(GRND_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		} else {
 			data->state = USB_ADAPTER;
 		}
@@ -1356,13 +1361,13 @@ static void detection_work(void)
 			pr_emu_det(STATUS, "SMART_LD2: " \
 					"Its a SMART dock with SE1\n");
 			data->state = WHISPER_SMART;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 			break;
 		}
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		} else if ((test_bit(SESS_VLD_BIT, &data->sense) &&
 				(last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 				test_bit(GRND_BIT, &data->sense)) ||
@@ -1385,7 +1390,7 @@ static void detection_work(void)
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense)) {
 			data->state = CONFIG;
-			queue_delayed_work(data->wq, &data->work, 0);
+			QUEUE_DWORK_CHK(data->wq, &data->work, 0);
 		} else if (test_bit(SESS_VLD_BIT, &data->sense) &&
 			(last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
 			test_bit(GRND_BIT, &data->sense)) {
@@ -1427,7 +1432,7 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 	}
 
 	if (driver_mode == MODE_NORMAL)
-		queue_delayed_work(emud->wq, &emud->work, 0);
+		QUEUE_DWORK_CHK(emud->wq, &emud->work, 0);
 
 	prev_jiffies = jiffies;
 
@@ -1692,7 +1697,7 @@ DEFINE_SIMPLE_ATTRIBUTE(vbus_debugfs_fops, vbus_adc_read, NULL, "%lld\n");
 static int detection_set(void *data, u64 val)
 {
 	struct emu_det_data *emud = the_emud;
-	queue_work(emud->wq, &(emud->work.work));
+	QUEUE_DWORK_CHK(emud->wq, &emud->work, 0);
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(detection_debugfs_fops, NULL, detection_set, "%lld\n");
