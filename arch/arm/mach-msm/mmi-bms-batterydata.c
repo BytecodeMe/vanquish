@@ -15,6 +15,111 @@
 #include <linux/power/mmi-battery.h>
 #include "board-mmi.h"
 
+/* EV30 TEST Tables and Charging Parameters */
+static struct single_row_lut mmi_ev30test_fcc_temp = {
+	.x	= {-10, 23, 60},
+	.y	= {2301, 2500, 2475},
+	.cols	= 3,
+};
+
+static struct single_row_lut mmi_ev30test_fcc_sf = {
+	.x	= {1, 100, 200, 300, 400, 500},
+	.y	= {100, 96, 94, 92, 90, 88},
+	.cols	= 6,
+};
+
+static struct pc_sf_lut mmi_ev30test_pc_sf = {
+	.rows		= 10,
+	.cols		= 5,
+	.cycles		= {100, 200, 300, 400, 500},
+	.percent	= {100, 90, 80, 70, 60, 50, 40, 30, 20, 10},
+	.sf		= {
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100}
+	},
+};
+
+static struct pc_temp_ocv_lut mmi_ev30test_pc_temp_ocv = {
+	.rows		= 29,
+	.cols		= 3,
+	.temp		= {-10, 23, 60},
+	.percent	= {100, 95, 90, 85, 80, 75, 70, 65, 60, 55,
+				50, 45, 40, 35, 30, 25, 20, 15, 10,
+				9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+	},
+	.ocv		= {
+			{4310, 4310, 4310},
+			{4267, 4261, 4248},
+			{4218, 4214, 4202},
+			{4162, 4159, 4147},
+			{4107, 4106, 4095},
+			{4053, 4057, 4046},
+			{3995, 4009, 4001},
+			{3946, 3968, 3960},
+			{3908, 3929, 3923},
+			{3875, 3882, 3878},
+			{3846, 3845, 3841},
+			{3823, 3821, 3817},
+			{3802, 3803, 3798},
+			{3786, 3789, 3783},
+			{3771, 3779, 3765},
+			{3752, 3770, 3743},
+			{3733, 3749, 3720},
+			{3719, 3707, 3683},
+			{3700, 3688, 3666},
+			{3697, 3686, 3664},
+			{3693, 3685, 3661},
+			{3688, 3682, 3657},
+			{3680, 3677, 3651},
+			{3664, 3662, 3635},
+			{3636, 3632, 3601},
+			{3592, 3585, 3549},
+			{3523, 3516, 3478},
+			{3418, 3414, 3375},
+			{3200, 3200, 3200}
+	},
+};
+
+static struct pm8921_bms_battery_data  mmi_ev30test_metering_data = {
+	.fcc			= 2500,
+	.fcc_temp_lut		= &mmi_ev30test_fcc_temp,
+	.fcc_sf_lut		= &mmi_ev30test_fcc_sf,
+	.pc_temp_ocv_lut	= &mmi_ev30test_pc_temp_ocv,
+	.pc_sf_lut		= &mmi_ev30test_pc_sf,
+};
+
+static struct pm8921_charger_battery_data mmi_ev30test_charging_data = {
+	.max_voltage			= 4350,
+	.min_voltage			= 3200,
+	.resume_voltage_delta		= 100,
+	.term_current			= 80,
+	.cool_temp			= 0,
+	.warm_temp			= 45,
+	.max_bat_chg_current		= 2500,
+	.cool_bat_chg_current		= 0,
+	.warm_bat_chg_current		= 0,
+	.cool_bat_voltage		= 3800,
+	.warm_bat_voltage		= 3800,
+	.step_charge_current		= 1600,
+	.step_charge_voltage		= 4200,
+};
+
+static struct mmi_battery_cell mmi_ev30test_cell_data = {
+	.capacity = 0xFA,
+	.peak_voltage = 0xB9,
+	.dc_impedance = 0x55,
+	.cell_id = 0x5858, /* ev30test has now reserved cell code XX */
+};
+
+
 /* EB41 Tables and Charging Parameters */
 static struct single_row_lut mmi_eb41_fcc_temp = {
 	.x	= {-10, 23, 60},
@@ -82,7 +187,7 @@ static struct pc_temp_ocv_lut mmi_eb41_pc_temp_ocv = {
 			{3664, 3662, 3635},
 			{3636, 3632, 3601},
 			{3592, 3585, 3549},
-			{3523, 3416, 3478},
+			{3523, 3516, 3478},
 			{3418, 3414, 3375},
 			{3200, 3200, 3200}
 	},
@@ -100,7 +205,7 @@ static struct pm8921_charger_battery_data mmi_eb41_charging_data = {
 	.max_voltage			= 4350,
 	.min_voltage			= 3200,
 	.resume_voltage_delta		= 100,
-	.term_current			= 58,
+	.term_current			= 80,
 	.cool_temp			= 0,
 	.warm_temp			= 45,
 	.max_bat_chg_current		= 1678,
@@ -366,17 +471,20 @@ struct mmi_battery_list mmi_batts = {
 		&mmi_eb20_cell_data,
 		&mmi_eb20_pre_cell_data,
 		&mmi_eb41_cell_data,
+		&mmi_ev30test_cell_data,
 	},
 	.bms_list = {
 		 &mmi_df_metering_data,
 		 &mmi_eb20_metering_data,
 		 &mmi_eb20_pre_metering_data,
 		 &mmi_eb41_metering_data,
+		 &mmi_ev30test_metering_data,
 	 },
 	.chrg_list = {
 		 &mmi_df_charging_data,
 		 &mmi_eb20_charging_data,
 		 &mmi_eb20_pre_charging_data,
 		 &mmi_eb41_charging_data,
+		 &mmi_ev30test_charging_data,
 	 },
 };
