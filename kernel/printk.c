@@ -1231,6 +1231,7 @@ static int __cpuinit console_cpu_notify(struct notifier_block *self,
 	case CPU_UP_CANCELED:
 		console_lock();
 		console_unlock();
+		break;
 	/* invoked with preemption disabled, so defer */
 	case CPU_DYING:
 		if (!console_trylock())
