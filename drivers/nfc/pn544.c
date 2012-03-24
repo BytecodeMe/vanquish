@@ -217,28 +217,21 @@ static int pn544_dev_ioctl(struct pn544_dev *pn544_dev, unsigned int cmd, unsign
 			gpio_set_value(pn544_dev->firmware_gpio, 1);
 			msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio, ven_logic_low);
-			msleep(10);
+			msleep(2000);
 			gpio_set_value(pn544_dev->ven_gpio, ven_logic_high);
-			msleep(10);
 		} else if (arg == 1) {
 			/* power on */
-			msleep(2000);
 			pr_info("%s : normal power on\n", __func__);
 			gpio_set_value(pn544_dev->firmware_gpio, 0);
             msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio, ven_logic_high);
-			msleep(10);
-			gpio_set_value(pn544_dev->ven_gpio, ven_logic_low);
-			msleep(10);
-			gpio_set_value(pn544_dev->ven_gpio, ven_logic_high);
-			msleep(10);
 		} else if (arg == 0) {
 			/* power off */
 			pr_info("%s : power off\n", __func__);
 			gpio_set_value(pn544_dev->firmware_gpio, 0);
             msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio, ven_logic_low);
-			msleep(10);
+			msleep(2000);
 		} else {
 			pr_err("%s : bad arg %lu\n", __func__, arg);
 			return -EINVAL;
