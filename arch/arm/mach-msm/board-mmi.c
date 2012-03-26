@@ -2827,11 +2827,11 @@ static __init void register_i2c_devices_from_dt(int bus)
 				if (prop && (len == sizeof(u8)) && *(u8 *)prop)
 					msm_camera_sensor_ov8820_data.
 						sensor_platform_info->
-						reg_1p8 = NULL;
+						digital_en = 0;
 				else
 					msm_camera_sensor_ov8820_data.
 						sensor_platform_info->
-						digital_en = 0;
+						reg_1p8 = NULL;
 				info.platform_data =
 					&msm_camera_sensor_ov8820_data;
 				break;
