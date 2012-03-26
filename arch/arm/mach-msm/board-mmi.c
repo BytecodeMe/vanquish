@@ -3079,6 +3079,7 @@ static void __init mot_init_factory_kill(void)
 	}
 
 	rc = gpio_export(75, 0);
+
 	if (rc) {
 		pr_err("%s: GPIO export failure\n", __func__);
 		goto gpiofree;
@@ -3111,35 +3112,54 @@ static int mot_tcmd_export_gpio(void)
 	int rc;
 
 	rc = gpio_request(1, "USB_HOST_EN");
-	if (rc) {
-		pr_err("request USB_HOST_EN failed, rc=%d\n", rc);
-		return -ENODEV;
-	}
-	rc = gpio_direction_output(1, 0);
-	if (rc) {
-		pr_err("set output USB_HOST_EN failed, rc=%d\n", rc);
-		return -ENODEV;
-	}
-	rc = gpio_export(1, 0);
-	if (rc) {
-		pr_err("export USB_HOST_EN failed, rc=%d\n", rc);
-		return -ENODEV;
+	if (!rc) {
+		gpio_direction_output(1, 0);
+		rc = gpio_export(1, 0);
+		if (rc) {
+			pr_err("%s: GPIO USB_HOST_EN export failure\n", __func__);
+			gpio_free(1);
+		}
 	}
 
 	rc = gpio_request(PM8921_GPIO_PM_TO_SYS(36), "SIM_DET");
-	if (rc) {
-		pr_err("request gpio SIM_DET failed, rc=%d\n", rc);
-		return -ENODEV;
+	if (!rc) {
+		gpio_direction_input(PM8921_GPIO_PM_TO_SYS(36));
+		rc = gpio_export(PM8921_GPIO_PM_TO_SYS(36), 0);
+		if (rc) {
+			pr_err("%s: GPIO SIM_DET export failure\n", __func__);
+			gpio_free(PM8921_GPIO_PM_TO_SYS(36));
+		}
 	}
-	rc = gpio_direction_input(PM8921_GPIO_PM_TO_SYS(36));
-	if (rc) {
-		pr_err("set output SIM_DET failed, rc=%d\n", rc);
-		return -ENODEV;
+
+	/* RF connection detect GPIOs */
+	rc = gpio_request(24, "RF_CONN_DET_2G3G");
+	if (!rc) {
+		gpio_direction_input(24);
+		rc = gpio_export(24, 0);
+		if (rc) {
+			pr_err("%s: GPIO 24 export failure\n", __func__);
+			gpio_free(24);
+		}
 	}
-	rc = gpio_export(PM8921_GPIO_PM_TO_SYS(36), 0);
-	if (rc) {
-		pr_err("export gpio SIM_DET failed, rc=%d\n", rc);
-		return -ENODEV;
+
+	rc = gpio_request(25, "RF_CONN_DET_LTE_1");
+	if (!rc) {
+		gpio_direction_input(25);
+		rc = gpio_export(25, 0);
+		if (rc) {
+			pr_err("%s: GPIO 25 export failure\n", __func__);
+			gpio_free(25);
+		}
+	}
+
+	rc = gpio_request(81, "RF_CONN_DET_LTE_2");
+	if (!rc) {
+		gpio_direction_input(81);
+		rc = gpio_export(81, 0);
+		if (rc) {
+			pr_err("%s: GPIO 81 export failure\n", __func__);
+			gpio_free(81);
+		}
 	}
 	return 0;
 }

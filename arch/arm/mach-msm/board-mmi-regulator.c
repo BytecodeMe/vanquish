@@ -533,7 +533,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 	RPM_VS(LVS2,	 0, 1, 0,		    "8921_s1"),
 	RPM_VS(LVS3,	 0, 1, 0,		    "8921_s4"),
 	RPM_VS(LVS4,	 1, 1, 0,		    "8921_s4"),
-	RPM_VS(LVS5,	 0, 1, 0,		    "8921_s4"),
+	RPM_VS(LVS5,	 1, 1, 0,		    "8921_s4"),
 	RPM_VS(LVS6,	 1, 1, 0,		    "8921_s4"),
 	RPM_VS(LVS7,	 0, 1, 0,		    "8921_s4"),
 
