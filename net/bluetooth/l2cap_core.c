@@ -569,7 +569,7 @@ void l2cap_chan_del(struct sock *sk, int err)
 		struct hci_chan *ampchan = l2cap_pi(sk)->ampchan;
 		l2cap_pi(sk)->ampchan = NULL;
 		if (!hci_chan_put(ampchan))
-			l2cap_deaggregate(l2cap_pi(sk)->ampchan, l2cap_pi(sk));
+			l2cap_deaggregate(ampchan, l2cap_pi(sk));
 	}
 
 	sk->sk_state = BT_CLOSED;
@@ -3043,7 +3043,8 @@ void l2cap_ertm_recv_done(struct sock *sk)
 {
 	lock_sock(sk);
 
-	if (l2cap_pi(sk)->mode != L2CAP_MODE_ERTM) {
+	if (l2cap_pi(sk)->mode != L2CAP_MODE_ERTM ||
+			sk->sk_state != BT_CONNECTED) {
 		release_sock(sk);
 		return;
 	}
