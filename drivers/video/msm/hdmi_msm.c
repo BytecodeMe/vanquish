@@ -918,6 +918,7 @@ static void hdmi_msm_cec_latch_work(struct work_struct *work)
 static void hdcp_deauthenticate(void);
 static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 {
+	DEV_INFO("%s\n", __func__);
 
 	/* Don't process recursive actions */
 	mutex_lock(&hdmi_msm_state_mutex);
@@ -938,13 +939,13 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 	if (external_common_state->present_hdcp) {
 		hdcp_deauthenticate();
 #ifdef SUPPORT_NON_HDCP_DEVICES
-		about_to_reauth = true;
 		if (bksv_error)
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ + HZ/2);
 		else
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ/2);
+		about_to_reauth = true;
 #else
 		mod_timer(&hdmi_msm_state->hdcp_timer, jiffies + HZ/2);
 #endif
@@ -3061,13 +3062,20 @@ static void hdmi_msm_upd_hdcp_enable(boolean en)
 	if (external_common_state->hdcp_enable == en)
 		return;
 
+	DEV_INFO("%s: %d\n", __func__, en);
+
 	external_common_state->hdcp_enable = en;
 
 	if (external_common_state->sdev.state) {
-		if (en)
+		if (en) {
+#ifdef SUPPORT_NON_HDCP_DEVICES
+			bksv_error = 0;
+			about_to_reauth = false;
+#endif
 			hdmi_msm_hdcp_enable();
-		else
+		} else {
 			hdcp_deauthenticate();
+		}
 	}
 }
 #endif
