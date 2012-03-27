@@ -1252,7 +1252,7 @@ static int pm_power_get_property(struct power_supply *psy,
 
 #ifdef CONFIG_EMU_DETECTION
 		if (alarm_state == PM_BATT_ALARM_SHUTDOWN)
-			return 0;		
+			return 0;
 #endif
 
 		/* USB charging */
@@ -1973,8 +1973,6 @@ static void handle_usb_insertion_removal(struct pm8921_chg_chip *chip)
 {
 	int usb_present;
 
-	power_supply_changed(&chip->usb_psy);
-	pm_chg_failed_clear(chip, 1);
 	usb_present = is_usb_chg_plugged_in(chip);
 	if (chip->usb_present ^ usb_present) {
 		notify_usb_of_the_plugin_event(usb_present);
@@ -2637,6 +2635,8 @@ static void update_heartbeat(struct work_struct *work)
 	int percent_soc = pm8921_bms_get_percent_charge();
 	int fcc = pm8921_bms_get_fcc() / 1000;
 	int seconds = 0;
+	u8 temp;
+	int err;
 
 	wake_lock(&chip->heartbeat_wake_lock);
 
@@ -2700,8 +2700,6 @@ static void update_heartbeat(struct work_struct *work)
 #endif
 
 	power_supply_changed(&chip->batt_psy);
-	pm_chg_failed_clear(chip, 1);
-
 	schedule_delayed_work(&chip->update_heartbeat_work,
 			      round_jiffies_relative(msecs_to_jiffies
 						     (chip->update_time)));
@@ -2712,6 +2710,31 @@ static void update_heartbeat(struct work_struct *work)
 	pm8921_chg_program_alarm(chip, seconds);
 	wake_unlock(&chip->heartbeat_wake_lock);
 #endif
+
+	/*
+	 * bit 7 - Write to Register
+	 * bit 5 - Select Bank2 Register
+	 * bit 2 - Reset the Timer
+	 */
+	temp  = 0xA4;
+	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	if (err) {
+		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
+		return;
+	} else {
+		/*
+		 * bit 7 - Write to Register
+		 * bit 5 - Select Bank2 Register
+		 * bit 2 - Clear the Timer
+		 */
+		temp  = 0xA0;
+		err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+		if (err) {
+			pr_err("Error %d writing %d to addr %d\n",
+				err, temp, CHG_TEST);
+			return;
+		}
+	}
 }
 
 enum {
@@ -2837,11 +2860,7 @@ static void eoc_worker(struct work_struct *work)
 	struct pm8921_chg_chip *chip = container_of(dwork,
 				struct pm8921_chg_chip, eoc_work);
 	static int count;
-	int end;
-
-	power_supply_changed(&chip->usb_psy);
-	pm_chg_failed_clear(chip, 1);
-	end = is_charging_finished(chip);
+	int end = is_charging_finished(chip);
 
 	if (end == CHG_NOT_IN_PROGRESS) {
 			/* enable fastchg irq */
