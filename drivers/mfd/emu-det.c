@@ -111,7 +111,7 @@
 	DEF(STD_200K,	1350, 1500), \
 	DEF(ALT_100K,	1550, 1700), \
 	DEF(ALT_200K,	1850, 2100), \
-	DEF(VBUS_PRESENT, 700, 5400), \
+	DEF(VBUS_PRESENT, 700, 7000), \
 	DEF(MAX_NUM,	-1, -1) }
 
 #define DEF(_idx, _min, _max)		REF_##_idx
