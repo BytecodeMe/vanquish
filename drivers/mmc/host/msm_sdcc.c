@@ -626,10 +626,12 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 	}
 
 	/* Unmap sg buffers */
-	dma_unmap_sg(mmc_dev(host->mmc), host->sps.sg, host->sps.num_ents,
-			 host->sps.dir);
+	if (host->sps.sg) {
+		dma_unmap_sg(mmc_dev(host->mmc), host->sps.sg,
+				host->sps.num_ents, host->sps.dir);
+		host->sps.sg = NULL;
+	}
 
-	host->sps.sg = NULL;
 	host->sps.busy = 0;
 
 	if ((host->curr.got_dataend && (!host->curr.wait_for_auto_prog_done ||
