@@ -520,6 +520,7 @@ void mdp4_update_perf_level(u32 perf_level);
 void mdp4_set_perf_level(void);
 void mdp4_mddi_overlay_dmas_restore(void);
 void mdp4_dsi_panel_on(struct msm_fb_data_type *mfd);
+void mdp4_dsi_panel_off(struct msm_fb_data_type *mfd);
 
 #ifndef CONFIG_FB_MSM_MIPI_DSI
 void mdp4_mddi_dma_busy_wait(struct msm_fb_data_type *mfd);

@@ -184,6 +184,7 @@ struct msm_fb_panel_data {
 	int (*off) (struct platform_device *pdev);
 	int (*panel_on) (struct platform_device *pdev);
 	int (*power_ctrl) (boolean enable);
+	int (*panel_off) (struct platform_device *pdev);
 	struct platform_device *next;
 	int (*clk_func) (int enable);
 };

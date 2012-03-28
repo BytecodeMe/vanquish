@@ -287,6 +287,14 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 int mdp4_dsi_video_off(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct msm_fb_data_type *mfd;
+
+	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
+	/*
+	 * Image fade away on video mode panel when suspend,
+	 * work it around by turning off panel to hide it
+	 */
+	mdp4_dsi_panel_off(mfd);
 
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
@@ -684,4 +692,16 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 	mdp4_overlay_reg_flush(pipe, 0);
 	mdp4_overlay_dsi_video_vsync_push(mfd, pipe);
 	mutex_unlock(&mfd->dma->ov_mutex);
+}
+
+void mdp4_dsi_panel_off(struct msm_fb_data_type *mfd)
+{
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	struct msm_fb_panel_data *pdata =
+		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+
+	if (pdata->panel_off)
+		pdata->panel_off(mfd->pdev);
+
+#endif
 }
