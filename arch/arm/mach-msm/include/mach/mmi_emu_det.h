@@ -20,6 +20,7 @@
 #define __MMI_EMU_DETECTION_H__
 
 struct mmi_emu_det_platform_data {
+	int accy_support;
 	int (*enable_5v)(int on);
 	int (*core_power)(int on);
 	int (*id_protect)(int on);
@@ -29,12 +30,39 @@ struct mmi_emu_det_platform_data {
 	void (*dp_dm_mode)(int mode);
 };
 
-#define GPIO_MODE_GPIO	0
-#define GPIO_MODE_GSBI	1
+#define ACCY_SUPPORT_FULL	0
+#define ACCY_SUPPORT_BASIC	1
 
-#define GPIO_MODE_PAIRED	0
-#define GPIO_MODE_ALT_1		1
-#define GPIO_MODE_ALT_2		2
+#define GPIO_MODE_STANDARD	0
+#define GPIO_MODE_ALTERNATE	1
+#define GPIO_MODE_ALTERNATE_2	2
+
+/*
+	Definition of EMU detection's IOs:
+	name/id, optional, #-of-configs
+*/
+#undef DECLARE
+#define EMU_DET_IOs  { \
+	DECLARE(EMU_MUX_CTRL0_GPIO, 0, 1), \
+	DECLARE(EMU_MUX_CTRL1_GPIO, 0, 1), \
+	DECLARE(EMU_SCI_OUT_GPIO, 0, 1), \
+	DECLARE(EMU_ID_EN_GPIO, 1, 2), \
+	DECLARE(SEMU_PPD_DET_GPIO, 0, 1), \
+	DECLARE(SEMU_ALT_MODE_EN_GPIO, 1, 2), \
+	DECLARE(EMU_ID_GPIO, 1, 1), \
+	DECLARE(DMB_PPD_DET_GPIO, 1, 1), \
+	DECLARE(DPLUS_GPIO, 0, 2), \
+	DECLARE(DMINUS_GPIO, 0, 2), \
+	DECLARE(WHISPER_UART_TX_GPIO, 0, 2), \
+	DECLARE(WHISPER_UART_RX_GPIO, 0, 2), \
+	DECLARE(TX_PAIR_GPIO, 0, 2), \
+	DECLARE(RX_PAIR_GPIO, 0, 2), \
+}
+
+#define DECLARE(_id, _opt, _cfgs)	_id
+enum mmi_emu_det_gpios EMU_DET_IOs;
+#define EMU_DET_GPIO_MAX (RX_PAIR_GPIO + 1)
+#undef DECLARE
 
 void emu_det_register_notify(struct notifier_block *nb);
 int emu_det_get_accy(void);
