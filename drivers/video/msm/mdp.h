@@ -88,6 +88,7 @@ struct mdp_table_entry {
 
 extern struct mdp_ccs mdp_ccs_yuv2rgb ;
 extern struct mdp_ccs mdp_ccs_rgb2yuv ;
+extern unsigned char hdmi_prim_display;
 
 /*
  * MDP Image Structure
@@ -785,4 +786,5 @@ static inline int mdp4_overlay_dsi_state_get(void)
 }
 #endif
 
+void mdp_vid_quant_set(void);
 #endif /* MDP_H */
