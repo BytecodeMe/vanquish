@@ -1277,7 +1277,8 @@ static int pm_power_get_property(struct power_supply *psy,
 			if (((the_chip->emu_accessory == EMU_ACCY_CHARGER) ||
 			     (the_chip->emu_accessory ==
 				EMU_ACCY_WHISPER_SMART_DOCK)) &&
-			    (alarm_state != PM_BATT_ALARM_SHUTDOWN))
+			    (alarm_state != PM_BATT_ALARM_SHUTDOWN) &&
+			    (is_usb_chg_plugged_in(the_chip)))
 				val->intval = 1;
 			else
 				val->intval = 0;
