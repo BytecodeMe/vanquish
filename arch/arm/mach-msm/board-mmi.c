@@ -935,8 +935,6 @@ static __init void mot_init_emu_detection(
 #else
 #define DEFAULT_PANEL_NAME ""
 #endif
-#define PANEL_NAME_MAX_LEN	32
-#define HDMI_PANEL_NAME	"hdmi_msm"
 
 static char panel_name[PANEL_NAME_MAX_LEN + 1] = DEFAULT_PANEL_NAME;
 
