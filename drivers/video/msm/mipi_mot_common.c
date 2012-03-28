@@ -161,9 +161,13 @@ static int esd_recovery_start(struct msm_fb_data_type *mfd)
 {
 	struct msm_fb_panel_data *pdata = NULL;
 
+	mutex_lock(&mfd->panel_info.mipi.panel_mutex);
 	pr_info("MIPI MOT: ESD recovering is started\n");
 
 	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+
+	if (!mfd->panel_power_on)  /* panel is off, do nothing */
+		goto end;
 
 	mfd->panel_power_on = FALSE;
 	pdata->off(mfd->pdev);
@@ -171,58 +175,61 @@ static int esd_recovery_start(struct msm_fb_data_type *mfd)
 	pdata->on(mfd->pdev);
 	mfd->panel_power_on = TRUE;
 	mfd->dma_fnc(mfd);
-
+end:
 	pr_info("MIPI MOT: ESD recovering is done\n");
+
+	mutex_unlock(&mfd->panel_info.mipi.panel_mutex);
 
 	return 0;
 }
-static int mipi_read_cmd_locked(struct msm_fb_data_type *mfd,
-			 struct dsi_cmd_desc *cmd)
-{
-	int rd_val = -1;
 
-	mipi_set_tx_power_mode(0);
+static void mipi_mot_mipi_busy_wait(struct msm_fb_data_type *mfd)
+{
 	/* Todo: consider to remove mdp4_dsi_cmd_dma_busy_wait
 	 * mipi_dsi_cmds_tx/rx wait for dma completion already.
 	 */
-	mdp4_dsi_cmd_dma_busy_wait(mfd);
-	mipi_dsi_mdp_busy_wait(mfd);
-	rd_val = get_panel_info(mfd, mot_panel, cmd);
-
-	return rd_val;
-}
-static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
-{
-
-	u8 expected_mode, pwr_mode = 0;
-	static u16 manufacture_id = 0xff;
-	u16 rd_manufacture_id;
-	int ret = 0;
-	struct dsi_cmd_desc *cmd;
-
-	if (manufacture_id == 0xff) {
-		mutex_lock(&mfd->dma->ov_mutex);
-		if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
-			cmd = &mot_manufacture_id_cmd;
-			manufacture_id = mipi_read_cmd_locked(mfd, cmd);
-			mutex_unlock(&mfd->dma->ov_mutex);
-			msleep(100);
-		} else {
-			mutex_unlock(&mfd->dma->ov_mutex);
-			return 0;
-		}
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		mdp4_dsi_cmd_dma_busy_wait(mfd);
+		mipi_dsi_mdp_busy_wait(mfd);
+		mdp4_dsi_blt_dmap_busy_wait(mfd);
+	} else if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
+		mdp4_overlay_dsi_video_wait4event(mfd, INTR_PRIMARY_VSYNC);
 	}
+
+}
+
+static int mipi_read_cmd_locked(struct msm_fb_data_type *mfd,
+					struct dsi_cmd_desc *cmd, u8 *rd_data)
+{
+	int ret;
 
 	mutex_lock(&mfd->dma->ov_mutex);
-	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
-		cmd = &mot_get_pwr_mode_cmd;
-		pwr_mode =  mipi_read_cmd_locked(mfd, cmd);
-		mutex_unlock(&mfd->dma->ov_mutex);
+	if (atomic_read(&mot_panel->state) == MOT_PANEL_OFF) {
+		ret = MOT_ESD_PANEL_OFF;
+		goto panel_off_ret;
 	} else {
-		mutex_unlock(&mfd->dma->ov_mutex);
-		return 0;
+		mipi_set_tx_power_mode(0);
+		mipi_mot_mipi_busy_wait(mfd);
+		*rd_data = (u8)get_panel_info(mfd, mot_panel, cmd);
 	}
 
+	ret = MOT_ESD_OK;
+
+panel_off_ret:
+	mutex_unlock(&mfd->dma->ov_mutex);
+	return ret;
+}
+
+static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
+{
+	u8 expected_mode, pwr_mode = 0;
+	u8 rd_manufacture_id;
+	int ret = 0;
+
+	ret = mipi_read_cmd_locked(mfd, &mot_get_pwr_mode_cmd,
+							&pwr_mode);
+	if (ret == MOT_ESD_PANEL_OFF)
+		return ret;
 	/*
 	 * There is a issue of the mipi_dsi_cmds_rx(), and case# 00743147
 	 * is opened for this API, but the patch from QCOm doesn't fix the
@@ -238,42 +245,49 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 	 * commands, therefore we will free the DSI bus for 100msec after
 	 * the first read.
 	 */
-	msleep(100);
+	msleep(42);	/* wait for 2.5 frames */
 
-	mutex_lock(&mfd->dma->ov_mutex);
-	if (atomic_read(&mot_panel->state) == MOT_PANEL_ON) {
-		cmd = &mot_manufacture_id_cmd;
-		rd_manufacture_id = mipi_read_cmd_locked(mfd, cmd);
-		mutex_unlock(&mfd->dma->ov_mutex);
-	} else {
-		mutex_unlock(&mfd->dma->ov_mutex);
-		return 0;
-	}
+	ret = mipi_read_cmd_locked(mfd, &mot_manufacture_id_cmd,
+						&rd_manufacture_id);
+	if (ret == MOT_ESD_PANEL_OFF)
+		return ret;
 
 	expected_mode = 0x9c;
 
-	if ((pwr_mode != expected_mode) ||
-		(rd_manufacture_id != manufacture_id)) {
-		pr_err("%s: Power mode in incorrect state or wrong. "
-			"manufacture_id. Cur_mode=0x%x Expected_mode=0x%x "
-			" stored manufacture_id=0x%x Read=0x%x\n",
-			__func__, pwr_mode, expected_mode,
-			manufacture_id, rd_manufacture_id);
-		ret = -1;
-	} else {
-		pr_debug("%s:manufacture_id. Cur_mode=0x%x Expected_mode=0x%x "
-			" stored manufacture_id=0x%x Read=0x%x\n",
-			__func__, pwr_mode, expected_mode,
-			manufacture_id, rd_manufacture_id);
+	if (pwr_mode != expected_mode) {
+		pr_err("%s: Power mode in incorrect state. "
+				"Cur_mode=0x%x Expected_mode=0x%x ",
+					__func__, pwr_mode, expected_mode);
+		ret = MOT_ESD_ESD_DETECT;
+		goto esd_detect;
 	}
 
+	if ((rd_manufacture_id == mot_panel->panel_MID.MID1) ||
+		(rd_manufacture_id == mot_panel->panel_MID.MID2) ||
+		(rd_manufacture_id == mot_panel->panel_MID.MID3))
+		ret = MOT_ESD_OK;
+	else {
+		pr_err("%s: wrong manufacture_id: "
+			"Read_MID=0x%x MID1=0x%x MID2=0x%x MID3=0x%x\n",
+			__func__, rd_manufacture_id, mot_panel->panel_MID.MID1,
+			mot_panel->panel_MID.MID2, mot_panel->panel_MID.MID3);
+		ret = MOT_ESD_ESD_DETECT;
+	}
+
+esd_detect:
+	pr_debug("%s: Cur_mode=0x%x Expected_mode=0x%x.. "
+			"Read_MID=0x%x MID1=0x%x MID2=0x%x MID3=0x%x\n",
+			__func__, pwr_mode, expected_mode,
+			 rd_manufacture_id, mot_panel->panel_MID.MID1,
+			mot_panel->panel_MID.MID2, mot_panel->panel_MID.MID3);
 	return ret;
 }
 
 void mipi_mot_esd_work(void)
 {
 	struct msm_fb_data_type *mfd;
-	int ret, i;
+	int i;
+	int ret;
 #ifdef MIPI_MOT_PANEL_ESD_TEST
 	static int esd_count;
 	static int esd_trigger_cnt;
@@ -294,7 +308,7 @@ void mipi_mot_esd_work(void)
 
 	for (i = 0; i < MOT_PANEL_ESD_NUM_TRY_MAX; i++) {
 		ret =  mipi_mot_esd_detection(mfd);
-		if (!ret)
+		if ((ret == MOT_ESD_ESD_DETECT) || (ret == MOT_ESD_OK))
 			break;
 
 		msleep(100);

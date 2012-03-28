@@ -82,6 +82,10 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		down(&mfd->dma->mutex);
 
+	/* DSI is in the suspend or off state, don't need to do anything */
+	if (mdp4_overlay_dsi_state_get() <= ST_DSI_SUSPEND)
+		goto end;
+
 	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
 
 	/*
@@ -137,7 +141,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(0);
-
+end:
 	if (mdp_rev >= MDP_REV_41)
 		mutex_unlock(&mfd->dma->ov_mutex);
 	else
@@ -497,6 +501,10 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	else
 		mfd->dest = DISPLAY_LCD;
 
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	mutex_init(&mfd->panel_info.mipi.panel_mutex);
+#endif
+
 	if (mdp_rev == MDP_REV_303 &&
 		mipi_dsi_pdata->get_lane_config) {
 		if (mipi_dsi_pdata->get_lane_config() != 2) {
@@ -592,7 +600,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-return 0;
+	return 0;
 
 mipi_dsi_probe_err:
 	platform_device_put(mdp_dev);

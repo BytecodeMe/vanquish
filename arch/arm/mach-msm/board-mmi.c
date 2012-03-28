@@ -254,6 +254,11 @@ static int boot_mode_is_factory(void)
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
 }
 
+int mot_panel_is_factory_mode(void)
+{
+	return boot_mode_is_factory();
+}
+
 static void emu_mux_ctrl_config_pin(int io_num, int value);
 /*
   MUX switch GPIOs in case EMU detection is disabled
@@ -2391,8 +2396,10 @@ static __init void config_mdp_vsync_from_dt(void)
 	 * enable the VDDIO. Because of the SOL smooth transition, this gpio
 	 * must configure "high" to keep the VDDIO on
 	 */
+#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
 	else if (mipi_mot_panel_is_cmd_mode() != true)
 		use_mdp_vsync = MDP_VSYNC_DISABLED;
+#endif
 	else
 		use_mdp_vsync = MDP_VSYNC_ENABLED;
 

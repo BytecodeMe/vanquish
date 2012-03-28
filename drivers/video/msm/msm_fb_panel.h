@@ -132,6 +132,9 @@ struct mipi_panel_info {
 	uint32 xres_pad;
 	/* Pad height */
 	uint32 yres_pad;
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	struct mutex panel_mutex;
+#endif
 };
 
 struct msm_panel_info {
