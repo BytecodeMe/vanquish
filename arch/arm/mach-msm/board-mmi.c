@@ -254,78 +254,287 @@ static int boot_mode_is_factory(void)
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
 }
 
-static void emu_mux_ctrl_config_pin(int io_num, int value);
-/*
-  MUX switch GPIOs in case EMU detection is disabled
-*/
-#define EMU_MUX_CTRL0_GPIO	107
-#define EMU_MUX_CTRL1_GPIO	96
+#ifdef CONFIG_EMU_DETECTION
+static struct platform_device emu_det_device;
+static int l17_voltage = 2650000;
+static bool core_power_init, enable_5v_init;
 
-#define IC_EMU_POWER		0xA0
-#define IC_HONEY_BADGER		0xA1
+#define EMU_DET_ID_GPIO		PM8921_MPP_PM_TO_SYS(10)
+#define EMU_DET_DMB_PPD_GPIO	PM8921_MPP_PM_TO_SYS(10)
+#define EMU_DET_ID_EN_GPIO	PM8921_MPP_PM_TO_SYS(9)
+#define EMU_DET_PPD_DET_GPIO	PM8921_GPIO_PM_TO_SYS(35)
+#define EMU_DET_ALT_MODE_GPIO	PM8921_GPIO_PM_TO_SYS(17)
+#define EMU_DET_TX_PAIR_GPIO	PM8921_GPIO_PM_TO_SYS(22)
+#define EMU_DET_DMINUS_GPIO	PM8921_GPIO_PM_TO_SYS(21)
+#define EMU_DET_DPLUS_GPIO	PM8921_GPIO_PM_TO_SYS(41)
+#define EMU_DET_RX_PAIR_GPIO	PM8921_GPIO_PM_TO_SYS(42)
+#define WHISPER_UART_TX_GPIO	42
+#define WHISPER_UART_RX_GPIO	43
 
-#define UART_GSBI4		4
-#define UART_GSBI12		12
-
-#define GPIO_IS_MSM		1
-#define GPIO_IS_PMIC		2
-#define GPIO_IS_PMIC_MPP	3
-
-#define GPIO_STD_CFG		0
-#define GPIO_ALT_CFG		1
-
-#define EMU_DET_RESOURCE_EXTRA	4
-#define EMU_DET_RESOURCE_MAX	(EMU_DET_GPIO_MAX + EMU_DET_RESOURCE_EXTRA)
-
-struct mmi_emu_det_gpio_data {
-	int gpio;
-	int owner;
-	int num_cfg;
-	void *gpio_configs;
+static struct pm8xxx_mpp_config_data emu_det_pm_mpp_config[] = {
+	{	/* EMU_ID */
+		.type		= PM8XXX_MPP_TYPE_A_INPUT,
+		.level		= PM8XXX_MPP_AIN_AMUX_CH7,
+		.control	= PM8XXX_MPP_DOUT_CTRL_LOW,
+	},
+	{	/* EMU_ID_EN - protection On  */
+		.type		= PM8XXX_MPP_TYPE_D_INPUT,
+		.level		= PM8921_MPP_DIG_LEVEL_L17,
+		.control	= PM8XXX_MPP_DIN_TO_INT,
+	},
+	{       /* EMU_ID_EN - protection Off */
+		.type           = PM8XXX_MPP_TYPE_D_OUTPUT,
+		.level          = PM8921_MPP_DIG_LEVEL_L17,
+		.control        = PM8XXX_MPP_DOUT_CTRL_HIGH,
+	},
+	{	/* DMB_PPD_DET */
+		.type		= PM8XXX_MPP_TYPE_D_INPUT,
+		.level		= PM8921_MPP_DIG_LEVEL_L17,
+		.control	= PM8XXX_MPP_DIN_TO_INT,
+	},
 };
 
-struct emu_det_dt_data {
-	int ic_type;
-	int uart_gsbi;
-	int accy_support;
-	char *vdd_vreg;
-	char *usb_otg_vreg;
-	unsigned int vdd_voltage;
+static struct pm_gpio emu_det_pm_gpio_config[] = {
+	{	/* PM GPIO 35 - SEMU_PPD_DET */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* PM GPIO 17 - SEMU_ALT_MODE_EN - standard mode */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 1, /* high impedance */
+	},
+	{	/* PM GPIO 17 - SEMU_ALT_MODE_EN - alternate mode */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 1,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_HIGH,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* PM GPIO 23 - EMU_SCI_OUT */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
 };
 
-#define DECLARE(_id, _opt, _cfgs)	#_id
-static const char *mmi_emu_det_io_map[EMU_DET_GPIO_MAX] = EMU_DET_IOs;
-#undef DECLARE
+static struct pm_gpio emu_det_tx_pair_in_gpio_config[] = {
+	{	/* PM GPIO 42/WHISPER RX: paired input - std */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired input - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 1,
+	},
+};
 
-static __init int mmi_emu_det_index_by_name(const char *name)
+static struct pm_gpio emu_det_tx_pair_out_gpio_config[] = {
+	{	/* PM GPIO 41/WHISPER RX: paired out - std */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired out - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_DN,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+};
+
+static struct pm_gpio emu_det_rx_pair_in_gpio_config[] = {
+	{	/* PM GPIO 21/WHISPER TX: paired input - std */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired input - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_30,
+		.vin_sel	= PM_GPIO_VIN_L17,
+		.out_strength	= PM_GPIO_STRENGTH_LOW,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+};
+
+static struct pm_gpio emu_det_rx_pair_out_gpio_config[] = {
+	{	/* PM GPIO 22/WHISPER TX: paired out - std */
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_UP_1P5,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol	= 0,
+		.disable_pin	= 0,
+	},
+	{	/* paired out - alt */
+		.direction	= PM_GPIO_DIR_IN,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 0,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol	= 0,
+		.disable_pin	= 1,
+	},
+};
+
+static void emu_det_dp_dm_mode(int mode)
 {
-	int ret = -1, idx;
-	for (idx = 0; idx < EMU_DET_GPIO_MAX; idx++)
-		if (!strncmp(mmi_emu_det_io_map[idx],
-			name, strlen(mmi_emu_det_io_map[idx]))) {
-			ret = idx;
-			break;
-		}
-	return ret;
+	struct pm_gpio tx_gpio, tx_pair, rx_gpio, rx_pair;
+	int idx = !!mode;
+
+	tx_pair = emu_det_tx_pair_in_gpio_config[idx];
+	tx_gpio = emu_det_tx_pair_out_gpio_config[idx];
+
+	rx_pair = emu_det_rx_pair_out_gpio_config[idx];
+	rx_gpio = emu_det_rx_pair_in_gpio_config[idx];
+	if (mode == GPIO_MODE_ALT_2)
+		rx_gpio.pull = PM_GPIO_PULL_NO;
+
+	pm8xxx_gpio_config(EMU_DET_DMINUS_GPIO, &tx_gpio);
+	pm8xxx_gpio_config(EMU_DET_TX_PAIR_GPIO, &tx_pair);
+	pm8xxx_gpio_config(EMU_DET_DPLUS_GPIO, &rx_gpio);
+	pm8xxx_gpio_config(EMU_DET_RX_PAIR_GPIO, &rx_pair);
 }
 
-static struct emu_det_dt_data	emu_det_dt_data = {
-	.ic_type = IC_EMU_POWER,
-	.uart_gsbi = UART_GSBI12,
-	.vdd_voltage = 2650000,
+static struct gpiomux_setting emu_det_gsbi12 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
 };
 
-static bool core_power_init, enable_5v_init;
-static struct platform_device	emu_det_device;
-static struct resource		mmi_emu_det_resources[EMU_DET_RESOURCE_MAX];
-static struct msm_otg_platform_data	*otg_control_data = &msm_otg_pdata;
-static struct mmi_emu_det_platform_data mmi_emu_det_data;
-static struct mmi_emu_det_gpio_data	mmi_emu_det_gpio[EMU_DET_GPIO_MAX] = {
+static struct gpiomux_setting emu_det_sci_out = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting emu_det_mux_ctrl0 = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting emu_det_mux_ctrl1 = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting emu_det_id_en = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config emu_det_msm_gpio_configs[] = {
 	{
-		.gpio = EMU_MUX_CTRL0_GPIO,
+		.gpio      = 42,	/* GSBI12 WHISPER_TX */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi12,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi12,
+		},
 	},
 	{
-		.gpio = EMU_MUX_CTRL1_GPIO,
+		.gpio      = 43,	/* GSBI12 WHISPER_RX */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_gsbi12,
+			[GPIOMUX_ACTIVE] = &emu_det_gsbi12,
+		},
+	},
+	{
+		.gpio      = 107,	/* EMU_MUX_CTRL0 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_mux_ctrl0,
+			[GPIOMUX_ACTIVE] = &emu_det_mux_ctrl0,
+		}
+	},
+	{
+		.gpio      = 96,	/* EMU_MUX_CTRL1 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_mux_ctrl1,
+			[GPIOMUX_ACTIVE] = &emu_det_mux_ctrl1,
+		}
+	},
+};
+
+static struct msm_gpiomux_config emu_det_msm_gpio_alt_configs[] = {
+	{
+		.gpio      = 0,		/* EMU_ID_EN */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_id_en,
+			[GPIOMUX_ACTIVE] = &emu_det_id_en,
+		},
+	},
+	{
+		.gpio      = 90,	/* EMU_SCI_OUT */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &emu_det_sci_out,
+			[GPIOMUX_ACTIVE] = &emu_det_sci_out,
+		}
 	},
 };
 
@@ -335,18 +544,14 @@ static int emu_det_core_power(int on)
 	static struct regulator *emu_vdd;
 
 	if (!core_power_init) {
-		emu_vdd = regulator_get(&emu_det_device.dev,
-				emu_det_dt_data.vdd_vreg);
+		emu_vdd = regulator_get(&emu_det_device.dev, "EMU_POWER");
 		if (IS_ERR(emu_vdd)) {
 			pr_err("unable to get EMU_POWER reg\n");
 			return PTR_ERR(emu_vdd);
 		}
-		rc = regulator_set_voltage(emu_vdd,
-				emu_det_dt_data.vdd_voltage,
-				emu_det_dt_data.vdd_voltage);
+		rc = regulator_set_voltage(emu_vdd, l17_voltage, l17_voltage);
 		if (rc) {
-			pr_err("unable to set voltage %s reg\n",
-				emu_det_dt_data.vdd_vreg);
+			pr_err("unable to set voltage EMU_POWER reg\n");
 			goto put_vdd;
 		}
 		core_power_init = true;
@@ -355,13 +560,11 @@ static int emu_det_core_power(int on)
 	if (on) {
 		rc = regulator_enable(emu_vdd);
 		if (rc)
-			pr_err("failed to enable %s reg\n",
-				emu_det_dt_data.vdd_vreg);
+			pr_err("failed to enable EMU_POWER reg\n");
 	} else {
 		rc = regulator_disable(emu_vdd);
 		if (rc)
-			pr_err("failed to disable %s reg\n",
-				emu_det_dt_data.vdd_vreg);
+			pr_err("failed to disable EMU_POWER reg\n");
 	}
 	return rc;
 
@@ -378,11 +581,9 @@ static int emu_det_enable_5v(int on)
 	static struct regulator *emu_ext_5v;
 
 	if (!enable_5v_init) {
-		emu_ext_5v = regulator_get(&emu_det_device.dev,
-				emu_det_dt_data.usb_otg_vreg);
+		emu_ext_5v = regulator_get(&emu_det_device.dev, "8921_usb_otg");
 		if (IS_ERR(emu_ext_5v)) {
-			pr_err("unable to get %s reg\n",
-				emu_det_dt_data.usb_otg_vreg);
+			pr_err("unable to get 5VS_OTG reg\n");
 			return PTR_ERR(emu_ext_5v);
 		}
 		enable_5v_init = true;
@@ -391,111 +592,46 @@ static int emu_det_enable_5v(int on)
 	if (on) {
 		rc = regulator_enable(emu_ext_5v);
 		if (rc)
-			pr_err("failed to enable %s reg\n",
-				emu_det_dt_data.usb_otg_vreg);
+			pr_err("failed to enable 5VS_OTG reg\n");
 	} else {
 		rc = regulator_disable(emu_ext_5v);
 		if (rc)
-			pr_err("failed to disable %s reg\n",
-				emu_det_dt_data.usb_otg_vreg);
+			pr_err("failed to disable 5VS_OTG reg\n");
 	}
 	return rc;
 }
 
-static int emu_det_configure_gpio(
-		struct mmi_emu_det_gpio_data *gpio_data, int alt)
-{
-	int ret = -1;
-
-	if (gpio_data->gpio_configs && gpio_data->num_cfg) {
-		struct pm8xxx_mpp_config_data *mpp;
-		struct msm_gpiomux_config gmux;
-		struct gpiomux_setting *ms;
-		struct pm_gpio *pm;
-
-		switch (gpio_data->owner) {
-		case GPIO_IS_MSM:
-			memset(&gmux, 0, sizeof(gmux));
-			ms = gpio_data->gpio_configs;
-			if (alt)
-				ms++;
-			gmux.gpio = gpio_data->gpio;
-			gmux.settings[GPIOMUX_ACTIVE] = ms;
-			gmux.settings[GPIOMUX_SUSPENDED] = ms;
-			msm_gpiomux_install(&gmux, 1);
-			ret = 0;
-				break;
-		case GPIO_IS_PMIC:
-			pm = (struct pm_gpio *)gpio_data->gpio_configs;
-			if (alt)
-				pm++;
-			ret = pm8xxx_gpio_config(gpio_data->gpio, pm);
-				break;
-		case GPIO_IS_PMIC_MPP:
-			mpp = gpio_data->gpio_configs;
-			if (alt)
-				mpp++;
-			ret = pm8xxx_mpp_config(gpio_data->gpio, mpp);
-				break;
-		}
-	} else
-		pr_err("EMU missing gpio %d data\n", gpio_data->gpio);
-	return ret;
-}
-
-static void emu_det_dp_dm_mode(int mode)
-{
-	int alt = !!mode;
-	struct pm_gpio rx_gpio;
-	struct pm_gpio *cfg_rx_gpio = (struct pm_gpio *)
-			mmi_emu_det_gpio[DPLUS_GPIO].gpio_configs;
-	if (alt)
-		cfg_rx_gpio++;
-
-	rx_gpio = *cfg_rx_gpio;
-
-	if (mode == GPIO_MODE_ALTERNATE_2)
-		rx_gpio.pull = PM_GPIO_PULL_DN;
-
-	emu_det_configure_gpio(&mmi_emu_det_gpio[RX_PAIR_GPIO], alt);
-	pm8xxx_gpio_config(mmi_emu_det_gpio[DPLUS_GPIO].gpio, &rx_gpio);
-
-	emu_det_configure_gpio(&mmi_emu_det_gpio[TX_PAIR_GPIO], alt);
-	emu_det_configure_gpio(&mmi_emu_det_gpio[DMINUS_GPIO],  alt);
-}
-
 static int emu_det_id_protect(int on)
 {
-	int ret = 0;
-	int alt = !on;
-	struct mmi_emu_det_gpio_data *gpio_data =
-				&mmi_emu_det_gpio[EMU_ID_EN_GPIO];
-	if (gpio_data->gpio)
-		ret = emu_det_configure_gpio(gpio_data, alt);
-	return ret;
+	struct resource *res = platform_get_resource_byname(
+				&emu_det_device,
+				IORESOURCE_IO, "EMU_ID_EN_GPIO");
+
+	if (res && (res->start > NR_MSM_GPIOS)) {
+		return pm8xxx_mpp_config(EMU_DET_ID_EN_GPIO,
+					 &emu_det_pm_mpp_config[on ? 1 : 2]);
+	}
+
+	return 0;
 }
 
 static int emu_det_alt_mode(int on)
 {
-	int ret = 0;
-	struct mmi_emu_det_gpio_data *gpio_data =
-				&mmi_emu_det_gpio[SEMU_ALT_MODE_EN_GPIO];
-	if (gpio_data->gpio)
-		ret = emu_det_configure_gpio(gpio_data, on);
-	return ret;
+	return pm8xxx_gpio_config(EMU_DET_ALT_MODE_GPIO,
+				  &emu_det_pm_gpio_config[on ? 2 : 1]);
 }
 
 static void emu_det_gpio_mode(int mode)
 {
-	struct mmi_emu_det_gpio_data *tx_gpio_data =
-				&mmi_emu_det_gpio[WHISPER_UART_TX_GPIO];
-	struct mmi_emu_det_gpio_data *rx_gpio_data =
-				&mmi_emu_det_gpio[WHISPER_UART_RX_GPIO];
-
-	if (tx_gpio_data->gpio && rx_gpio_data->gpio) {
-		emu_det_configure_gpio(tx_gpio_data, mode);
-		emu_det_configure_gpio(rx_gpio_data, mode);
+	switch (mode) {
+	case GPIO_MODE_GPIO:
+		emu_det_gsbi12.func = GPIOMUX_FUNC_GPIO;
+		break;
+	case GPIO_MODE_GSBI:
+		emu_det_gsbi12.func = GPIOMUX_FUNC_1;
+		break;
 	}
+	msm_gpiomux_install(emu_det_msm_gpio_configs, 2);
 }
 
 static int emu_det_adc_id(void)
@@ -518,19 +654,146 @@ static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.dp_dm_mode = emu_det_dp_dm_mode,
 };
 
-static struct platform_device emu_det_device = {
-	.name		= "emu_det",
-	.id		= -1,
-	.num_resources	= EMU_DET_RESOURCE_MAX,
-	.resource	= mmi_emu_det_resources,
-	.dev.platform_data = &mmi_emu_det_data,
-};
+#define MSM8960_HSUSB_PHYS	0x12500000
+#define MSM8960_HSUSB_SIZE	SZ_4K
 
 #define MSM_UART_NAME		"msm_serial_hs"
 #define MSM_DSPS_HCLK           "dsps_hclk"
-#define MSM_GSBI4_PHYS		0x16300000
 #define MSM_GSBI12_PHYS		0x12480000
 #define MSM_UART12DM_PHYS	(MSM_GSBI12_PHYS + 0x10000)
+
+static struct resource resources_emu_det[] = {
+	{
+		.start	= MSM8960_HSUSB_PHYS,
+		.end	= MSM8960_HSUSB_PHYS + MSM8960_HSUSB_SIZE,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= MSM_GSBI12_PHYS,
+		.end	= MSM_GSBI12_PHYS,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "PHY_USB_IRQ",
+		.start	= USB1_HS_IRQ,
+		.end	= USB1_HS_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "SEMU_PPD_DET_IRQ",
+		.start	= PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 35),
+		.end	= PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 35),
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "EMU_SCI_OUT_IRQ",
+		.start	= MSM_GPIO_TO_INT(90),
+		.end	= MSM_GPIO_TO_INT(90),
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "EMU_SCI_OUT_GPIO",
+		.start	= 90,	/* MSM GPIO */
+		.end	= 90,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "EMU_ID_EN_GPIO",
+		.start	= EMU_DET_ID_EN_GPIO,	/* PM MPP */
+		.end	= EMU_DET_ID_EN_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "EMU_MUX_CTRL1_GPIO",
+		.start	= 96,	/* MSM GPIO */
+		.end	= 96,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "EMU_MUX_CTRL0_GPIO",
+		.start	= 107,	/* MSM GPIO */
+		.end	= 107,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "SEMU_ALT_MODE_EN_GPIO",
+		.start	= EMU_DET_ALT_MODE_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_ALT_MODE_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "SEMU_PPD_DET_GPIO",
+		.start	= EMU_DET_PPD_DET_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_PPD_DET_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "EMU_ID_GPIO",
+		.start	= EMU_DET_ID_GPIO,	/* PM MPP */
+		.end	= EMU_DET_ID_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "DPLUS_GPIO",
+		.start	= EMU_DET_DPLUS_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_DPLUS_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "DMINUS_GPIO",
+		.start	= EMU_DET_DMINUS_GPIO,	/* PM GPIO */
+		.end	= EMU_DET_DMINUS_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "WHISPER_UART_TX_GPIO",
+		.start	= WHISPER_UART_TX_GPIO,	/* MSM GPIO */
+		.end	= WHISPER_UART_TX_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "WHISPER_UART_RX_GPIO",
+		.start	= WHISPER_UART_RX_GPIO,	/* MSM GPIO */
+		.end	= WHISPER_UART_RX_GPIO,
+		.flags	= IORESOURCE_IO,
+	},
+
+};
+
+static struct platform_device emu_det_device = {
+	.name		= "emu_det",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_emu_det),
+	.resource	= resources_emu_det,
+	.dev.platform_data = &mmi_emu_det_data,
+};
+
+static struct msm_otg_platform_data *otg_control_data = &msm_otg_pdata;
+
+static __init void emu_mux_ctrl_config_pin(const char *res_name, int value)
+{
+	int rc;
+	struct resource *res;
+
+	res = platform_get_resource_byname(&emu_det_device,
+		IORESOURCE_IO, res_name);
+	if (!res) {
+		pr_err("Resource %s cannot be configured\n", res_name);
+		return;
+	}
+	rc = gpio_request(res->start, res_name);
+	if (rc) {
+		pr_err("Could not request %s for GPIO %d\n", res_name,
+			res->start);
+		return;
+	}
+	rc = gpio_direction_output(res->start, value);
+	if (rc) {
+		pr_err("Could not set %s for GPIO %d\n", res_name, res->start);
+		gpio_free(res->start);
+		return;
+	}
+}
 
 static struct resource resources_uart_gsbi12[] = {
 	{
@@ -588,58 +851,57 @@ static __init void mot_set_gsbi12_clk(const char *con_id,
 	}
 }
 
-static __init void mot_setup_whisper_clk(
-			struct msm_otg_platform_data *ctrl_data)
+static __init void mot_setup_gsbi12_clk(void)
 {
 	struct clk *clk;
-
-	if (!ctrl_data || emu_det_dt_data.uart_gsbi != UART_GSBI12)
-		return;
-
 	if (!msm_gsbi12_uart_clk_ptr(&clk))
 		mot_set_gsbi12_clk("core_clk", clk, MSM_UART_NAME ".1");
 }
 
 static __init void emu_det_gpio_init(void)
 {
-	int i;
-	for (i = 0; i <  EMU_DET_GPIO_MAX; i++) {
-		struct mmi_emu_det_gpio_data *gpio_data =
-						&mmi_emu_det_gpio[i];
-		if (gpio_data->gpio)
-			emu_det_configure_gpio(gpio_data, GPIO_MODE_STANDARD);
-	}
-}
-
-static void emu_mux_ctrl_config_pin(int io_num, int value)
-{
-	int rc, gpio;
-	const char *name;
 	struct resource *res;
 
+	msm_gpiomux_install(emu_det_msm_gpio_configs,
+			    ARRAY_SIZE(emu_det_msm_gpio_configs));
+
 	res = platform_get_resource_byname(&emu_det_device,
-			IORESOURCE_IO, mmi_emu_det_io_map[io_num]);
-	if (!res) {
-		pr_info("EMU pre-defined gpio %d, name %s\n",
-			mmi_emu_det_gpio[io_num].gpio,
-			mmi_emu_det_io_map[io_num]);
-		gpio = mmi_emu_det_gpio[io_num].gpio;
-		name = mmi_emu_det_io_map[io_num];
+					   IORESOURCE_IO, "EMU_ID_GPIO");
+	if (res)
+		pm8xxx_mpp_config(res->start, &emu_det_pm_mpp_config[0]);
+
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "DMB_PPD_DET_GPIO");
+	if (res) {
+		pm8xxx_mpp_config(res->start, &emu_det_pm_mpp_config[3]);
+		pr_info("HW has HoneyBadger\n");
+		l17_voltage = 2850000;
+	}
+
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "EMU_ID_EN_GPIO");
+	if (res) {
+		if (res->start > NR_MSM_GPIOS) {
+			pm8xxx_mpp_config(res->start,
+					  &emu_det_pm_mpp_config[1]);
+		} else {
+			emu_det_msm_gpio_alt_configs[0].gpio = res->start;
+			msm_gpiomux_install(&emu_det_msm_gpio_alt_configs[0], 1);
+		}
+	}
+
+	res = platform_get_resource_byname(&emu_det_device,
+					   IORESOURCE_IO, "EMU_SCI_OUT_GPIO");
+	if (res && (res->start > NR_MSM_GPIOS)) {
+		pm8xxx_gpio_config(res->start,
+				   &emu_det_pm_gpio_config[3]);
 	} else {
-		gpio = res->start;
-		name = res->name;
+		emu_det_msm_gpio_alt_configs[1].gpio = res->start;
+		msm_gpiomux_install(&emu_det_msm_gpio_alt_configs[1], 1);
 	}
-	rc = gpio_request(gpio, name);
-	if (rc) {
-		pr_err("Could not request %s for GPIO %d\n", name, gpio);
-		return;
-	}
-	rc = gpio_direction_output(gpio, value);
-	if (rc) {
-		pr_err("Could not set %s for GPIO %d\n", name, gpio);
-		gpio_free(gpio);
-		return;
-	}
+
+	pm8xxx_gpio_config(EMU_DET_PPD_DET_GPIO, &emu_det_pm_gpio_config[0]);
+	pm8xxx_gpio_config(EMU_DET_ALT_MODE_GPIO, &emu_det_pm_gpio_config[1]);
 }
 
 static __init void mot_init_emu_detection(
@@ -655,10 +917,12 @@ static __init void mot_init_emu_detection(
 		/* If platform data is not set, safely drive the MUX
 		 * CTRL pins to the USB configuration.
 		 */
-		emu_mux_ctrl_config_pin(EMU_MUX_CTRL0_GPIO, 1);
-		emu_mux_ctrl_config_pin(EMU_MUX_CTRL1_GPIO, 0);
+		emu_mux_ctrl_config_pin("EMU_MUX_CTRL0_GPIO", 1);
+		emu_mux_ctrl_config_pin("EMU_MUX_CTRL1_GPIO", 0);
 	}
 }
+
+#endif
 
 /* defaulting to qinara, atag parser will override */
 /* todo: finalize the names, move display related stuff to board-msm8960-panel.c */
@@ -2068,7 +2332,9 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&msm_bus_mm_fabric,
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
+#ifdef CONFIG_EMU_DETECTION
 	&msm8960_device_uart_gsbi12,
+#endif
 	&pm8xxx_rgb_leds_device,
 };
 
@@ -2082,268 +2348,29 @@ static struct msm_pm_boot_platform_data msm_pm_boot_pdata __initdata = {
 	.mode = MSM_PM_BOOT_CONFIG_TZ,
 };
 
-static __init int dt_read_msm_gpio_config(struct device_node *parent,
-			const char *property, int property_len,
-			struct gpiomux_setting *msm_gpio)
+static void __init set_emu_detection_resource(const char *res_name, int value);
+
+static __init void config_emu_det_from_dt(void)
 {
-	int ret = -1, len = 0;
-	const void *config_prop;
-
-	config_prop = of_get_property(parent, property, &len);
-	if (config_prop && (len == property_len)) {
-		u8 *config = (u8 *)config_prop;
-
-		msm_gpio->func = config[0];
-		msm_gpio->drv  = config[1];
-		msm_gpio->pull = config[2];
-		msm_gpio->dir  = config[3];
-		ret = 0;
-	}
-	return ret;
-}
-
-static __init int dt_read_pmic_gpio_config(struct device_node *parent,
-			const char *property, int property_len,
-			struct pm_gpio *pm_gpio)
-{
-	int ret = -1, len = 0;
-	const void *config_prop;
-
-	config_prop = of_get_property(parent, property, &len);
-	if (config_prop && (len == property_len)) {
-		u8 *config = (u8 *)config_prop;
-
-		pm_gpio->direction	= config[0];
-		pm_gpio->output_buffer	= config[1];
-		pm_gpio->output_value	= config[2];
-		pm_gpio->pull		= config[3];
-		pm_gpio->vin_sel	= config[4];
-		pm_gpio->out_strength	= config[5];
-		pm_gpio->function	= config[6];
-		pm_gpio->inv_int_pol	= config[7];
-		pm_gpio->disable_pin	= config[8];
-		ret = 0;
-	}
-	return ret;
-}
-
-static __init int dt_read_mpp_config(struct device_node *parent,
-			const char *property, int property_len,
-			struct pm8xxx_mpp_config_data *pmic_mpp)
-{
-	int ret = -1, len = 0;
-	const void *config_prop;
-
-	config_prop = of_get_property(parent, property, &len);
-	if (config_prop && (len == property_len)) {
-		u8 *config = (u8 *)config_prop;
-
-		pmic_mpp->type    = config[0];
-		pmic_mpp->level	  = config[1];
-		pmic_mpp->control = config[2];
-		ret = 0;
-	}
-	return ret;
-}
-
-static __init void config_EMU_detection_from_dt(void)
-{
-	struct device_node *parent, *child;
-	char *name;
-	int count = 0, len = 0;
+	struct device_node *chosen;
+	int len = 0;
 	const void *prop;
-	struct resource *res;
 
-	parent = of_find_node_by_path("/System@0/EMUDetection@0");
-	if (!parent)
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
 		goto out;
 
-	prop = of_get_property(parent, "ic-type", &len);
-	if (prop && (len == sizeof(u8)))
-		emu_det_dt_data.ic_type = *(u8 *)prop | 0xA0;
+	prop = of_get_property(chosen, "disable_emu_detection", &len);
+	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+		otg_control_data = NULL;
 
-	prop = of_get_property(parent, "uart-gsbi", &len);
-	if (prop && (len == sizeof(u8)))
-		emu_det_dt_data.uart_gsbi = *(u8 *)prop;
-
-	prop = of_get_property(parent, "accy-support", &len);
-	if (prop && (len == sizeof(u8)))
-		emu_det_dt_data.accy_support = *(u8 *)prop;
-
-	prop = of_get_property(parent, "vdd-vreg-mv", &len);
+	prop = of_get_property(chosen, "emu_id_enable_gpio", &len);
 	if (prop && (len == sizeof(u32)))
-		emu_det_dt_data.vdd_voltage = *(u32 *)prop;
+		set_emu_detection_resource("EMU_ID_EN_GPIO", *(u32 *)prop);
 
-	prop = of_get_property(parent, "vdd-vreg", &len);
-	if (prop && len) {
-		name = kzalloc(len, GFP_KERNEL);
-		if (name) {
-			strlcpy(name, (const char *)prop, len);
-			emu_det_dt_data.vdd_vreg = name;
-		}
-	}
+	of_node_put(chosen);
 
-	prop = of_get_property(parent, "usb-otg-vreg", &len);
-	if (prop && len) {
-		name = kzalloc(len, GFP_KERNEL);
-		if (name) {
-			strlcpy(name, (const char *)prop, len);
-			emu_det_dt_data.usb_otg_vreg = name;
-		}
-	}
-
-	/* count the child GPIO nodes */
-	for_each_child_of_node(parent, child) {
-		prop = of_get_property(child, "type", &len);
-		if (prop && (len == sizeof(u32)) &&
-			(*(u32 *)prop == 0x001E0010))
-				count++;
-	}
-
-	/* extra elemnts for: GSBI phys, SEMU_PPD_DET & EMU_SCI_OUT IRQs */
-	if ((count + EMU_DET_RESOURCE_EXTRA) > EMU_DET_RESOURCE_MAX) {
-		pr_err("EMU resource: invalid number of resorces\n");
-		goto out;
-	}
-
-	res = mmi_emu_det_resources;
-
-	for_each_child_of_node(parent, child) {
-		int gpio_idx;
-		size_t ds;
-		const void *info_prop;
-		struct mmi_emu_det_gpio_data *emud;
-		struct gpiomux_setting msm_gpio[2];
-		struct pm_gpio pmic_gpio[2];
-		struct pm8xxx_mpp_config_data pmic_mpp[2];
-
-		info_prop = of_get_property(child, "gpio-info", &len);
-		if (info_prop && (len == sizeof(u16))) {
-			u8 *info = (u8 *)info_prop;
-
-			if (info[0] == GPIO_IS_MSM) {
-				res->start = res->end = info[1];
-			} else if (info[0] == GPIO_IS_PMIC) {
-				res->start = res->end =
-					PM8921_GPIO_PM_TO_SYS(info[1]);
-			} else if (info[0] == GPIO_IS_PMIC_MPP) {
-				res->start = res->end =
-					PM8921_MPP_PM_TO_SYS(info[1]);
-			} else {
-				pr_err("EMU unknown gpio %d owner %d; " \
-					"skipping...\n", info[1], info[0]);
-				continue;
-			}
-
-			prop = of_get_property(child, "name", &len);
-			if (prop && len) {
-				gpio_idx = -1;
-				name = kzalloc(len, GFP_KERNEL);
-				if (name) {
-					strlcpy(name, (const char *)prop, len);
-					res->name = (const char *)name;
-				} else {
-					pr_err("EMU unable to allocate memory\n");
-					goto out;
-				}
-			} else {
-				pr_err("EMU resource: unable to read name\n");
-				goto out;
-			}
-
-			gpio_idx = mmi_emu_det_index_by_name(res->name);
-			if (gpio_idx != -1)
-				emud = &mmi_emu_det_gpio[gpio_idx];
-			else {
-				pr_err("EMU resource: unknown name: %s\n",
-						res->name);
-				goto out;
-			}
-			emud->gpio = res->start;
-			emud->owner = info[0];
-
-			switch (info[0]) {
-			case GPIO_IS_MSM:
-				ds = sizeof(struct gpiomux_setting);
-				memset(msm_gpio, 0, sizeof(msm_gpio));
-				if (!dt_read_msm_gpio_config(child,
-					"msm-gpio-cfg-alt",
-					sizeof(u8)*4, &msm_gpio[1]))
-					emud->num_cfg++;
-
-				if (!dt_read_msm_gpio_config(child,
-					"msm-gpio-cfg",
-					sizeof(u8)*4, &msm_gpio[0])) {
-					emud->num_cfg++;
-					emud->gpio_configs = kmemdup(msm_gpio,
-						ds*emud->num_cfg, GFP_KERNEL);
-				} else
-					goto out;
-
-					break;
-			case GPIO_IS_PMIC:
-				ds = sizeof(struct pm_gpio);
-				memset(pmic_gpio, 0, sizeof(pmic_gpio));
-				if (!dt_read_pmic_gpio_config(child,
-					"pmic-gpio-cfg-alt",
-					sizeof(u8)*9, &pmic_gpio[1]))
-					emud->num_cfg++;
-
-				if (!dt_read_pmic_gpio_config(child,
-					"pmic-gpio-cfg",
-					sizeof(u8)*9, &pmic_gpio[0])) {
-					emud->num_cfg++;
-					emud->gpio_configs = kmemdup(pmic_gpio,
-						ds*emud->num_cfg, GFP_KERNEL);
-				} else
-					goto out;
-
-					break;
-			case GPIO_IS_PMIC_MPP:
-				ds = sizeof(struct pm8xxx_mpp_config_data);
-				memset(pmic_mpp, 0, sizeof(pmic_mpp));
-				if (!dt_read_mpp_config(child,
-					"pmic-mpp-cfg-alt",
-					sizeof(u8)*3, &pmic_mpp[1]))
-					emud->num_cfg++;
-
-				if (!dt_read_mpp_config(child,
-					"pmic-mpp-cfg",
-					sizeof(u8)*3, &pmic_mpp[0])) {
-					emud->num_cfg++;
-					emud->gpio_configs = kmemdup(pmic_mpp,
-						ds*emud->num_cfg, GFP_KERNEL);
-				} else
-					goto out;
-
-					break;
-			}
-			res->flags = IORESOURCE_IO;
-			res++;
-		}
-	}
-
-	/* FIXME: might not need it */
-	res->start = emu_det_dt_data.uart_gsbi ?
-			MSM_GSBI12_PHYS : MSM_GSBI4_PHYS;
-	res->end   = res->start + SZ_4K;
-	res->flags = IORESOURCE_MEM;
-
-	pr_info("EMU detection IC: %X, UART@GSBI%d, resources %d, " \
-			"accy.support: %s\n",
-			emu_det_dt_data.ic_type,
-			emu_det_dt_data.uart_gsbi, count,
-			emu_det_dt_data.accy_support ? "BASIC" : "FULL");
-
-	mmi_emu_det_data.accy_support = emu_det_dt_data.accy_support;
-
-	of_node_put(parent);
-	return;
 out:
-	/* TODO: release allocated memory */
-	/* disable EMU detection in case of error in device tree */
-	otg_control_data = NULL;
-	pr_err("EMU error reading devtree; EMU disabled\n");
 	return;
 }
 
@@ -2361,6 +2388,32 @@ static int mmi_dt_get_hdmi_feature(int *value)
 		 *value = *(u8 *)panel_prop;
 
 	return 0;
+}
+
+/*
+ * HACK: Ideally all clocks would be configured directly from the device tree.
+ * Don't use this as a template for future device tree changes.
+ */
+static __init void config_gsbi12_clk_from_dt(void)
+{
+#ifdef CONFIG_EMU_DETECTION
+	struct device_node *chosen;
+	int len = 0;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	prop = of_get_property(chosen, "setup_gsbi12_clock", &len);
+	if (prop && (len == sizeof(u8)) && *(u8 *)prop)
+		mot_setup_gsbi12_clk();
+
+	of_node_put(chosen);
+
+out:
+#endif
+	return;
 }
 
 /*
@@ -3112,10 +3165,38 @@ static int mot_tcmd_export_gpio(void)
 }
 
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
+#define MOT_EMU_MUX_CTRL_0_DEFAULT      107
+#define MOT_EMU_MUX_CTRL_1_DEFAULT      96
+static int mot_emu_mux_ctrl_0 = MOT_EMU_MUX_CTRL_0_DEFAULT;
+static int mot_emu_mux_ctrl_1 = MOT_EMU_MUX_CTRL_1_DEFAULT;
+
+#ifdef CONFIG_EMU_DETECTION
+static void mot_emu_mux_ctrl_update_config(void)
+{
+	struct resource *res;
+	res = platform_get_resource_byname(&emu_det_device,
+		IORESOURCE_IO, "EMU_MUX_CTRL0_GPIO");
+	if (!res)
+		return;
+	mot_emu_mux_ctrl_0 = res->start;
+
+	res = platform_get_resource_byname(&emu_det_device,
+		IORESOURCE_IO, "EMU_MUX_CTRL1_GPIO");
+	if (!res)
+		return;
+	mot_emu_mux_ctrl_1 = res->start;
+}
+#endif
+
 static void mot_factory_reboot_callback(void)
 {
-	emu_mux_ctrl_config_pin(EMU_MUX_CTRL0_GPIO, 0);
-	emu_mux_ctrl_config_pin(EMU_MUX_CTRL1_GPIO, 0);
+#ifdef CONFIG_EMU_DETECTION
+	/* If EMU detection driver is enabled, pull the pin configuration
+	   from its platform device data. */
+	mot_emu_mux_ctrl_update_config();
+#endif
+	gpio_direction_output(mot_emu_mux_ctrl_0, 0);
+	gpio_direction_output(mot_emu_mux_ctrl_1, 0);
 }
 static void (*reboot_ptr)(void) = &mot_factory_reboot_callback;
 #else
@@ -3193,8 +3274,7 @@ static void __init msm8960_mmi_init(void)
 
 	config_keyboard_from_dt();
 
-	config_EMU_detection_from_dt();
-	mot_setup_whisper_clk(otg_control_data);
+	config_gsbi12_clk_from_dt();
 
 	/* load panel_name from device tree, if present */
 	load_panel_name_from_dt();
@@ -3247,7 +3327,10 @@ static void __init msm8960_mmi_init(void)
 	mot_init_factory_kill();
 	msm8960_init_usb();
 
+#ifdef CONFIG_EMU_DETECTION
+	config_emu_det_from_dt();
 	mot_init_emu_detection(otg_control_data);
+#endif
 
 	platform_add_devices(mmi_devices, ARRAY_SIZE(mmi_devices));
 
@@ -3300,6 +3383,19 @@ static int __init mot_parse_atag_mbm_protocol_version(const struct tag *tag)
 	return 0;
 }
 __tagtable(ATAG_MBM_PROTOCOL_VERSION, mot_parse_atag_mbm_protocol_version);
+
+static void __init set_emu_detection_resource(const char *res_name, int value)
+{
+	struct resource *res = platform_get_resource_byname(
+				&emu_det_device,
+				IORESOURCE_IO, res_name);
+	if (res) {
+		res->start = res->end = value;
+		pr_info("resource (%s) set to %d\n",
+				res_name, value);
+	} else
+		pr_err("cannot set resource (%s)\n", res_name);
+}
 
 /* process flat device tree for hardware configuration */
 static int __init parse_tag_flat_dev_tree_address(const struct tag *tag)
