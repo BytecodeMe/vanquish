@@ -2438,14 +2438,6 @@ static void unplug_check_worker(struct work_struct *work)
 						chg_gone, usb_chg_plugged_in);
 		schedule_work(&chip->unplug_ovp_fet_open_work);
 	}
-	usb_chg_plugged_in = is_usb_chg_plugged_in(chip);
-	chg_gone = pm_chg_get_rt_status(chip, CHG_GONE_IRQ);
-	if (chg_gone == 1  && usb_chg_plugged_in == 1) {
-		/* run the worker directly */
-		pr_debug(" ver5 step: chg_gone=%d, usb_valid = %d\n",
-						chg_gone, usb_chg_plugged_in);
-		schedule_work(&chip->unplug_ovp_fet_open_work);
-	}
 
 check_again_later:
 	schedule_delayed_work(&chip->unplug_check_work,
