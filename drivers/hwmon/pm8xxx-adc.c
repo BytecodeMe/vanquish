@@ -145,7 +145,7 @@ struct pm8xxx_adc {
 	int					msm_suspend_check;
 	struct pm8xxx_adc_amux_properties	*conv;
 	struct pm8xxx_adc_scale_tbl		*scale_tbls;
-	struct pm8xxx_adc_arb_btm_param		batt[0];
+	struct pm8xxx_adc_arb_btm_param		batt;
 	struct sensor_device_attribute		sens_attr[0];
 };
 
@@ -458,8 +458,8 @@ static void pm8xxx_adc_btm_warm_scheduler_fn(struct work_struct *work)
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
 	warm_status = irq_read_line(adc_pmic->btm_warm_irq);
-	if (adc_pmic->batt->btm_warm_fn != NULL)
-		adc_pmic->batt->btm_warm_fn(warm_status);
+	if (adc_pmic->batt.btm_warm_fn != NULL)
+		adc_pmic->batt.btm_warm_fn(warm_status);
 	spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
 }
 
@@ -472,8 +472,8 @@ static void pm8xxx_adc_btm_cool_scheduler_fn(struct work_struct *work)
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
 	cool_status = irq_read_line(adc_pmic->btm_cool_irq);
-	if (adc_pmic->batt->btm_cool_fn != NULL)
-		adc_pmic->batt->btm_cool_fn(cool_status);
+	if (adc_pmic->batt.btm_cool_fn != NULL)
+		adc_pmic->batt.btm_cool_fn(cool_status);
 	spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
 }
 
@@ -885,7 +885,7 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		if (rc < 0)
 			goto write_err;
 
-		adc_pmic->batt->btm_cool_fn = btm_param->btm_cool_fn;
+		adc_pmic->batt.btm_cool_fn = btm_param->btm_cool_fn;
 	}
 
 	if (btm_param->btm_warm_fn != NULL) {
@@ -899,7 +899,7 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		if (rc < 0)
 			goto write_err;
 
-		adc_pmic->batt->btm_warm_fn = btm_param->btm_warm_fn;
+		adc_pmic->batt.btm_warm_fn = btm_param->btm_warm_fn;
 	}
 
 	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_BTM_CNTRL1, &arb_btm_cntrl1);
@@ -977,10 +977,10 @@ static uint32_t pm8xxx_adc_btm_read(uint32_t channel)
 	if (rc < 0)
 		goto write_err;
 
-	if (pmic_adc->batt->btm_warm_fn != NULL)
+	if (pmic_adc->batt.btm_warm_fn != NULL)
 		enable_irq(adc_pmic->btm_warm_irq);
 
-	if (pmic_adc->batt->btm_cool_fn != NULL)
+	if (pmic_adc->batt.btm_cool_fn != NULL)
 		enable_irq(adc_pmic->btm_cool_irq);
 
 write_err:
@@ -1191,7 +1191,6 @@ static int __devinit pm8xxx_adc_probe(struct platform_device *pdev)
 	}
 
 	adc_pmic = devm_kzalloc(&pdev->dev, sizeof(struct pm8xxx_adc) +
-			sizeof(struct pm8xxx_adc_arb_btm_param) +
 			(sizeof(struct sensor_device_attribute) *
 			pdata->adc_num_board_channel), GFP_KERNEL);
 	if (!adc_pmic) {

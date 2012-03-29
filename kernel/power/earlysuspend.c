@@ -207,7 +207,7 @@ suspend_state_t get_suspend_state(void)
 static void stuck_wakelock_timeout(unsigned long data)
 {
 	pr_info("**** active wakelocks ****\n");
-	print_active_locks(WAKE_LOCK_SUSPEND);
+	has_wake_lock(WAKE_LOCK_SUSPEND);
 	stuck_wakelock_wdset();
 }
 
