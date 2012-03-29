@@ -1570,7 +1570,7 @@ struct emu_det_gpio_init_data emu_det_gpio_data[] = {
 	DECLARE_GPIO(EMU_ID_GPIO,           SKIP,       -1,
 		     GPIO_OPTIONAL,  false),
 	DECLARE_GPIO(DMB_PPD_DET_GPIO,      DIR_INPUT,  -1,
-		     GPIO_OPTIONAL,  false),
+		     GPIO_OPTIONAL,  true),
 	DECLARE_GPIO(DPLUS_GPIO,            SKIP,       -1,
 		     GPIO_REQUIRED,  false),
 	DECLARE_GPIO(DMINUS_GPIO,           SKIP,       -1,
