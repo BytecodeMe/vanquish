@@ -73,8 +73,10 @@ module_param_array_named(pcts, duty_pcts_ramp, uint, NULL, 0644);
 static int pm8xxx_rgb_blink_set(struct pm8xxx_rgb_led_drv_data *drv_data,
 	unsigned on)
 {
-	static int num_up = ((PM_PWM_LUT_SIZE-1) * 0.8)/2;
+	/* num_up and num_down are percentages of times for ramping */
+	static int num_up = ((PM_PWM_LUT_SIZE-1) * 1)/2;
 	int num_down;
+	/* num_top is percentage of time to stay up solid */
 	int num_top;
 	int i;
 	int ret = 0;
