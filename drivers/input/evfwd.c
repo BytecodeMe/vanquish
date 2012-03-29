@@ -21,7 +21,7 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/pci.h>
-#include <linux/input.h>
+#include <linux/input/mt.h>
 #include <linux/platform_device.h>
 
 MODULE_LICENSE("GPL");
@@ -390,42 +390,37 @@ int start_evfwdabs(void)
 	/* same name for all evfwd devices is intentional */
 	evfwdabs_input_dev->name = DEVICE_NAME;
 
-	/* needed ?
-	evfwdabs_input_dev->phys = "aev_abs/input0";
-	evfwdabs_input_dev->id.bustype = BUS_VIRTUAL;
-	evfwdabs_input_dev->id.version = 0x0100;
-	*/
+	/* need to send BTN_TOUCH for MT-A/B protocols */
+	set_bit(EV_KEY, evfwdabs_input_dev->evbit);
+	set_bit(BTN_TOUCH, evfwdabs_input_dev->keybit);
 
-	/* Expose multi-touch capabilities.
-	 * Rather than specify the size of the screen, evfwd uses
-	 * a max x and y of 2000.	This requires clients to scale
+	/* Expose multi-touch capabilities. */
+	set_bit(EV_ABS, evfwdabs_input_dev->evbit);
+	set_bit(ABS_MT_POSITION_X,  evfwdabs_input_dev->absbit);
+	set_bit(ABS_MT_POSITION_Y,  evfwdabs_input_dev->absbit);
+	set_bit(ABS_MT_PRESSURE, evfwdabs_input_dev->absbit);
+	set_bit(ABS_MT_TOUCH_MAJOR, evfwdabs_input_dev->absbit);
+
+	/* Rather than specify the size of the screen, evfwd uses
+	 * a max x and y of 2000. This requires clients to scale
 	 * the coordinates appropriately, but allows the code
 	 * to function with any display resolution.
 	 */
-	set_bit(EV_ABS, evfwdabs_input_dev->evbit);
 	input_set_abs_params(evfwdabs_input_dev, ABS_MT_POSITION_X,
 				0, 2000, 0, 0);
 	input_set_abs_params(evfwdabs_input_dev, ABS_MT_POSITION_Y,
 				0, 2000, 0, 0);
 	input_set_abs_params(evfwdabs_input_dev, ABS_MT_PRESSURE,
-				0, 255, 0, 0);
-	input_set_abs_params(evfwdabs_input_dev, ABS_MT_TRACKING_ID,
-				0, 4, 0, 0);
+				0, 255, 1, 0);
 	input_set_abs_params(evfwdabs_input_dev, ABS_MT_TOUCH_MAJOR,
-				0, 8, 0, 0);
+				0, 255, 1, 0);
 
-	set_bit(ABS_MT_POSITION_X,  evfwdabs_input_dev->absbit);
-	set_bit(ABS_MT_POSITION_Y,  evfwdabs_input_dev->absbit);
-	set_bit(ABS_MT_PRESSURE, evfwdabs_input_dev->absbit);
-	set_bit(ABS_MT_TRACKING_ID, evfwdabs_input_dev->absbit);
-	set_bit(ABS_MT_TOUCH_MAJOR, evfwdabs_input_dev->absbit);
-
-	set_bit(EV_KEY, evfwdabs_input_dev->evbit);
-	set_bit(BTN_TOUCH, evfwdabs_input_dev->keybit);
+	input_mt_init_slots(evfwdabs_input_dev, 10);
 
 	/* Register with the input subsystem */
 	ret = input_register_device(evfwdabs_input_dev);
 	if (ret) {
+		input_mt_destroy_slots(evfwdabs_input_dev);
 		input_free_device(evfwdabs_input_dev);
 		printk(KERN_ERR "Failed to register device"
 				" (evfwdabs err=%d)", ret);
