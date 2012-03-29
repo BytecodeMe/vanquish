@@ -268,21 +268,18 @@ static char *get_function_name(struct android_dev *dev)
 	static char function_name[50];
 
 	device_desc.idVendor = 0x22b8;
+	device_desc.bDeviceClass = USB_CLASS_PER_INTERFACE;
+	device_desc.bDeviceSubClass = USB_CLASS_PER_INTERFACE;
+	device_desc.bDeviceProtocol = USB_CLASS_PER_INTERFACE;
 	switch (dev->current_function_type) {
 	case CDROM:
 		/* cdrom */
 		device_desc.idProduct = DEFAULT_CDROM_PRODUCT_ID;
-		device_desc.bDeviceClass = USB_CLASS_PER_INTERFACE;
-		device_desc.bDeviceSubClass = USB_CLASS_PER_INTERFACE;
-		device_desc.bDeviceProtocol = USB_CLASS_PER_INTERFACE;
 		strncpy(function_name, "mass_storage", sizeof(function_name));
 		break;
 	case CDROM2:
 		/* cdrom2 */
 		device_desc.idProduct = DEFAULT_CDROM2_PRODUCT_ID;
-		device_desc.bDeviceClass = USB_CLASS_PER_INTERFACE;
-		device_desc.bDeviceSubClass = USB_CLASS_PER_INTERFACE;
-		device_desc.bDeviceProtocol = USB_CLASS_PER_INTERFACE;
 		strncpy(function_name, "mass_storage", sizeof(function_name));
 		break;
 	case USBNETMTP:
@@ -294,9 +291,6 @@ static char *get_function_name(struct android_dev *dev)
 			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
 			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		}
-		device_desc.bDeviceClass = USB_CLASS_VENDOR_SPEC;
-		device_desc.bDeviceSubClass = USB_CLASS_VENDOR_SPEC;
-		device_desc.bDeviceProtocol = USB_CLASS_VENDOR_SPEC;
 		break;
 	default:
 		/* usbnetmtp */
@@ -307,9 +301,6 @@ static char *get_function_name(struct android_dev *dev)
 			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
 			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		}
-		device_desc.bDeviceClass = USB_CLASS_VENDOR_SPEC;
-		device_desc.bDeviceSubClass = USB_CLASS_VENDOR_SPEC;
-		device_desc.bDeviceProtocol = USB_CLASS_VENDOR_SPEC;
 		break;
 	}
 	return function_name;
