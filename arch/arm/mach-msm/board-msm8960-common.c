@@ -1216,8 +1216,8 @@ static struct msm_bus_vectors rotator_ui_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_ROTATOR,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = (1024 * 600 * 4 * 2 * 60),
-		.ib  = (1024 * 600 * 4 * 2 * 60 * 1.5),
+		.ab  = (1280 * 720 * 4 * 2 * 60),
+		.ib  = (1280 * 720 * 4 * 2 * 60 * 1.5),
 	},
 };
 
@@ -1378,8 +1378,8 @@ static struct msm_bus_vectors mdp_ui_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 216000000 * 2,
-		.ib = 270000000 * 2,
+		.ab = 248832000 * 2,
+		.ib = 311040000 * 2,
 	},
 };
 
@@ -1388,8 +1388,8 @@ static struct msm_bus_vectors mdp_vga_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 216000000 * 2,
-		.ib = 270000000 * 2,
+		.ab = 248832000 * 2,
+		.ib = 311040000 * 2,
 	},
 };
 
@@ -1398,8 +1398,8 @@ static struct msm_bus_vectors mdp_720p_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 230400000 * 2,
-		.ib = 288000000 * 2,
+		.ab = 304128000 * 2,
+		.ib = 380160000 * 2,
 	},
 };
 
@@ -1408,8 +1408,8 @@ static struct msm_bus_vectors mdp_1080p_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 2000000000UL,
-		.ib = 2000000000UL,
+		.ab = 407808000 * 2,
+		.ib = 509760000 * 2,
 	},
 };
 
