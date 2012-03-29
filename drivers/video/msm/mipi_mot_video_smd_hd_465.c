@@ -536,7 +536,6 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	pinfo = &mot_panel->pinfo;
 
 	pinfo->xres = 720;
-	pinfo->mipi.xres_pad = 195;
 	pinfo->yres = 1280;
 	pinfo->type = MIPI_VIDEO_PANEL;
 	pinfo->pdest = DISPLAY_1;
@@ -546,7 +545,7 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	pinfo->lcdc.h_back_porch = 12;
 	pinfo->mipi.hbp_power_stop = FALSE;
 
-	pinfo->lcdc.h_front_porch = 90;
+	pinfo->lcdc.h_front_porch = 285;
 	pinfo->mipi.hfp_power_stop = FALSE;
 
 	pinfo->lcdc.h_pulse_width = 12;
