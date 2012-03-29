@@ -350,9 +350,11 @@ static int tk_request(struct l2cap_conn *conn, u8 remote_oob, u8 auth,
 
 	if (method == SMP_CFM_PASSKEY) {
 		u8 key[16];
-		/* Generate a passkey for display. It is not valid until
-		 * confirmed.
+		/* Generate a passkey for display. This is considered
+		 * to be valid because we use SMP_CFM_PASSKEY only when
+		 * we pair with remote device which has keyboard input.
 		 */
+		hcon->tk_valid = TRUE;
 		memset(key, 0, sizeof(key));
 		get_random_bytes(&passkey, sizeof(passkey));
 		passkey %= 1000000;
@@ -370,6 +372,9 @@ agent_request:
 				HCI_EV_USER_PASSKEY_REQUEST, conn->dst, 0);
 		break;
 	case SMP_CFM_PASSKEY:
+		ret = mgmt_user_confirm_request(hcon->hdev->id,
+			HCI_EV_USER_PASSKEY_NOTIFICATION, conn->dst, passkey);
+		break;
 	default:
 		ret = mgmt_user_confirm_request(hcon->hdev->id,
 			HCI_EV_USER_CONFIRM_REQUEST, conn->dst, passkey);
