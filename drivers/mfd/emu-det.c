@@ -1435,25 +1435,32 @@ struct emu_det_irq_init_data {
 	unsigned int	idx;
 	char		*name;
 	unsigned long	flags;
+	int		required;
 	bool		wakeup;
 	irqreturn_t	(*handler)(int, void *);
 };
 
+#define OPTIONAL	0
+#define REQUIRED	1
+
+#define SCI_OUT_IDX	0
+
 #define	TO_STRING(x)	#x
-#define EMU_DET_IRQ(_id, _flags, _wakeup, _handler) \
+#define EMU_DET_IRQ(_id, _flags, _req, _wakeup, _handler) \
 { \
 	.idx		= _id##_IRQ, \
 	.name		= TO_STRING(_id##_GPIO), \
 	.flags		= _flags, \
+	.required	= _req, \
 	.wakeup		= _wakeup, \
 	.handler	= _handler, \
 }
 
 static struct emu_det_irq_init_data emu_det_irq_data[] = {
-	EMU_DET_IRQ(SEMU_PPD_DET, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-						true, emu_det_irq_handler),
 	EMU_DET_IRQ(EMU_SCI_OUT, IRQF_TRIGGER_FALLING,
-						false, emu_det_irq_handler),
+				REQUIRED, false, emu_det_irq_handler),
+	EMU_DET_IRQ(SEMU_PPD_DET, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+				REQUIRED, true, emu_det_irq_handler),
 };
 
 static void free_irqs(void)
@@ -1479,6 +1486,13 @@ static int __devinit request_irqs(struct platform_device *pdev)
 	bitmap_fill(emud->enabled_irqs, EMU_DET_IRQ_MAX);
 
 	for (i = 0; i < ARRAY_SIZE(emu_det_irq_data); i++) {
+		if (emu_det_irq_data[i].required == OPTIONAL) {
+			pr_emu_det(DEBUG, "no IRQ for gpio %s\n",
+					emu_det_irq_data[i].name);
+			clear_bit(emu_det_irq_data[i].idx,
+					emud->enabled_irqs);
+			continue;
+		}
 
 		res = platform_get_resource_byname(pdev,
 			IORESOURCE_IO, emu_det_irq_data[i].name);
@@ -1537,9 +1551,6 @@ struct emu_det_gpio_init_data {
 #define SKIP	0
 #define INPUT	1
 #define OUTPUT	2
-
-#define OPTIONAL	0
-#define REQUIRED	1
 
 #define DECLARE_GPIO(_id, _dir, _val, _req, _expt)	\
 { \
@@ -1961,6 +1972,8 @@ static int emu_det_probe(struct platform_device *pdev)
 		goto free_data;
 	}
 
+	if (emu_pdata->accy_support == ACCY_SUPPORT_BASIC)
+		emu_det_irq_data[SCI_OUT_IDX].required = OPTIONAL;
 	data->dev = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
