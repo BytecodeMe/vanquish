@@ -1676,7 +1676,7 @@ static void w1_gpio_enable_regulators(int enable)
 								"8921_l7\n");
 		}
 		if (!IS_ERR_OR_NULL(vdd2)) {
-			rc = regulator_set_voltage(vdd2, l17_voltage, l17_voltage);
+			rc = regulator_set_voltage(vdd2, 2650000, 2850000);
 			if (!rc) {
 				rc = regulator_enable(vdd2);
 			}
