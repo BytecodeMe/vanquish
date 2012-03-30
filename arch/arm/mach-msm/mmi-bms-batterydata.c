@@ -15,20 +15,20 @@
 #include <linux/power/mmi-battery.h>
 #include "board-mmi.h"
 
-/* EV30 TEST Tables and Charging Parameters */
-static struct single_row_lut mmi_ev30test_fcc_temp = {
+/* EV30 Tables and Charging Parameters */
+static struct single_row_lut mmi_ev30_fcc_temp = {
 	.x	= {-10, 23, 60},
 	.y	= {2301, 2500, 2475},
 	.cols	= 3,
 };
 
-static struct single_row_lut mmi_ev30test_fcc_sf = {
+static struct single_row_lut mmi_ev30_fcc_sf = {
 	.x	= {1, 100, 200, 300, 400, 500},
 	.y	= {100, 96, 94, 92, 90, 88},
 	.cols	= 6,
 };
 
-static struct pc_sf_lut mmi_ev30test_pc_sf = {
+static struct pc_sf_lut mmi_ev30_pc_sf = {
 	.rows		= 10,
 	.cols		= 5,
 	.cycles		= {100, 200, 300, 400, 500},
@@ -47,7 +47,7 @@ static struct pc_sf_lut mmi_ev30test_pc_sf = {
 	},
 };
 
-static struct pc_temp_ocv_lut mmi_ev30test_pc_temp_ocv = {
+static struct pc_temp_ocv_lut mmi_ev30_pc_temp_ocv = {
 	.rows		= 29,
 	.cols		= 3,
 	.temp		= {-10, 23, 60},
@@ -88,22 +88,22 @@ static struct pc_temp_ocv_lut mmi_ev30test_pc_temp_ocv = {
 	},
 };
 
-static struct pm8921_bms_battery_data  mmi_ev30test_metering_data = {
+static struct pm8921_bms_battery_data  mmi_ev30_metering_data = {
 	.fcc			= 2500,
-	.fcc_temp_lut		= &mmi_ev30test_fcc_temp,
-	.fcc_sf_lut		= &mmi_ev30test_fcc_sf,
-	.pc_temp_ocv_lut	= &mmi_ev30test_pc_temp_ocv,
-	.pc_sf_lut		= &mmi_ev30test_pc_sf,
+	.fcc_temp_lut		= &mmi_ev30_fcc_temp,
+	.fcc_sf_lut		= &mmi_ev30_fcc_sf,
+	.pc_temp_ocv_lut	= &mmi_ev30_pc_temp_ocv,
+	.pc_sf_lut		= &mmi_ev30_pc_sf,
 };
 
-static struct pm8921_charger_battery_data mmi_ev30test_charging_data = {
+static struct pm8921_charger_battery_data mmi_ev30_charging_data = {
 	.max_voltage			= 4350,
 	.min_voltage			= 3200,
 	.resume_voltage_delta		= 100,
-	.term_current			= 80,
+	.term_current			= 213,
 	.cool_temp			= 0,
 	.warm_temp			= 45,
-	.max_bat_chg_current		= 2500,
+	.max_bat_chg_current		= 2375,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
 	.cool_bat_voltage		= 3800,
@@ -112,13 +112,19 @@ static struct pm8921_charger_battery_data mmi_ev30test_charging_data = {
 	.step_charge_voltage		= 4200,
 };
 
-static struct mmi_battery_cell mmi_ev30test_cell_data = {
+static struct mmi_battery_cell mmi_ev30_cid5858_cell_data = {
 	.capacity = 0xFA,
 	.peak_voltage = 0xB9,
 	.dc_impedance = 0x55,
-	.cell_id = 0x5858, /* ev30test has now reserved cell code XX */
+	.cell_id = 0x5858, /* Cell code XX */
 };
 
+static struct mmi_battery_cell mmi_ev30_cid_4246_cell_data = {
+	.capacity = 0xFA,
+	.peak_voltage = 0xB9,
+	.dc_impedance = 0x55,
+	.cell_id = 0x4246, /* Cell code BF */
+};
 
 /* EB41 Tables and Charging Parameters */
 static struct single_row_lut mmi_eb41_fcc_temp = {
@@ -205,7 +211,7 @@ static struct pm8921_charger_battery_data mmi_eb41_charging_data = {
 	.max_voltage			= 4350,
 	.min_voltage			= 3200,
 	.resume_voltage_delta		= 100,
-	.term_current			= 80,
+	.term_current			= 58,
 	.cool_temp			= 0,
 	.warm_temp			= 45,
 	.max_bat_chg_current		= 1678,
@@ -471,20 +477,23 @@ struct mmi_battery_list mmi_batts = {
 		&mmi_eb20_cell_data,
 		&mmi_eb20_pre_cell_data,
 		&mmi_eb41_cell_data,
-		&mmi_ev30test_cell_data,
+		&mmi_ev30_cid5858_cell_data,
+		&mmi_ev30_cid_4246_cell_data,
 	},
 	.bms_list = {
 		 &mmi_df_metering_data,
 		 &mmi_eb20_metering_data,
 		 &mmi_eb20_pre_metering_data,
 		 &mmi_eb41_metering_data,
-		 &mmi_ev30test_metering_data,
+		 &mmi_ev30_metering_data,
+		 &mmi_ev30_metering_data,
 	 },
 	.chrg_list = {
 		 &mmi_df_charging_data,
 		 &mmi_eb20_charging_data,
 		 &mmi_eb20_pre_charging_data,
 		 &mmi_eb41_charging_data,
-		 &mmi_ev30test_charging_data,
+		 &mmi_ev30_charging_data,
+		 &mmi_ev30_charging_data,
 	 },
 };
