@@ -833,6 +833,8 @@ static void __init msm8960_allocate_memory_regions(void)
 
 #define TABLA_INTERRUPT_BASE (NR_MSM_IRQS + NR_GPIO_IRQS + NR_PM8921_IRQS)
 
+#define TABLA_CFILT_MV 2700
+
 /* Micbias setting is based on 8660 CDP/MTP/FLUID requirement
  * 4 micbiases are used to power various analog and digital
  * microphones operating at 1800 mV. Technically, all micbiases
@@ -853,9 +855,9 @@ static struct tabla_pdata tabla_platform_data = {
 	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
 	.micbias = {
 		.ldoh_v = TABLA_LDOH_2P85_V,
-		.cfilt1_mv = 1800,
-		.cfilt2_mv = 1800,
-		.cfilt3_mv = 1800,
+		.cfilt1_mv = TABLA_CFILT_MV,
+		.cfilt2_mv = TABLA_CFILT_MV,
+		.cfilt3_mv = TABLA_CFILT_MV,
 		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
 		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
 		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
@@ -920,9 +922,9 @@ static struct tabla_pdata tabla20_platform_data = {
 	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
 	.micbias = {
 		.ldoh_v = TABLA_LDOH_2P85_V,
-		.cfilt1_mv = 1800,
-		.cfilt2_mv = 1800,
-		.cfilt3_mv = 1800,
+		.cfilt1_mv = TABLA_CFILT_MV,
+		.cfilt2_mv = TABLA_CFILT_MV,
+		.cfilt3_mv = TABLA_CFILT_MV,
 		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
 		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
 		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
