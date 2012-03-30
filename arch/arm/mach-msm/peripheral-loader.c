@@ -20,6 +20,8 @@
 #include <linux/mutex.h>
 #include <linux/memblock.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
+#include <linux/rwsem.h>
 
 #include <mach/socinfo.h>
 
@@ -164,6 +166,9 @@ static int segment_is_loadable(const struct elf32_phdr *p)
 	return (p->p_type & PT_LOAD) && !segment_is_hash(p->p_flags);
 }
 
+/* Sychronize request_firmware() with suspend */
+static DECLARE_RWSEM(pil_pm_rwsem);
+
 static int load_image(struct pil_device *pil)
 {
 	int i, ret;
@@ -173,6 +178,7 @@ static int load_image(struct pil_device *pil)
 	const struct firmware *fw;
 	char fw_name_ver[8] = "";
 
+	down_read(&pil_pm_rwsem);
 	if (!strcmp("dsps", pil->desc->name)) {
 		msm8960_get_dsps_fw_name(fw_name_ver);
 		snprintf(fw_name, sizeof(fw_name), "%s%s.mdt",
@@ -240,6 +246,7 @@ static int load_image(struct pil_device *pil)
 release_fw:
 	release_firmware(fw);
 out:
+	up_read(&pil_pm_rwsem);
 	return ret;
 }
 
@@ -419,7 +426,6 @@ static int msm_pil_debugfs_init(void)
 
 	return 0;
 }
-arch_initcall(msm_pil_debugfs_init);
 
 static int msm_pil_debugfs_add(struct pil_device *pil)
 {
@@ -432,6 +438,7 @@ static int msm_pil_debugfs_add(struct pil_device *pil)
 	return 0;
 }
 #else
+static int msm_pil_debugfs_init(void) { return 0; }
 static int msm_pil_debugfs_add(struct pil_device *pil) { return 0; }
 #endif
 
@@ -465,6 +472,33 @@ int msm_pil_register(struct pil_desc *desc)
 	return msm_pil_debugfs_add(pil);
 }
 EXPORT_SYMBOL(msm_pil_register);
+
+static int pil_pm_notify(struct notifier_block *b, unsigned long event, void *p)
+{
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		down_write(&pil_pm_rwsem);
+		break;
+	case PM_POST_SUSPEND:
+		up_write(&pil_pm_rwsem);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block pil_pm_notifier = {
+	.notifier_call = pil_pm_notify,
+};
+
+static int __init msm_pil_init(void)
+{
+	int ret = msm_pil_debugfs_init();
+	if (ret)
+		return ret;
+	register_pm_notifier(&pil_pm_notifier);
+	return ret;
+}
+arch_initcall(msm_pil_init);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Load peripheral images and bring peripherals out of reset");

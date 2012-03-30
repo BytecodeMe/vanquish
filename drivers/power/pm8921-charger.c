@@ -988,25 +988,51 @@ update_fail:
 static void disable_input_voltage_regulation(struct pm8921_chg_chip *chip)
 {
 	u8 temp;
+	int rc;
 
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x70);
-	pm8xxx_readb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, &temp);
+	rc = pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x70);
+	if (rc) {
+		pr_err("Failed to write 0x70 to CTRL_TEST3 rc = %d\n", rc);
+		return;
+	}
+	rc = pm8xxx_readb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, &temp);
+	if (rc) {
+		pr_err("Failed to read CTRL_TEST3 rc = %d\n", rc);
+		return;
+	}
 	/* set the input voltage disable bit and the write bit */
 	temp |= 0x81;
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, temp);
+	rc = pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, temp);
+	if (rc) {
+		pr_err("Failed to write 0x%x to CTRL_TEST3 rc=%d\n", temp, rc);
+		return;
+	}
 }
 
 static void enable_input_voltage_regulation(struct pm8921_chg_chip *chip)
 {
 	u8 temp;
+	int rc;
 
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x70);
-	pm8xxx_readb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, &temp);
+	rc = pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x70);
+	if (rc) {
+		pr_err("Failed to write 0x70 to CTRL_TEST3 rc = %d\n", rc);
+		return;
+	}
+	rc = pm8xxx_readb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, &temp);
+	if (rc) {
+		pr_err("Failed to read CTRL_TEST3 rc = %d\n", rc);
+		return;
+	}
 	/* unset the input voltage disable bit */
 	temp &= 0xFE;
 	/* set the write bit */
 	temp |= 0x80;
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, temp);
+	rc = pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, temp);
+	if (rc) {
+		pr_err("Failed to write 0x%x to CTRL_TEST3 rc=%d\n", temp, rc);
+		return;
+	}
 }
 
 static int64_t read_battery_id(struct pm8921_chg_chip *chip)
@@ -2071,23 +2097,51 @@ static void handle_start_ext_chg(struct pm8921_chg_chip *chip)
 static void turn_off_usb_ovp_fet(struct pm8921_chg_chip *chip)
 {
 	u8 temp;
-	pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0x30);
-	pm8xxx_readb(chip->dev->parent, USB_OVP_TEST, &temp);
+	int rc;
+
+	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0x30);
+	if (rc) {
+		pr_err("Failed to write 0x30 to USB_OVP_TEST rc = %d\n", rc);
+		return;
+	}
+	rc = pm8xxx_readb(chip->dev->parent, USB_OVP_TEST, &temp);
+	if (rc) {
+		pr_err("Failed to read from USB_OVP_TEST rc = %d\n", rc);
+		return;
+	}
 	/* set ovp fet disable bit and the write bit */
 	temp |= 0x81;
-	pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, temp);
+	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, temp);
+	if (rc) {
+		pr_err("Failed to write 0x%x USB_OVP_TEST rc=%d\n", temp, rc);
+		return;
+	}
 }
 
 static void turn_on_usb_ovp_fet(struct pm8921_chg_chip *chip)
 {
 	u8 temp;
+	int rc;
 
-	pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0x30);
-	pm8xxx_readb(chip->dev->parent, USB_OVP_TEST, &temp);
+	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0x30);
+	if (rc) {
+		pr_err("Failed to write 0x30 to USB_OVP_TEST rc = %d\n", rc);
+		return;
+	}
+	rc = pm8xxx_readb(chip->dev->parent, USB_OVP_TEST, &temp);
+	if (rc) {
+		pr_err("Failed to read from USB_OVP_TEST rc = %d\n", rc);
+		return;
+	}
 	/* unset ovp fet disable bit and set the write bit */
 	temp &= 0xFE;
 	temp |= 0x80;
-	pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, temp);
+	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, temp);
+	if (rc) {
+		pr_err("Failed to write 0x%x to USB_OVP_TEST rc = %d\n",
+								temp, rc);
+		return;
+	}
 }
 
 static int param_open_ovp_counter = 10;
@@ -2375,8 +2429,10 @@ static void unplug_check_worker(struct work_struct *work)
 			}
 		}
 	}
+
 	usb_chg_plugged_in = is_usb_chg_plugged_in(chip);
 	chg_gone = pm_chg_get_rt_status(chip, CHG_GONE_IRQ);
+
 	if (chg_gone == 1  && usb_chg_plugged_in == 1) {
 		/* run the worker directly */
 		pr_debug(" ver5 step: chg_gone=%d, usb_valid = %d\n",
@@ -2481,6 +2537,7 @@ static irqreturn_t chg_gone_irq_handler(int irq, void *data)
 
 	pr_debug("chg_gone=%d, usb_valid = %d\n", chg_gone, usb_chg_plugged_in);
 	schedule_work(&chip->unplug_ovp_fet_open_work);
+
 	pr_debug("Chg gone fsm_state=%d\n", pm_chg_get_fsm_state(data));
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
