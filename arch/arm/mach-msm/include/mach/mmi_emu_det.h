@@ -28,6 +28,7 @@ struct mmi_emu_det_platform_data {
 	void (*gpio_mode)(int mode);
 	int (*adc_id)(void);
 	void (*dp_dm_mode)(int mode);
+	void (*gsbi_ctrl)(int restore);
 };
 
 #define ACCY_SUPPORT_FULL	0

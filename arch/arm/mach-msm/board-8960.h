@@ -223,6 +223,7 @@ extern void msm8960_init_hdmi(struct platform_device *hdmi_dev,
 
 extern void __init msm8960_init_usb(void);
 extern void __init msm8960_init_dsps(void);
+extern void __init msm8960_init_gsbi4(void);
 
 extern void __init msm8960_init_hsic(void);
 
@@ -234,7 +235,7 @@ extern void __init msm8960_init_rpm(void);
 extern void __init msm8960_init_sleep_status(void);
 extern void __init msm8960_init_regulators(void);
 
-extern void __init msm8960_i2c_init(unsigned speed);
+extern void __init msm8960_i2c_init(unsigned speed, u8 gsbi_shared_mode);
 extern void __init msm8960_spi_init(struct msm_spi_platform_data *pdata, 
 					struct spi_board_info *binfo, unsigned size);
 extern void __init msm8960_gfx_init(void);
