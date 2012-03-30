@@ -1630,6 +1630,8 @@ static int msm_close(struct file *f)
 	if (pcam_inst->vbqueue_initialized)
 		vb2_queue_release(&pcam_inst->vid_bufq);
 	D("%s Closing down instance %p ", __func__, pcam_inst);
+	D("%s index %d nodeid %d count %d\n", __func__, pcam_inst->my_index,
+		pcam->vnode_id, pcam->use_count);
 	pcam->dev_inst[pcam_inst->my_index] = NULL;
 	if (pcam_inst->my_index == 0) {
 		v4l2_fh_del(&pcam_inst->eventHandle);
