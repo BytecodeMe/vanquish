@@ -27,6 +27,7 @@
 #include <mach/subsystem_restart.h>
 #include <mach/subsystem_notif.h>
 #include <mach/socinfo.h>
+#include <mach/msm_xo.h>
 
 #include "smd_private.h"
 #include "modem_notifier.h"
@@ -34,6 +35,8 @@
 #include "modem_coredump.h"
 
 static int crash_shutdown;
+struct msm_xo_voter *xo1;
+struct msm_xo_voter *xo2;
 
 static void modem_sw_fatal_fn(struct work_struct *work)
 {
@@ -109,6 +112,9 @@ static int modem_shutdown(const struct subsys_data *subsys)
 		return -ENOMEM;
 	}
 
+	msm_xo_mode_vote(xo1, MSM_XO_MODE_ON);
+	msm_xo_mode_vote(xo2, MSM_XO_MODE_ON);
+
 	writel_relaxed(0x0, q6_fw_wdog_addr);
 	writel_relaxed(0x0, q6_sw_wdog_addr);
 	mb();
@@ -129,6 +135,8 @@ static int modem_powerup(const struct subsys_data *subsys)
 	pil_force_boot("modem");
 	enable_irq(Q6FW_WDOG_EXPIRED_IRQ);
 	enable_irq(Q6SW_WDOG_EXPIRED_IRQ);
+	msm_xo_mode_vote(xo1, MSM_XO_MODE_OFF);
+	msm_xo_mode_vote(xo2, MSM_XO_MODE_OFF);
 	return 0;
 }
 
@@ -275,6 +283,18 @@ static int __init modem_8960_init(void)
 
 	ret = smsm_state_cb_register(SMSM_MODEM_STATE, SMSM_RESET,
 		smsm_state_cb, 0);
+
+	xo1 = msm_xo_get(MSM_XO_TCXO_A0, "modem-8960");
+	if (IS_ERR(xo1)) {
+		ret = PTR_ERR(xo1);
+		goto out;
+	}
+
+	xo2 = msm_xo_get(MSM_XO_TCXO_A1, "modem-8960");
+	if (IS_ERR(xo2)) {
+		ret = PTR_ERR(xo2);
+		goto out;
+	}
 
 	if (ret < 0)
 		pr_err("%s: Unable to register SMSM callback! (%d)\n",
