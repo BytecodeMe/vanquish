@@ -722,6 +722,17 @@ baddataabort(int code, unsigned long instr, struct pt_regs *regs)
 	arm_notify_die("unknown data abort code", regs, &info, instr, 0);
 }
 
+void __attribute__((noreturn)) __bug(const char *file, int line)
+{
+	printk(KERN_CRIT"kernel BUG at %s:%d!\n", file, line);
+	*(int *)0 = 0;
+
+	/* Avoid "noreturn function does return" */
+	for (;;)
+	;
+}
+EXPORT_SYMBOL(__bug);
+
 void __readwrite_bug(const char *fn)
 {
 	printk("%s called, but not implemented\n", fn);
