@@ -436,7 +436,6 @@ static int msm_hs_init_clk(struct uart_port *uport)
 	int ret;
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 
-	wake_lock(&msm_uport->dma_wake_lock);
 	/* Set up the MREG/NREG/DREG/MNDREG */
 	ret = clk_set_rate(msm_uport->clk, uport->uartclk);
 	if (ret) {
@@ -1368,7 +1367,6 @@ static int msm_hs_check_clock_off_locked(struct uart_port *uport)
 		msm_uport->wakeup.ignore = 1;
 		enable_irq(msm_uport->wakeup.irq);
 	}
-	wake_unlock(&msm_uport->dma_wake_lock);
 	return 1;
 }
 
@@ -1511,7 +1509,6 @@ static void msm_hs_request_clock_on_locked(struct uart_port *uport) {
 
 	switch (msm_uport->clk_state) {
 	case MSM_HS_CLK_OFF:
-		wake_lock(&msm_uport->dma_wake_lock);
 		clk_enable(msm_uport->clk);
 		if (msm_uport->pclk)
 			ret = clk_enable(msm_uport->pclk);
@@ -2023,7 +2020,6 @@ static void msm_hs_shutdown(struct uart_port *uport)
 		clk_disable(msm_uport->clk);  /* to balance clk_state */
 		if (msm_uport->pclk)
 			clk_disable(msm_uport->pclk);
-		wake_unlock(&msm_uport->dma_wake_lock);
 	}
 	msm_uport->clk_state = MSM_HS_CLK_PORT_OFF;
 
@@ -2039,6 +2035,11 @@ static void msm_hs_shutdown(struct uart_port *uport)
 	free_irq(uport->irq, msm_uport);
 	if (use_low_power_wakeup(msm_uport))
 		free_irq(msm_uport->wakeup.irq, msm_uport);
+
+	/* The rx.let has been killed, the rx.wakelock may not have a
+	  chance to be released. Make sure it is released */
+	if (wake_lock_active(&msm_uport->rx.wake_lock))
+		wake_unlock(&msm_uport->rx.wake_lock);
 }
 
 static void __exit msm_serial_hs_exit(void)
