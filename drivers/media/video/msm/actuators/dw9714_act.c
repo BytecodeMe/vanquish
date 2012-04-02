@@ -14,7 +14,7 @@
 #include "msm_actuator.h"
 #include <linux/debugfs.h>
 
-#define DW9714_TOTAL_STEPS_NEAR_TO_FAR_MAX 37
+#define DW9714_TOTAL_STEPS_NEAR_TO_FAR_MAX 45
 
 DEFINE_MUTEX(dw9714_act_mutex);
 static int dw9714_actuator_debug_init(void);
