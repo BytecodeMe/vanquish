@@ -1961,8 +1961,10 @@ EXPORT_SYMBOL(mmc_suspend_host);
  *	mmc_resume_host - resume a previously suspended host
  *	@host: mmc host
  */
+#define MMC_MAX_RESUME_ATTEMPTS 5
 int mmc_resume_host(struct mmc_host *host)
 {
+	int attempts = MMC_MAX_RESUME_ATTEMPTS;
 	int err = 0;
 
 	mmc_bus_get(host);
@@ -1991,6 +1993,20 @@ int mmc_resume_host(struct mmc_host *host)
 		}
 		BUG_ON(!host->bus_ops->resume);
 		err = host->bus_ops->resume(host);
+
+		while (err && attempts) {
+			attempts--;
+			printk(KERN_WARNING "%s: error %d during resume; "
+					    "trying to recover (attempts "
+					    "%d)...\n",
+					    mmc_hostname(host), err, attempts);
+			mmc_power_off(host);
+			msleep(500);	/* give card plenty of settling time */
+			mmc_power_up(host);
+			mmc_select_voltage(host, host->ocr);
+			msleep(500);	/* take it slow */
+			err = host->bus_ops->resume(host);
+		}
 		if (err) {
 			printk(KERN_WARNING "%s: error %d during resume "
 					    "(card was removed?)\n",
