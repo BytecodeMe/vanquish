@@ -466,6 +466,8 @@ static ssize_t hdmi_common_wta_test(struct device *dev,
 
 	test_active = (int) test;
 
+	DEV_DBG("%s: setting %d\n", __func__, test_active);
+
 	hdmi_msm_test(test_active);
 
 	return count;

@@ -61,8 +61,9 @@
 #define SUPPORT_NON_HDCP_DEVICES
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
-static int bksv_error;
+static boolean first_read_failed;
 static boolean about_to_reauth;
+static boolean deauth_only;
 #endif
 #endif
 
@@ -87,6 +88,9 @@ static void hdmi_msm_dump_regs(const char *prefix);
 static void hdmi_msm_hdcp_enable(void);
 #else
 static inline void hdmi_msm_hdcp_enable(void) {}
+#endif
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+static void hdmi_msm_upd_hdcp_enable(boolean en);
 #endif
 
 static void hdmi_msm_turn_on(void);
@@ -838,12 +842,22 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		DEV_INFO("HDMI HPD: QDSP OFF\n");
 		kobject_uevent_env(external_common_state->uevent_kobj,
 				   KOBJ_CHANGE, envp);
-#ifndef SUPPORT_NON_HDCP_DEVICES
-		/* The HPD switch should not be connected to HDCP */
+
+		/* Call even in the case of hpd_state == 1 since sometimes
+		 * the HPD low transition is lost and we need to be sure
+		 * user space sees the transition.
+		 */
 		switch_set_state(&external_common_state->sdev, 0);
 		DEV_INFO("Hdmi state switch to %d: %s\n",
 			external_common_state->sdev.state,  __func__);
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+		/* By default disable the HDCP enable SYS FS flag when
+		 * a cable is removed so that a fast re-insertion does
+		 * not start HDCP unexpectedly.
+		 */
+		hdmi_msm_upd_hdcp_enable(FALSE);
 #endif
+
 		if (hpd_state) {
 			hdmi_msm_read_edid();
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
@@ -877,9 +891,12 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 				);
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_OFFLINE);
+#ifndef SUPPORT_NON_HDCP_DEVICES
+			/* Don't understand why this is called twice */
 			switch_set_state(&external_common_state->sdev, 0);
 			DEV_INFO("Hdmi state switch to %d: %s\n",
 				external_common_state->sdev.state,  __func__);
+#endif
 		}
 	}
 
@@ -928,6 +945,14 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 	}
 	mutex_unlock(&hdmi_msm_state_mutex);
 
+	/* If HPD has been de-asserted, ignore the reauth
+	 * since the cable has been removed.
+	 */
+	if (!external_common_state->hpd_state) {
+		hdcp_deauthenticate();
+		return;
+	}
+
 	/*
 	 * Reauth=>deauth, hdcp_auth
 	 * hdcp_auth=>turn_on() which calls
@@ -937,16 +962,32 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 	 * only if the device is HDCP-capable
 	 */
 	if (external_common_state->present_hdcp) {
-		hdcp_deauthenticate();
 #ifdef SUPPORT_NON_HDCP_DEVICES
-		if (bksv_error)
+		/* Need to test the flags before calling
+		 * hdcp_deauthenticate() since they are cleared
+		 * in that function.
+		 */
+
+		if (deauth_only) {
+			hdcp_deauthenticate();
+		} else if (first_read_failed) {
+			hdcp_deauthenticate();
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ + HZ/2);
-		else
+			/* The first_read_failed flag was cleared in
+			 * hdcp_deauthenticate, but we need it to continue
+			 * to be set so the just HDCP is re-enabled in
+			 * hdmi_msm_hdcp_work() when the timer expires.
+			 */
+			first_read_failed = true;
+		} else {
+			hdcp_deauthenticate();
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ/2);
+		}
 		about_to_reauth = true;
 #else
+		hdcp_deauthenticate();
 		mod_timer(&hdmi_msm_state->hdcp_timer, jiffies + HZ/2);
 #endif
 	}
@@ -955,33 +996,35 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 static void hdmi_msm_hdcp_work(struct work_struct *work)
 {
 #ifdef SUPPORT_NON_HDCP_DEVICES
-	int had_bksv_error = 0;
+	boolean had_first_read_failed = false;
 #endif
 
 	/* Only re-enable if cable still connected */
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (external_common_state->hpd_state &&
+	    hdmi_msm_state->hpd_stable &&
 	    !(hdmi_msm_state->full_auth_done)) {
 		mutex_unlock(&external_common_state_hpd_mutex);
-		hdmi_msm_state->reauth = TRUE;
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
 		/* Code to remove blinking effect.
 		 *
-		 * Save off any BKSV error and zero out the error now
+		 * Save off first read flag and zero it out now
 		 * since the below calls may change the value again.
 		 */
-		had_bksv_error = bksv_error;
-		bksv_error = 0;
+		had_first_read_failed = first_read_failed;
+		first_read_failed = false;
 
-		if (had_bksv_error) {
+		if (had_first_read_failed) {
 			DEV_DBG("Calling HDCP ENABLE\n");
 			hdmi_msm_hdcp_enable();
 		} else {
 			DEV_DBG("Calling HDCP TURN ON\n");
+			hdmi_msm_state->reauth = TRUE;
 			hdmi_msm_turn_on();
 		}
 #else
+		hdmi_msm_state->reauth = TRUE;
 		hdmi_msm_turn_on();
 #endif
 	} else
@@ -1036,7 +1079,14 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		hdmi_msm_state->hpd_prev_state = cable_detected ? 0 : 1;
 		external_common_state->hpd_state = cable_detected ? 1 : 0;
 		hdmi_msm_state->hpd_stable = 0;
-		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/20);
+
+		/* Halt any in-progress reauth */
+		del_timer(&hdmi_msm_state->hdcp_timer);
+#ifdef SUPPORT_NON_HDCP_DEVICES
+		about_to_reauth = false;
+#endif
+
+		mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/2);
 		mutex_unlock(&hdmi_msm_state_mutex);
 		/*
 		 * HDCP Compliance 1A-01:
@@ -1156,8 +1206,20 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 			 * is sucessful or else we always go into
 			 * the reauth loop
 			 */
+
+#ifdef SUPPORT_NON_HDCP_DEVICES
+			/* If HPD is not stable only deauth since
+			 * authentication will occur when it is stable
+			 * (if needed).
+			 */
+			if (!hdmi_msm_state->hpd_stable)
+				deauth_only = TRUE;
+#endif
+
 			queue_work(hdmi_work_queue,
 			    &hdmi_msm_state->hdcp_reauth_work);
+			DEV_DBG("calling reauthenticate from %s"
+				" HDCP FAIL INT ", __func__);
 		}
 		mutex_lock(&hdcp_auth_state_mutex);
 		/* This flag prevents other threads from re-authenticating
@@ -1166,8 +1228,6 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		hdmi_msm_state->full_auth_done = FALSE;
 
 		mutex_unlock(&hdcp_auth_state_mutex);
-		DEV_DBG("calling reauthenticate from %s HDCP FAIL INT ",
-		    __func__);
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
 		/* Clear AUTH_FAIL_INFO as well */
@@ -2306,7 +2366,13 @@ static void hdcp_deauthenticate(void)
 {
 	int hdcp_link_status = HDMI_INP(0x011C);
 
-	DEV_DBG("%s: %x", __func__, hdcp_link_status);
+	DEV_DBG("%s: %x\n", __func__, hdcp_link_status);
+
+#ifdef SUPPORT_NON_HDCP_DEVICES
+	first_read_failed = false;
+	about_to_reauth = false;
+	deauth_only = false;
+#endif
 
 	/* Disable HDCP interrupts */
 	HDMI_OUTP(0x0118, 0x0);
@@ -2483,41 +2549,15 @@ static int hdcp_authentication_part1(void)
 
 		msm_hdmi_init_ddc();
 
-		/* Read Bksv 5 bytes at 0x00 in HDCP port */
-		ret = hdmi_msm_ddc_read(0x74, 0x00, bksv, 5, 5, "Bksv", TRUE);
-		if (ret) {
-			DEV_ERR("%s(%d): Read BKSV failed", __func__, __LINE__);
-#ifdef SUPPORT_NON_HDCP_DEVICES
-			bksv_error = 1;
-#endif
-			goto error;
-		}
-		/* check there are 20 ones in BKSV */
-		if (hdmi_msm_count_one(bksv, 5) != 20) {
-			DEV_ERR("HDCP: BKSV read from Sink doesn't have "
-				"20 1's and 20 0's, FAIL (BKSV="
-				"%02x%02x%02x%02x%02x)\n",
-				bksv[4], bksv[3], bksv[2], bksv[1], bksv[0]);
-#ifdef SUPPORT_NON_HDCP_DEVICES
-			bksv_error = 1;
-#endif
-			ret = -EINVAL;
-			goto error;
-		}
-
-		link0_bksv_0 = bksv[3];
-		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[2];
-		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[1];
-		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[0];
-		link0_bksv_1 = bksv[4];
-		DEV_DBG("HDCP: BKSV=%02x%08x\n", link0_bksv_1, link0_bksv_0);
-
 		/* read Bcaps at 0x40 in HDCP Port */
 		ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps",
 			TRUE);
 		if (ret) {
 			DEV_ERR("%s(%d): Read Bcaps failed", __func__,
 			    __LINE__);
+#ifdef SUPPORT_NON_HDCP_DEVICES
+			first_read_failed = true;
+#endif
 			goto error;
 		}
 		DEV_DBG("HDCP: Bcaps=%02x\n", bcaps);
@@ -2595,6 +2635,8 @@ static int hdcp_authentication_part1(void)
 				__func__, __LINE__,
 			(HDMI_INP_ND(0x011C) & BIT(8)) >> 8,
 			(HDMI_INP_ND(0x011C) & BIT(9)) >> 9);
+
+			mutex_unlock(&hdcp_auth_state_mutex);
 			goto error;
 		}
 
@@ -2668,6 +2710,29 @@ static int hdcp_authentication_part1(void)
 		DEV_DBG("HDCP: Link0-AKSV=%02x%08x\n",
 			link0_aksv_1 & 0xFF, link0_aksv_0);
 
+		/* Read Bksv 5 bytes at 0x00 in HDCP port */
+		ret = hdmi_msm_ddc_read(0x74, 0x00, bksv, 5, 5, "Bksv", TRUE);
+		if (ret) {
+			DEV_ERR("%s(%d): Read BKSV failed", __func__, __LINE__);
+			goto error;
+		}
+		/* check there are 20 ones in BKSV */
+		if (hdmi_msm_count_one(bksv, 5) != 20) {
+			DEV_ERR("HDCP: BKSV read from Sink doesn't have "
+				"20 1's and 20 0's, FAIL (BKSV="
+				"%02x%02x%02x%02x%02x)\n",
+				bksv[4], bksv[3], bksv[2], bksv[1], bksv[0]);
+			ret = -EINVAL;
+			goto error;
+		}
+
+		link0_bksv_0 = bksv[3];
+		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[2];
+		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[1];
+		link0_bksv_0 = (link0_bksv_0 << 8) | bksv[0];
+		link0_bksv_1 = bksv[4];
+		DEV_DBG("HDCP: BKSV=%02x%08x\n", link0_bksv_1, link0_bksv_0);
+
 		/* 0x0134 HDCP_RCVPORT_DATA0
 		   [31:0] LINK0_BKSV_0 */
 		HDMI_OUTP(0x0134, link0_bksv_0);
@@ -2683,6 +2748,11 @@ static int hdcp_authentication_part1(void)
 		hpd_int_ctrl = HDMI_INP_ND(0x0254);
 		DEV_DBG("[SR-DEUG]: HPD_INTR_CTRL=[%u] HPD_INTR_STATUS=[%u] "
 			"before reading R0'\n", hpd_int_ctrl, hpd_int_status);
+
+		if (!hdmi_msm_state->hpd_stable) {
+			DEV_ERR("%s(%d): HPD unstable\n", __func__, __LINE__);
+			goto error;
+		}
 
 		/*
 		* HDCP Compliace Test case 1B-01:
@@ -2704,6 +2774,11 @@ static int hdcp_authentication_part1(void)
 		/* 0x013C HDCP_RCVPORT_DATA2_0
 		[15:0] LINK0_RI */
 		HDMI_OUTP(0x013C, (((uint32)buf[1]) << 8) | buf[0]);
+
+		if (!hdmi_msm_state->hpd_stable) {
+			DEV_ERR("%s(%d): HPD unstable\n", __func__, __LINE__);
+			goto error;
+		}
 
 		timeout_count = wait_for_completion_interruptible_timeout(
 			&hdmi_msm_state->hdcp_success_done, HZ*2);
@@ -3057,6 +3132,19 @@ error:
 }
 
 #ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+static struct work_struct hdcp_enable_work;
+
+static void hdmi_msm_hdcp_enable_work(struct work_struct *work)
+{
+	if (external_common_state->sdev.state)
+		hdmi_msm_hdcp_enable();
+}
+
+static void hdmi_msm_init_hdcp_en_work(void)
+{
+	INIT_WORK(&hdcp_enable_work, hdmi_msm_hdcp_enable_work);
+}
+
 static void hdmi_msm_upd_hdcp_enable(boolean en)
 {
 	if (external_common_state->hdcp_enable == en)
@@ -3069,10 +3157,10 @@ static void hdmi_msm_upd_hdcp_enable(boolean en)
 	if (external_common_state->sdev.state) {
 		if (en) {
 #ifdef SUPPORT_NON_HDCP_DEVICES
-			bksv_error = 0;
+			first_read_failed = false;
 			about_to_reauth = false;
 #endif
-			hdmi_msm_hdcp_enable();
+			queue_work(hdmi_work_queue, &hdcp_enable_work);
 		} else {
 			hdcp_deauthenticate();
 		}
@@ -4435,12 +4523,14 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	hdcp_deauthenticate();
 #endif
 
-	if (!fb_switching_resolutions)
-		hdmi_msm_hpd_off();
+#ifndef SUPPORT_NON_HDCP_DEVICES
+	hdmi_msm_hpd_off();
+#endif
 	hdmi_msm_powerdown_phy();
 	hdmi_msm_dump_regs("HDMI-OFF: ");
-	if (!fb_switching_resolutions)
-		hdmi_msm_hpd_on(true);
+#ifndef SUPPORT_NON_HDCP_DEVICES
+	hdmi_msm_hpd_on(true);
+#endif
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (!external_common_state->hpd_feature_on)
@@ -4706,6 +4796,9 @@ static int hdmi_msm_hpd_feature(int on)
 		hdmi_msm_hpd_off();
 		/* Set HDMI switch node to 0 on HPD feature disable */
 		switch_set_state(&external_common_state->sdev, 0);
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+		hdmi_msm_upd_hdcp_enable(FALSE);
+#endif
 	}
 
 	return rc;
@@ -4797,6 +4890,9 @@ static int __init hdmi_msm_init(void)
 	init_completion(&hdmi_msm_state->hdcp_success_done);
 	INIT_WORK(&hdmi_msm_state->hdcp_reauth_work, hdmi_msm_hdcp_reauth_work);
 	INIT_WORK(&hdmi_msm_state->hdcp_work, hdmi_msm_hdcp_work);
+#ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
+	hdmi_msm_init_hdcp_en_work();
+#endif
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT

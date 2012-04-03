@@ -52,8 +52,6 @@
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
 
-extern int fb_switching_resolutions;
-
 struct disp_info_type_suspend {
 	boolean op_enable;
 	boolean sw_refreshing_enable;
