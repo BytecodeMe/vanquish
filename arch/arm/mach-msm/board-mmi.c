@@ -128,6 +128,10 @@
 #include "smd_private.h"
 #include "pm-boot.h"
 #include "msm_watchdog.h"
+#include <linux/fs.h>
+#include <linux/init.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 
 /* Initial PM8921 GPIO configurations vanquish, quinara */
 static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
@@ -252,6 +256,11 @@ __setup("androidboot.baseband=", board_baseband_init);
 static int boot_mode_is_factory(void)
 {
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
+}
+
+int mot_panel_is_factory_mode(void)
+{
+	return boot_mode_is_factory();
 }
 
 static void emu_mux_ctrl_config_pin(int io_num, int value);
@@ -677,6 +686,7 @@ static __init void mot_init_emu_detection(
 #endif
 
 static char panel_name[PANEL_NAME_MAX_LEN + 1] = DEFAULT_PANEL_NAME;
+static char extended_baseband[BASEBAND_MAX_LEN+1] = "\0";
 
 static int is_smd(void) {
 	return !strncmp(panel_name, "mipi_mot_video_smd_hd_465", PANEL_NAME_MAX_LEN);
@@ -1720,7 +1730,7 @@ static void init_mmi_unit_info(void){
 	mui->system_serial_high = system_serial_high;
 	strncpy(mui->machine, machine_desc->name, MACHINE_MAX_LEN);
 	strncpy(mui->barcode, serialno, BARCODE_MAX_LEN);
-	strncpy(mui->baseband, baseband, BASEBAND_MAX_LEN);
+	strncpy(mui->baseband, extended_baseband, BASEBAND_MAX_LEN);
 	strncpy(mui->carrier, carrier, CARRIER_MAX_LEN);
 
 	pr_err("mmi_unit_info (SMEM): version = 0x%02x, system_rev = 0x%08x, "
@@ -2018,6 +2028,63 @@ static void init_mmi_ram_info(void){
 
 	if (!ram_info_properties_kobj || rc)
 		pr_err("%s: failed to create /sys/ram\n", __func__);
+}
+
+static ssize_t
+sysfs_extended_baseband_show(struct sys_device *dev,
+			struct sysdev_attribute *attr,
+			char *buf)
+{
+	if (!strnlen(extended_baseband, BASEBAND_MAX_LEN)) {
+		pr_err("%s: No extended_baseband available!\n", __func__);
+		return 0;
+	}
+	return snprintf(buf, BASEBAND_MAX_LEN, "%s\n", extended_baseband);
+}
+
+
+static struct sysdev_attribute baseband_files[] = {
+	_SYSDEV_ATTR(extended_baseband, 0444,
+			sysfs_extended_baseband_show, NULL),
+};
+
+static struct sysdev_class baseband_sysdev_class = {
+	.name = "baseband",
+};
+
+static struct sys_device baseband_sys_device = {
+	.id = 0,
+	.cls = &baseband_sysdev_class,
+};
+
+static void init_sysfs_extended_baseband(void){
+	int err;
+
+	if (!strnlen(extended_baseband, BASEBAND_MAX_LEN)) {
+		pr_err("%s: No extended_baseband available!\n", __func__);
+		return;
+	}
+
+	err = sysdev_class_register(&baseband_sysdev_class);
+	if (err) {
+		pr_err("%s: sysdev_class_register fail (%d)\n",
+		       __func__, err);
+		return;
+	}
+
+	err = sysdev_register(&baseband_sys_device);
+	if (err) {
+		pr_err("%s: sysdev_register fail (%d)\n",
+		       __func__, err);
+		return;
+	}
+
+	err = sysdev_create_file(&baseband_sys_device, &baseband_files[0]);
+	if (err) {
+		pr_err("%s: sysdev_create_file(%s)=%d\n",
+		       __func__, baseband_files[0].attr.name, err);
+		return;
+	}
 }
 
 static struct platform_device *mmi_devices[] __initdata = {
@@ -2391,8 +2458,10 @@ static __init void config_mdp_vsync_from_dt(void)
 	 * enable the VDDIO. Because of the SOL smooth transition, this gpio
 	 * must configure "high" to keep the VDDIO on
 	 */
+#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
 	else if (mipi_mot_panel_is_cmd_mode() != true)
 		use_mdp_vsync = MDP_VSYNC_DISABLED;
+#endif
 	else
 		use_mdp_vsync = MDP_VSYNC_ENABLED;
 
@@ -3280,6 +3349,7 @@ static void __init msm8960_mmi_init(void)
 
 	init_mmi_unit_info();
 	init_mmi_ram_info();
+	init_sysfs_extended_baseband();
 	emmc_version_init();
 	hw_rev_txt_init();
 }
@@ -3303,6 +3373,16 @@ static int __init mot_parse_atag_mbm_protocol_version(const struct tag *tag)
 	return 0;
 }
 __tagtable(ATAG_MBM_PROTOCOL_VERSION, mot_parse_atag_mbm_protocol_version);
+
+static int __init mot_parse_atag_baseband(const struct tag *tag)
+{
+	const struct tag_baseband *baseband_tag = &tag->u.baseband;
+	strncpy(extended_baseband, baseband_tag->baseband, BASEBAND_MAX_LEN);
+	extended_baseband[BASEBAND_MAX_LEN] = '\0';
+	pr_info("%s: %s\n", __func__, extended_baseband);
+	return 0;
+}
+__tagtable(ATAG_BASEBAND, mot_parse_atag_baseband);
 
 /* process flat device tree for hardware configuration */
 static int __init parse_tag_flat_dev_tree_address(const struct tag *tag)

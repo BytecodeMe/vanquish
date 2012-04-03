@@ -203,6 +203,11 @@ struct tag_emmc_version {
 	unsigned char raw_ecsd[512];
 };
 
+#define ATAG_BASEBAND 0x41000812
+struct tag_baseband {
+	char baseband[1];
+};
+
 struct tag {
 	struct tag_header hdr;
 	union {
@@ -232,6 +237,7 @@ struct tag {
 		struct tag_display	display;
 		struct tag_mbm_protocol_version  mbm_protocol_version;
 		struct tag_flat_dev_tree_address	fdt_addr;
+		struct tag_baseband	baseband;
 #ifdef CONFIG_BOOTINFO
 		struct tag_powerup_reason	       powerup_reason;
 		struct tag_mbm_version                 mbm_version;

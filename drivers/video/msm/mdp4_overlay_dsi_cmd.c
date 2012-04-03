@@ -595,7 +595,11 @@ void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 					msecs_to_jiffies(100)) == 0) {
 			pr_err("failed to wait for DMA complete\n");
 			spin_lock_irqsave(&mdp_spin_lock, flag);
+			if (busy_wait_cnt)
+				busy_wait_cnt--;
+
 			mfd->dma->busy = false;
+			mdp_disable_irq_nosync(MDP_OVERLAY0_TERM);
 			spin_unlock_irqrestore(&mdp_spin_lock, flag);
 		}
 	}

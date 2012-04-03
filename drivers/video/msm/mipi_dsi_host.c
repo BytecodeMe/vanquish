@@ -1024,6 +1024,7 @@ void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd)
 			pr_err("failed to wait for MDP complete\n");
 			spin_lock_irqsave(&dsi_mdp_lock, flag);
 			dsi_mdp_busy = false;
+			mipi_dsi_disable_irq_nosync();
 			spin_unlock_irqrestore(&dsi_mdp_lock, flag);
 		}
 	}
@@ -1298,11 +1299,15 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 		ret = mipi_dsi_cmd_dma_add(tp, pkt_size_cmd);
 		if (!ret) {
 			rp->len = ret;
+			pr_err("%s: failed to call cmd_dma_add for "
+						"max_pktsize\n", __func__);
 			return rp->len;
 		}
 		ret = mipi_dsi_cmd_dma_tx(tp);
 		if (ret < 0) {
 			rp->len = 0;
+			pr_err("%s: failed to call cmd_dma_tx for "
+						"max_pktsize\n", __func__);
 			return rp->len;
 		}
 	}
@@ -1311,12 +1316,14 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	ret = mipi_dsi_cmd_dma_add(tp, cmds);
 	if (!ret) {
 		rp->len = ret;
+		pr_err("%s: failed to call cmd_dma_add\n", __func__);
 		return rp->len;
 	}
 	/* transmit read comamnd to client */
 	ret = mipi_dsi_cmd_dma_tx(tp);
 	if (ret < 0) {
 		rp->len = 0;
+		pr_err("%s: failed to call cmd_dma_tx\n", __func__);
 		return rp->len;
 	}
 	/*
@@ -1358,7 +1365,7 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	cmd = rp->data[0];
 	switch (cmd) {
 	case DTYPE_ACK_ERR_RESP:
-		pr_debug("%s: rx ACK_ERR_PACLAGE\n", __func__);
+		pr_info("%s: rx ACK_ERR_PACLAGE\n", __func__);
 		rp->len = 0;
 		break;
 	case DTYPE_GEN_READ1_RESP:
@@ -1376,6 +1383,10 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 		rp->len -= diff; /* align bytes */
 		break;
 	default:
+		pr_warning("%s: Received Invalid cmd 0x%x 0x%x 0x%x 0x%x\n",
+					__func__, rp->data[0], rp->data[1],
+					rp->data[2], rp->data[3]);
+		rp->len = 0;
 		break;
 	}
 
@@ -1477,7 +1488,7 @@ void mipi_dsi_ack_err_status(void)
 
 	if (status) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0064, status);
-		pr_debug("%s: status=%x\n", __func__, status);
+		pr_warning("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1488,7 +1499,7 @@ void mipi_dsi_timeout_status(void)
 	status = MIPI_INP(MIPI_DSI_BASE + 0x00bc);/* DSI_TIMEOUT_STATUS */
 	if (status & 0x0111) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00bc, status);
-		pr_debug("%s: status=%x\n", __func__, status);
+		pr_warning("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1500,7 +1511,7 @@ void mipi_dsi_dln0_phy_err(void)
 
 	if (status & 0x011111) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00b0, status);
-		pr_debug("%s: status=%x\n", __func__, status);
+		pr_warning("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1512,7 +1523,7 @@ void mipi_dsi_fifo_status(void)
 
 	if (status & 0x44444489) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0008, status);
-		pr_debug("%s: status=%x\n", __func__, status);
+		pr_warning("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1524,7 +1535,7 @@ void mipi_dsi_status(void)
 
 	if (status & 0x80000000) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0004, status);
-		pr_debug("%s: status=%x\n", __func__, status);
+		pr_warning("%s: status=%x\n", __func__, status);
 	}
 }
 

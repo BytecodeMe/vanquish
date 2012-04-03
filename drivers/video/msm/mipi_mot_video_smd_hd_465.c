@@ -603,7 +603,12 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	atomic_set(&mot_panel->state, MOT_PANEL_ON);
 
 	mot_panel->enable_acl = enable_acl;
-	mot_panel->esd_enabled = false;
+
+	/* For ESD detection information */
+	mot_panel->esd_enabled = true;
+	mot_panel->panel_MID.MID1 = 0x00; /*0x00 and 0x01 are ealry released */
+	mot_panel->panel_MID.MID2 = 0x01;
+	mot_panel->panel_MID.MID3 = 0x05;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM, MIPI_DSI_PANEL_HD);
 	if (ret)

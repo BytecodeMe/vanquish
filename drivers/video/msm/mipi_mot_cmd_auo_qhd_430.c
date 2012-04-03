@@ -279,7 +279,12 @@ out:
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
-	mot_panel->esd_enabled = false;
+
+	/* For ESD detection information */
+	mot_panel->esd_enabled = true;
+	mot_panel->panel_MID.MID1 = 0x83;
+	mot_panel->panel_MID.MID2 = 0xC3;
+	mot_panel->panel_MID.MID3 = INVALID_VALUE;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM,
 						MIPI_DSI_PANEL_HD);

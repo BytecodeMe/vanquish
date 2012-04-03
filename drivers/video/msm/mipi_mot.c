@@ -21,6 +21,7 @@
 static struct mipi_dsi_panel_platform_data *mipi_mot_pdata;
 
 static struct mipi_mot_panel mot_panel;
+static bool factory_run;
 
 static struct dsi_buf mot_tx_buf;
 static struct dsi_buf mot_rx_buf;
@@ -209,6 +210,7 @@ static int panel_enable(struct platform_device *pdev)
 	if (ret != 0)
 		goto err;
 
+	mipi_dsi_cmd_bta_sw_trigger();
 	get_manufacture_id(mfd);
 	get_controller_ver(mfd);
 	get_controller_drv_ver(mfd);
@@ -221,7 +223,8 @@ static int panel_enable(struct platform_device *pdev)
 		goto err;
 	}
 
-	pr_info("%s completed\n", __func__);
+	pr_info("%s completed. Power_mode =0x%x\n",
+				__func__, mipi_mode_get_pwr_mode(mfd));
 
 	return 0;
 err:
@@ -242,7 +245,8 @@ static int panel_disable(struct platform_device *pdev)
 		goto err;
 
 	atomic_set(&mot_panel.state, MOT_PANEL_OFF);
-	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == true)) {
+	if (!factory_run && mot_panel.esd_enabled &&
+				(mot_panel.esd_detection_run == true)) {
 		cancel_delayed_work(&mot_panel.esd_work);
 		mot_panel.esd_detection_run = false;
 	}
@@ -260,7 +264,8 @@ static int panel_disable(struct platform_device *pdev)
 	return 0;
 err1:
 	atomic_set(&mot_panel.state, MOT_PANEL_ON);
-	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == false)) {
+	if (!factory_run && mot_panel.esd_enabled &&
+				(mot_panel.esd_detection_run == false)) {
 		queue_delayed_work(mot_panel.esd_wq, &mot_panel.esd_work,
 						MOT_PANEL_ESD_CHECK_PERIOD);
 		mot_panel.esd_detection_run = true;
@@ -287,9 +292,10 @@ static int panel_on(struct platform_device *pdev)
 	}
 
 	atomic_set(&mot_panel.state, MOT_PANEL_ON);
-	if (mot_panel.esd_enabled && (mot_panel.esd_detection_run == false)) {
+	if (!factory_run && mot_panel.esd_enabled &&
+				(mot_panel.esd_detection_run == false)) {
 		queue_delayed_work(mot_panel.esd_wq, &mot_panel.esd_work,
-						MOT_PANEL_ESD_CHECK_PERIOD);
+						msecs_to_jiffies(20000));
 		mot_panel.esd_detection_run = true;
 	}
 	return 0;
@@ -407,7 +413,7 @@ int mipi_mot_device_register(struct msm_panel_info *pinfo,
 		goto err_device_put;
 	}
 
-	if (mot_panel.esd_enabled) {
+	if (!factory_run && mot_panel.esd_enabled) {
 		mot_panel.esd_wq =
 				create_singlethread_workqueue("mot_panel_esd");
 		if (mot_panel.esd_wq == NULL) {
@@ -434,6 +440,14 @@ err_device_put:
 	return ret;
 }
 
+/*
+ * This is a work around for now. We need to make this call from board-mmi.c
+ * but there is no way for this panel to make the call to this file. It has
+ * to make the call to the msm_fb and from there, it will call to board-mmi.c
+ * because we have to support the factory build which the ESD will not run
+ * because there might be not have the panel
+ */
+extern int mot_panel_is_factory_mode(void);
 static int __init mipi_mot_lcd_init(void)
 {
 	mipi_dsi_buf_alloc(&mot_tx_buf, DSI_BUF_SIZE);
@@ -449,6 +463,10 @@ static int __init mipi_mot_lcd_init(void)
 	mot_panel.esd_run = mipi_mot_esd_work;
 
 	mot_panel.panel_on = mipi_mot_panel_on;
+
+	factory_run = mot_panel_is_factory_mode();
+	if (factory_run)
+		pr_info("MIPI MOT PANEL: Factory mode\n");
 
 	return platform_driver_register(&this_driver);
 }

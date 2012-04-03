@@ -484,6 +484,29 @@ static int msm_fb_remove(struct platform_device *pdev)
 
 	return 0;
 }
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+static void lock_panel_mutex(struct msm_fb_data_type *mfd)
+{
+	if (mfd->panel_info.mipi.dsi_phy_db != NULL)
+		mutex_lock(&mfd->panel_info.mipi.panel_mutex);
+}
+
+static void unlock_panel_mutex(struct msm_fb_data_type *mfd)
+{
+	if (mfd->panel_info.mipi.dsi_phy_db != NULL)
+		mutex_unlock(&mfd->panel_info.mipi.panel_mutex);
+}
+#else
+static void lock_panel_mutex(struct msm_fb_data_type *mfd)
+{
+	/* Stubbed function */
+}
+
+static void unlock_panel_mutex(struct msm_fb_data_type *mfd)
+{
+	/* Stubbed function */
+}
+#endif
 
 #if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
 static int msm_fb_suspend(struct platform_device *pdev, pm_message_t state)
@@ -523,6 +546,7 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 	if ((!mfd) || (mfd->key != MFD_KEY))
 		return 0;
 
+	lock_panel_mutex(mfd);
 	if (mfd->msmfb_no_update_notify_timer.function)
 		del_timer(&mfd->msmfb_no_update_notify_timer);
 	complete(&mfd->msmfb_no_update_notify);
@@ -541,7 +565,7 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 		if (ret) {
 			MSM_FB_INFO
 			    ("msm_fb_suspend: can't turn off display!\n");
-			return ret;
+			goto end;
 		}
 		mfd->op_enable = FALSE;
 	}
@@ -568,6 +592,9 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 		}
 	}
 
+	ret = 0;
+end:
+	unlock_panel_mutex(mfd);
 	return 0;
 }
 
@@ -579,6 +606,7 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 	if ((!mfd) || (mfd->key != MFD_KEY))
 		return 0;
 
+	lock_panel_mutex(mfd);
 	/* attach display channel irq if there's any */
 	if (mfd->channel_irq != 0)
 		enable_irq(mfd->channel_irq);
@@ -594,6 +622,8 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 		if (ret)
 			MSM_FB_INFO("msm_fb_resume: can't turn on display!\n");
 	}
+
+	unlock_panel_mutex(mfd);
 
 	return ret;
 }

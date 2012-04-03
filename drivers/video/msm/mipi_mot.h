@@ -68,6 +68,18 @@
 #define MOT_PANEL_OFF     0x0
 #define MOT_PANEL_ON      0x1
 
+struct mipi_mot_panel_MID {
+	u8 MID1;
+	u8 MID2;
+	u8 MID3;
+};
+
+enum {
+	MOT_ESD_PANEL_OFF = 0,
+	MOT_ESD_ESD_DETECT,
+	MOT_ESD_OK,
+};
+
 struct mipi_mot_panel {
 
 	struct msm_panel_info pinfo;
@@ -77,6 +89,7 @@ struct mipi_mot_panel {
 	struct mutex lock;
 	boolean acl_support_present;
 	boolean acl_enabled;
+	struct mipi_mot_panel_MID panel_MID;
 
 	atomic_t state;
 	bool esd_enabled;
