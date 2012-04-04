@@ -139,10 +139,6 @@ static struct msm_cam_clk_info csid_clk_info[] = {
 	{"csi_pclk", -1},
 };
 
-static struct camera_vreg_t csid_vreg_info[] = {
-	{"mipi_csi_vdd", REG_LDO, 1200000, 1200000, 20000},
-};
-
 static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 {
 	int rc = 0;
@@ -160,25 +156,11 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		return rc;
 	}
 
-	rc = msm_camera_config_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 1);
-	if (rc < 0) {
-		pr_err("%s: regulator on failed\n", __func__);
-		goto vreg_config_failed;
-	}
-
-	rc = msm_camera_enable_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 1);
-	if (rc < 0) {
-		pr_err("%s: regulator enable failed\n", __func__);
-		goto vreg_enable_failed;
-	}
-
 	rc = msm_cam_clk_enable(&csid_dev->pdev->dev, csid_clk_info,
 		csid_dev->csid_clk, ARRAY_SIZE(csid_clk_info), 1);
 	if (rc < 0) {
-		pr_err("%s: regulator enable failed\n", __func__);
-		goto clk_enable_failed;
+		iounmap(csid_dev->base);
+		return rc;
 	}
 
 	csid_dev->hw_version =
@@ -189,16 +171,6 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 	enable_irq(csid_dev->irq->start);
 #endif
 	return 0;
-
-clk_enable_failed:
-	msm_camera_enable_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 0);
-vreg_enable_failed:
-	msm_camera_config_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 0);
-vreg_config_failed:
-	iounmap(csid_dev->base);
-	return rc;
 }
 
 static int msm_csid_release(struct v4l2_subdev *sd)
@@ -212,12 +184,6 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 
 	msm_cam_clk_enable(&csid_dev->pdev->dev, csid_clk_info,
 		csid_dev->csid_clk, ARRAY_SIZE(csid_clk_info), 0);
-
-	msm_camera_enable_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 0);
-
-	msm_camera_config_vreg(&csid_dev->pdev->dev, csid_vreg_info,
-		ARRAY_SIZE(csid_vreg_info), &csid_dev->csi_vdd, 0);
 
 	iounmap(csid_dev->base);
 	return 0;
