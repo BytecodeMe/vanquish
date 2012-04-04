@@ -3168,7 +3168,7 @@ void __init msm8960_init_usb(void)
 
 /* Sensors DSPS platform data */
 #ifdef CONFIG_MSM_DSPS
-#define DSPS_PIL_GENERIC_NAME		"dsps"
+#define DSPS_PIL_GENERIC_NAME	"dsps"
 /* GSBI12 Base. */
 #define MSM_GSBI12_PHYS		(0x12480000)
 /* Protocol for UART/I2C. */
@@ -3192,21 +3192,42 @@ void __init msm8960_init_dsps(void)
 
 	/* Enable GSBI12_HCLK */
 	hclk = clk_get_sys("dsps_hclk", "iface_clk");
-	if (IS_ERR(hclk)) {
-		printk(KERN_ERR "%s: Error getting dsps clk\n",
-		       __func__);
-		return;
+	if (IS_ERR(hclk))
+		pr_err("%s: Error getting dsps clk\n", __func__);
+	else {
+		/* Enable the clock and leave it on */
+		clk_enable(hclk);
+		/* Write the protocol. */
+		writel_relaxed(UART_I2C_PROTOCOL, gsbi_ctrl);
+		/* Ensure that the data is completely written */
+		mb();
 	}
-	/* Enable the clock and leave it on */
-	clk_enable(hclk);
-
-	/* Write the protocol. */
-	writel_relaxed(UART_I2C_PROTOCOL, gsbi_ctrl);
-	/* Ensure that the data is completely written. */
-	mb();
-
 	iounmap(gsbi_ctrl);
 #endif /* CONFIG_MSM_DSPS */
+}
+
+#define MSM_GSBI4_PHYS  0x16300000
+#define MSM_I2C_NAME    "qup_i2c"
+
+void msm8960_init_gsbi4(void)
+{
+	struct clk *iface_clk;
+	void *gsbi4_ctrl = ioremap_nocache(MSM_GSBI4_PHYS, 4);
+
+	/* Enable GSBI4_ */
+	iface_clk = clk_get_sys(MSM_I2C_NAME ".4", "iface_clk");
+	if (IS_ERR(iface_clk))
+		pr_err("%s: Error getting gsbi4 clk\n", __func__);
+	else {
+		/* Enable the clock and leave it on */
+		clk_enable(iface_clk);
+		/* Write the protocol. */
+		writel_relaxed(UART_I2C_PROTOCOL, gsbi4_ctrl);
+		/* Ensure that the data is completely written */
+		mb();
+		clk_disable(iface_clk);
+	}
+	iounmap(gsbi4_ctrl);
 }
 
 static int hsic_peripheral_status = 1;
@@ -3340,9 +3361,10 @@ struct platform_device *common_devices[] __initdata = {
 #endif
 };
 
-void __init msm8960_i2c_init(unsigned clk_freq)
+void __init msm8960_i2c_init(unsigned clk_freq, u8 gsbi_shared_mode)
 {
 	msm8960_i2c_qup_gsbi4_pdata.clk_freq = clk_freq;
+	msm8960_i2c_qup_gsbi4_pdata.use_gsbi_shared_mode = !gsbi_shared_mode;
 	msm8960_device_qup_i2c_gsbi4.dev.platform_data =
 					&msm8960_i2c_qup_gsbi4_pdata;
 

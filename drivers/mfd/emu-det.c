@@ -81,9 +81,6 @@
 #include <mach/gpiomux.h>
 #include <mach/msm_iomap.h>
 
-#define GSBI_PROTOCOL_UNDEFINED	0x70
-#define GSBI_PROTOCOL_I2C_UART	0x60
-
 #define PRINT_STATUS	(1U << 2)
 #define PRINT_TRANSITION (1U << 1)
 #define PRINT_DEBUG	(1U << 3)
@@ -304,7 +301,6 @@ struct emu_det_data {
 	struct regulator *regulator;
 	struct wake_lock wake_lock;
 	bool suspend_disabled;
-	unsigned char is_vusb_enabled;
 	struct switch_dev wsdev; /* Whisper switch */
 	struct switch_dev dsdev; /* Standard Dock switch */
 	struct switch_dev asdev; /* Audio switch */
@@ -314,7 +310,6 @@ struct emu_det_data {
 	DECLARE_BITMAP(enabled_irqs, EMU_DET_IRQ_MAX);
 	char dock_id[128];
 	char dock_prop[128];
-	unsigned char audio;
 	short whisper_auth;
 	u8 retries;
 	bool irq_setup;
@@ -328,7 +323,6 @@ struct emu_det_data {
 	int se1_mode;
 	bool ext_5v_switch_enabled;
 	bool spd_ppd_transition;
-	unsigned  gsbi_phys;
 	struct otg_transceiver *trans;
 	int requested_muxmode;
 	bool vbus_adc_delay;
@@ -397,42 +391,14 @@ static const char *print_state_name(enum emu_det_state st)
 
 static void whisper_gpio_mode(int mode)
 {
-	if (emu_pdata && emu_pdata->gpio_mode)
+	if (emu_pdata->gpio_mode)
 		emu_pdata->gpio_mode(mode);
 }
 
-static void gsbi_ctrl_register(bool restore)
+static void gsbi_ctrl_register(int restore)
 {
-	struct emu_det_data *emud = the_emud;
-	void *gsbi_ctrl;
-	uint32_t new;
-	static uint32_t value;
-	static bool stored;
-
-	gsbi_ctrl = ioremap_nocache(emud->gsbi_phys, 4);
-	if (IS_ERR_OR_NULL(gsbi_ctrl)) {
-		pr_emu_det(ERROR, "cannot map GSBI ctrl reg\n");
-		return;
-	} else {
-		if (restore) {
-			if (stored) {
-				writel_relaxed(value, gsbi_ctrl);
-				stored = false;
-				pr_emu_det(DEBUG, "GSBI reg 0x%x restored\n",
-									value);
-			}
-		} else {
-			new = value = readl_relaxed(gsbi_ctrl);
-			stored = true;
-			new &= ~GSBI_PROTOCOL_UNDEFINED;
-			new |= GSBI_PROTOCOL_I2C_UART;
-			writel_relaxed(new, gsbi_ctrl);
-			mb();
-			pr_emu_det(DEBUG, "GSBI reg 0x%x updated, "
-					"stored value 0x%x\n", new, value);
-		}
-	}
-	iounmap(gsbi_ctrl);
+	if (emu_pdata->gsbi_ctrl)
+		emu_pdata->gsbi_ctrl(restore);
 }
 
 void switch_mux_mode(int mode, int check_valid_req)
@@ -515,7 +481,7 @@ static int adc_emu_id_get(void)
 {
 	int ret = 0;
 
-	if (emu_pdata && emu_pdata->adc_id)
+	if (emu_pdata->adc_id)
 		ret = emu_pdata->adc_id();
 
 	pr_emu_det(DEBUG, "emu_id=%d mV\n", ret);
@@ -570,9 +536,8 @@ static void emu_id_protection_setup(bool on)
 	}
 
 	if (on == emud->protection_forced_off) {
-		if (emu_pdata && emu_pdata->id_protect) {
+		if (emu_pdata->id_protect)
 			emu_pdata->id_protect(on);
-		}
 		if (on) {
 			gpio_direction_input(
 				emud->emu_gpio[EMU_ID_EN_GPIO]);
@@ -591,9 +556,8 @@ static void emu_id_protection_setup(bool on)
 static void alt_mode_setup(bool on)
 {
 	struct emu_det_data *emud = the_emud;
-	if (emu_pdata && emu_pdata->alt_mode) {
+	if (emu_pdata->alt_mode)
 		emu_pdata->alt_mode(on);
-	}
 	emud->semu_alt_mode = on;
 	pr_emu_det(DEBUG, "SEMU_ALT_MODE_EN is %s\n",
 		on ? "alternate" : "standard");
@@ -601,7 +565,7 @@ static void alt_mode_setup(bool on)
 
 static void external_5V_setup(bool disable)
 {
-	if (emu_pdata && emu_pdata->enable_5v) {
+	if (emu_pdata->enable_5v) {
 		struct emu_det_data *emud = the_emud;
 		if (!disable) {
 			if (emud->ext_5v_switch_enabled) {
@@ -623,7 +587,7 @@ static void dp_dm_pm_gpio_mode(int mode)
 {
 	struct emu_det_data *emud = the_emud;
 
-	if (emu_pdata && emu_pdata->dp_dm_mode) {
+	if (emu_pdata->dp_dm_mode) {
 		emu_pdata->dp_dm_mode(mode);
 
 		emud->se1_mode = mode;
@@ -1955,7 +1919,6 @@ static struct miscdevice emu_det_dev = {
 static int emu_det_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	struct resource *res;
 	struct emu_det_data *data;
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
@@ -1976,15 +1939,7 @@ static int emu_det_probe(struct platform_device *pdev)
 		emu_det_irq_data[SCI_OUT_IDX].required = OPTIONAL;
 	data->dev = &pdev->dev;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		pr_err("failed to get platform resource mem\n");
-		ret = -ENODEV;
-		goto free_data;
-	}
-	data->gsbi_phys = res->start;
-
-	if (emu_pdata && emu_pdata->core_power)
+	if (emu_pdata->core_power)
 		emu_pdata->core_power(1);
 
 	ret = request_gpios(pdev);
@@ -2123,7 +2078,7 @@ static int __exit emu_det_remove(struct platform_device *pdev)
 	free_gpios();
 
 	misc_deregister(&emu_det_dev);
-	if (emu_pdata && emu_pdata->core_power)
+	if (emu_pdata->core_power)
 		emu_pdata->core_power(0);
 	kfree(data);
 
