@@ -134,7 +134,7 @@ struct msm_fb_data_type {
 	int (*lut_update) (struct fb_info *info,
 			      struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
-			      struct mdp_histogram *hist);
+			      struct mdp_histogram_data *hist);
 	int (*reg_read)(struct msm_fb_data_type *mfd, __u16 address, __u16 size,
 					__u8 *buf, __u8 use_hs_mode);
 	int (*reg_write)(struct msm_fb_data_type *mfd, __u16 size, __u8 *buf, __u8 use_hs_mode);
@@ -197,6 +197,7 @@ struct msm_fb_data_type {
 	u32 use_ov0_blt, ov0_blt_state;
 	u32 use_ov1_blt, ov1_blt_state;
 	u32 writeback_state;
+	int cont_splash_done;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
