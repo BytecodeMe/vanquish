@@ -33,10 +33,13 @@
 #define CAM_VDIG_MAXUV                    1200000
 #define CAM_VANA_MINUV                    2800000
 #define CAM_VANA_MAXUV                    2850000
+#define CAM_CSI_VDD_MINUV                  1200000
+#define CAM_CSI_VDD_MAXUV                  1200000
 
 #define CAM_VAF_LOAD_UA               300000
 #define CAM_VDIG_LOAD_UA                  105000
 #define CAM_VANA_LOAD_UA                  85600
+#define CAM_CSI_LOAD_UA                    20000
 
 static struct clk *camio_cam_clk;
 
@@ -48,6 +51,7 @@ static struct regulator *cam_vana;
 static struct regulator *cam_vio;
 static struct regulator *cam_vdig;
 static struct regulator *cam_vaf;
+static struct regulator *mipi_csi_vdd;
 
 static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
@@ -138,12 +142,37 @@ static int msm_camera_vreg_enable(struct device *dev)
 	/* use_cam_xxx flags are a hack to bypass this regulator control */
 	struct msm_camera_sensor_info *sinfo = dev->platform_data;
 
+	if (mipi_csi_vdd == NULL) {
+		mipi_csi_vdd = regulator_get(dev, "mipi_csi_vdd");
+		if (IS_ERR(mipi_csi_vdd)) {
+			CDBG("%s: VREG MIPI CSI VDD get failed\n", __func__);
+			mipi_csi_vdd = NULL;
+			return -ENODEV;
+		}
+		if (regulator_set_voltage(mipi_csi_vdd, CAM_CSI_VDD_MINUV,
+			CAM_CSI_VDD_MAXUV)) {
+			CDBG("%s: VREG MIPI CSI VDD set voltage failed\n",
+				__func__);
+			goto mipi_csi_vdd_put;
+		}
+		if (regulator_set_optimum_mode(mipi_csi_vdd,
+			CAM_CSI_LOAD_UA) < 0) {
+			CDBG("%s: VREG MIPI CSI set optimum mode failed\n",
+				__func__);
+			goto mipi_csi_vdd_release;
+		}
+		if (regulator_enable(mipi_csi_vdd)) {
+			CDBG("%s: VREG MIPI CSI VDD enable failed\n",
+				__func__);
+			goto mipi_csi_vdd_disable;
+		}
+	}
 	if (sinfo->use_cam_vana && cam_vana == NULL) {
 		cam_vana = regulator_get(dev, "cam_vana");
 		if (IS_ERR(cam_vana)) {
 			CDBG("%s: VREG CAM VANA get failed\n", __func__);
 			cam_vana = NULL;
-			return -ENODEV;
+			goto mipi_csi_vdd_disable;
 		}
 		if (regulator_set_voltage(cam_vana, CAM_VANA_MINUV,
 			CAM_VANA_MAXUV)) {
@@ -253,11 +282,28 @@ cam_vana_release:
 cam_vana_put:
 	regulator_put(cam_vana);
 	cam_vana = NULL;
+mipi_csi_vdd_disable:
+	regulator_set_optimum_mode(mipi_csi_vdd, 0);
+mipi_csi_vdd_release:
+	regulator_set_voltage(mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
+	regulator_disable(mipi_csi_vdd);
+
+mipi_csi_vdd_put:
+	regulator_put(mipi_csi_vdd);
+	mipi_csi_vdd = NULL;
 	return -ENODEV;
 }
 
 static void msm_camera_vreg_disable(void)
 {
+	if (mipi_csi_vdd) {
+		regulator_set_voltage(mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
+		regulator_set_optimum_mode(mipi_csi_vdd, 0);
+		regulator_disable(mipi_csi_vdd);
+		regulator_put(mipi_csi_vdd);
+		mipi_csi_vdd = NULL;
+	}
+
 	if (cam_vana) {
 		regulator_set_voltage(cam_vana, 0, CAM_VANA_MAXUV);
 		regulator_set_optimum_mode(cam_vana, 0);
