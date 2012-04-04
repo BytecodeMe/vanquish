@@ -40,6 +40,7 @@
 #include <linux/msm_tsens.h>
 #include <linux/ks8851.h>
 #include <linux/memory.h>
+#include <linux/memblock.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
