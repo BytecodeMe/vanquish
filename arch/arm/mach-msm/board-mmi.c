@@ -805,10 +805,16 @@ static __init void mot_init_emu_detection(
 static char panel_name[PANEL_NAME_MAX_LEN + 1] = DEFAULT_PANEL_NAME;
 static char extended_baseband[BASEBAND_MAX_LEN+1] = "\0";
 
-static int is_smd(void) {
-	return !strncmp(panel_name, "mipi_mot_video_smd_hd_465", PANEL_NAME_MAX_LEN);
+static int is_smd_hd_465(void)
+{
+	return !strncmp(panel_name, "mipi_mot_video_smd_hd_465",
+				PANEL_NAME_MAX_LEN);
 }
-
+static int is_smd_qhd_429(void)
+{
+	return !strncmp(panel_name, "mipi_mot_cmd_smd_qhd_429",
+				PANEL_NAME_MAX_LEN);
+}
 static int is_auo_hd_450(void)
 {
 	return !strncmp(panel_name, "mipi_mot_cmd_auo_hd_450",
@@ -1057,7 +1063,7 @@ int mipi_panel_power_en(int on)
 		 * will toggle both GPIOs 43 and 37, but there will be one to
 		 * be used, and there will be no harm if another doesn't use.
 		 */
-		if (is_smd()) {
+		if (is_smd_hd_465()) {
 			if (system_rev == HWREV_P1C) {
 				lcd_reset = PM8921_GPIO_PM_TO_SYS(43);
 				lcd_reset1 = PM8921_GPIO_PM_TO_SYS(37);
@@ -1065,7 +1071,9 @@ int mipi_panel_power_en(int on)
 				lcd_reset = PM8921_GPIO_PM_TO_SYS(37);
 			else
 				lcd_reset = PM8921_GPIO_PM_TO_SYS(43);
-		} else
+		} else if (is_smd_qhd_429())
+			lcd_reset = PM8921_GPIO_PM_TO_SYS(37);
+		else
 			lcd_reset = PM8921_GPIO_PM_TO_SYS(43);
 
 		rc = gpio_request(lcd_reset, "disp_rst_n");
@@ -1075,7 +1083,7 @@ int mipi_panel_power_en(int on)
 			goto end;
 		}
 
-		if (is_smd() && lcd_reset1 != 0) {
+		if (is_smd_hd_465() && lcd_reset1 != 0) {
 			rc = gpio_request(lcd_reset1, "disp_rst_1_n");
 			if (rc) {
 				pr_err("request lcd_reset1 failed, rc=%d\n",
@@ -1100,7 +1108,8 @@ int mipi_panel_power_en(int on)
 			goto end;
 		}
 
-		if (is_smd() && system_rev < HWREV_P1) {
+		if ((is_smd_hd_465() && system_rev < HWREV_P1) ||
+		    is_smd_qhd_429()) {
 			rc = gpio_request(12, "disp_3_3");
 			if (rc) {
 				pr_err("%s: unable to request gpio %d (%d)\n",
@@ -1118,7 +1127,7 @@ int mipi_panel_power_en(int on)
 			}
 		}
 
-		if (is_smd() && system_rev >= HWREV_P1) {
+		if (is_smd_hd_465() && system_rev >= HWREV_P1) {
 			rc = gpio_request(0, "dsi_vci_en");
 			if (rc) {
 				pr_err("%s: unable to request gpio %d (%d)\n",
@@ -1141,26 +1150,29 @@ int mipi_panel_power_en(int on)
 		gpio_set_value(disp_5v_en, 1);
 		mdelay(5);
 
-		if (is_smd() && system_rev < HWREV_P1)
+		if ((is_smd_hd_465() && system_rev < HWREV_P1) ||
+		    is_smd_qhd_429())
 			gpio_set_value_cansleep(12, 1);
-		if (is_smd() && system_rev >= HWREV_P1)
+		if (is_smd_hd_465() && system_rev >= HWREV_P1)
 			gpio_set_value_cansleep(0, 1);
 
-		if (is_smd())
+		if (is_smd_hd_465())
 			mdelay(30);
+		else if (is_smd_qhd_429())
+			mdelay(25);
 		else
 			mdelay(10);
 
 		gpio_set_value_cansleep(lcd_reset, 1);
 
-		if (is_smd() && lcd_reset1 != 0)
+		if (is_smd_hd_465() && lcd_reset1 != 0)
 			gpio_set_value_cansleep(lcd_reset1, 1);
 
 		mdelay(20);
 	} else {
 		gpio_set_value_cansleep(lcd_reset, 0);
 
-		if (is_smd() && lcd_reset1 != 0)
+		if (is_smd_hd_465() && lcd_reset1 != 0)
 			gpio_set_value_cansleep(lcd_reset1, 0);
 
 		if (is_auo_hd_450()) {
@@ -1173,10 +1185,11 @@ int mipi_panel_power_en(int on)
 		} else
 			gpio_set_value(disp_5v_en, 0);
 
-		if (is_smd() && system_rev < HWREV_P1)
+		if ((is_smd_hd_465() && system_rev < HWREV_P1) ||
+		   is_smd_qhd_429())
 			gpio_set_value_cansleep(12, 0);
 
-		if (is_smd() && system_rev >= HWREV_P1)
+		if (is_smd_hd_465() && system_rev >= HWREV_P1)
 			gpio_set_value_cansleep(0, 0);
 	}
 
@@ -1195,17 +1208,20 @@ static int mipi_panel_power(int on)
 	pr_debug("%s (%d) is called\n", __func__, on);
 
 	if (!panel_power_on) {
-		if (is_smd() && system_rev >= HWREV_P2) {
+		if (is_smd_hd_465() && system_rev >= HWREV_P2) {
 			/* Vanquish P2 is not using VREG_L17 */
 			reg_vddio = NULL;
-		} else if (is_smd() && system_rev >= HWREV_P1) {
+		} else if (is_smd_hd_465() && system_rev >= HWREV_P1) {
 				reg_vddio = regulator_get(
 						&msm_mipi_dsi1_device.dev,
 						"disp_vddio");
-		} else {
+		} else if (is_smd_qhd_429())
+			/* TODO: Need to check qinara P2 */
+			reg_vddio = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_s4");
+		else
 			reg_vddio = regulator_get(&msm_mipi_dsi1_device.dev,
 				"dsi_vdc");
-		}
 
 		if (IS_ERR(reg_vddio)) {
 			pr_err("could not get 8921_vddio/vdc, rc = %ld\n",
@@ -1214,7 +1230,8 @@ static int mipi_panel_power(int on)
 			goto end;
 		}
 
-		if (is_smd() && system_rev >= HWREV_P1) {
+		if ((is_smd_hd_465() && system_rev >= HWREV_P1) ||
+		    is_smd_qhd_429()) {
 			reg_vci = regulator_get(&msm_mipi_dsi1_device.dev,
 					"disp_vci");
 			if (IS_ERR(reg_vci)) {
@@ -1226,19 +1243,19 @@ static int mipi_panel_power(int on)
 		}
 
 		if (NULL != reg_vddio) {
-			rc = regulator_set_voltage(reg_vddio,
+			if (is_smd_qhd_429())
+				/* TODO: Need to check qinara P2 */
+				rc = regulator_set_voltage(reg_vddio, 1800000,
+							 1800000);
+			else
+				rc = regulator_set_voltage(reg_vddio,
 						get_l17_voltage(), 2850000);
+
 			if (rc) {
 				pr_err("set_voltage l17 failed, rc=%d\n", rc);
 				rc = -EINVAL;
 				goto end;
 			}
-			/*
-			 * It has been enabled by bootloader. We need to enable
-			 * it or else we couldn't disable this regulator in
-			 * first time.
-			 */
-			regulator_enable(reg_vddio);
 		}
 
 		if (NULL != reg_vci) {
@@ -1248,7 +1265,6 @@ static int mipi_panel_power(int on)
 				rc = -EINVAL;
 				goto end;
 			}
-			regulator_enable(reg_vci);
 		}
 
 		panel_power_on = true;
@@ -3043,9 +3059,9 @@ static __init void register_i2c_devices_from_dt(int bus)
 		 */
 		prop = of_get_property(child, "teufel-hack", &len);
 		if (prop && (len == sizeof(u8)) && *(u8 *)prop) {
-			if (is_smd() && (*(u8 *)prop != 2))
+			if (is_smd_hd_465() && (*(u8 *)prop != 2))
 				continue;
-			if (!is_smd() && (*(u8 *)prop != 1))
+			if (!is_smd_hd_465() && (*(u8 *)prop != 1))
 				continue;
 		}
 
