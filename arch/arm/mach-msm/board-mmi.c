@@ -147,7 +147,7 @@ static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
 	PM8XXX_GPIO_PAIRED_IN_VIN(41,  PM_GPIO_VIN_L17), /* Whisper RX 2.7V */
 	PM8XXX_GPIO_PAIRED_OUT_VIN(42, PM_GPIO_VIN_S4),  /* Whisper RX 1.8V */
 	PM8XXX_GPIO_OUTPUT(43,	    PM_GPIO_PULL_UP_1P5), /* DISP_RESET_N */
-	PM8XXX_GPIO_OUTPUT_VIN(37, PM_GPIO_PULL_UP_1P5,
+	PM8XXX_GPIO_OUTPUT_VIN(37, PM_GPIO_PULL_UP_30,
 			PM_GPIO_VIN_L17),	/* DISP_RESET_N on P1C+ */
 };
 
@@ -1149,55 +1149,9 @@ static int mipi_dsi_panel_power(int on)
 	return 0;
 }
 
-static void mipi_dsi_panel_pwm_cfg(void)
-{
-	int rc;
-	static int mipi_dsi_panel_gpio_configured;
-	static struct pm_gpio pwm_enable = {
-		.direction        = PM_GPIO_DIR_OUT,
-		.output_buffer    = PM_GPIO_OUT_BUF_CMOS,
-		.output_value     = 1,
-		.pull             = PM_GPIO_PULL_NO,
-		.vin_sel          = PM_GPIO_VIN_VPH,
-		.out_strength     = PM_GPIO_STRENGTH_HIGH,
-		.function         = PM_GPIO_FUNC_NORMAL,
-		.inv_int_pol      = 0,
-		.disable_pin      = 0,
-	};
-	static struct pm_gpio pwm_mode = {
-		.direction        = PM_GPIO_DIR_OUT,
-		.output_buffer    = PM_GPIO_OUT_BUF_CMOS,
-		.output_value     = 0,
-		.pull             = PM_GPIO_PULL_NO,
-		.vin_sel          = PM_GPIO_VIN_S4,
-		.out_strength     = PM_GPIO_STRENGTH_HIGH,
-		.function         = PM_GPIO_FUNC_2,
-		.inv_int_pol      = 0,
-		.disable_pin      = 0,
-	};
-
-	if (mipi_dsi_panel_gpio_configured == 0) {
-		/* pm8xxx: gpio-21, Backlight Enable */
-		rc = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(21),
-					&pwm_enable);
-		if (rc != 0)
-			pr_err("%s: pwm_enabled failed\n", __func__);
-
-		/* pm8xxx: gpio-24, Bl: Off, PWM mode */
-		rc = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(24),
-					&pwm_mode);
-		if (rc != 0)
-			pr_err("%s: pwm_mode failed\n", __func__);
-
-		mipi_dsi_panel_gpio_configured++;
-	}
-}
-
-
 static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_VSYNC_GPIO,
 	.dsi_power_save = mipi_dsi_panel_power,
-	.dsi_pwm_cfg = mipi_dsi_panel_pwm_cfg,
 };
 
 static void __init msm_fb_add_devices(void)
@@ -1653,26 +1607,6 @@ void __init msm8960_init_cam(void)
 	platform_device_register(&msm8960_device_ispif);
 	platform_device_register(&msm8960_device_vfe);
 	platform_device_register(&msm8960_device_vpe);
-}
-#endif
-
-/*
- * - This is a work around for the panel SOL mooth transition feature
- * QCOm has provided patch to make this feature to work for video mode panel
- * but this will break MOT's feature for command mode.
- * - While waiting for QCOm to delivery a patch that can make this feature
- * to work for both pane; types. We will use this in the mean time
- * - Make sure to remove the FB_MSM_BOOTLOADER_INIT for command mode
- */
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-bool mipi_mot_panel_is_cmd_mode(void)
-{
-	bool ret = true;
-	if (!strncmp("mipi_mot_video_smd_hd_465", panel_name,
-						PANEL_NAME_MAX_LEN))
-		ret = false;
-
-	return ret;
 }
 #endif
 
@@ -2535,19 +2469,6 @@ static __init void config_mdp_vsync_from_dt(void)
 	if (prop && (len == sizeof(u8)))
 		use_mdp_vsync = *(u8*)prop ? MDP_VSYNC_ENABLED
 			: MDP_VSYNC_DISABLED;
-	/*
-	 * This is a HACK for SOL smooth transition, will need to clean up
-	 * to use device tree for this purpose.
-	 * with the Video mode, it uses this MDP_VSYNC_GPIO, 0 GPIO to
-	 * enable the VDDIO. Because of the SOL smooth transition, this gpio
-	 * must configure "high" to keep the VDDIO on
-	 */
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	else if (mipi_mot_panel_is_cmd_mode() != true)
-		use_mdp_vsync = MDP_VSYNC_DISABLED;
-#endif
-	else
-		use_mdp_vsync = MDP_VSYNC_ENABLED;
 
 	of_node_put(chosen);
 

@@ -320,27 +320,14 @@ static void msm_fb_remove_sysfs(struct platform_device *pdev)
 	sysfs_remove_group(&mfd->fbi->dev->kobj, &msm_fb_attr_group);
 }
 
-/*
- * - This is a work around for the panel SOL mooth transition feature
- * QCOm has provided patch to make this feature to work for video mode panel
- * but this will break MOT's feature for command mode.
- * - While waiting for QCOm to delivery a patch that can make this feature
- * to work for both pane; types. We will use this in the mean time
- */
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-extern bool mipi_mot_panel_is_cmd_mode(void);
-#endif
-
 static int msm_fb_probe(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd;
 	int rc;
 	int err = 0;
-#if defined(CONFIG_FB_MSM_BOOTLOADER_INIT) || \
-			defined(CONFIG_FB_MSM_CONT_SPLASH_SCREEN)
+#ifdef CONFIG_FB_MSM_BOOTLOADER_INIT
 	struct fb_info *fbi;
 #endif
-
 
 	MSM_FB_DEBUG("msm_fb_probe\n");
 
@@ -409,15 +396,6 @@ static int msm_fb_probe(struct platform_device *pdev)
 	if (mfd->index == 0) {
 		fbi = mfd->fbi;
 		msm_fb_blank_sub(FB_BLANK_UNBLANK, fbi, mfd->op_enable);
-	}
-#endif
-
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	if (mipi_mot_panel_is_cmd_mode() == true) {
-		if (mfd->index == 0) {
-			fbi = mfd->fbi;
-			msm_fb_blank_sub(FB_BLANK_UNBLANK, fbi, mfd->op_enable);
-		}
 	}
 #endif
 	return 0;
@@ -1484,13 +1462,6 @@ static int msm_fb_open(struct fb_info *info, int user)
 		return 0;
 	}
 #endif
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	if (info->node == 0 && !cont_splash_done) {     /* primary */
-		mfd->ref_cnt++;
-		return 0;
-	}
-#endif
-
 	if (!mfd->ref_cnt) {
 		mdp_set_dma_pan_info(info, NULL, TRUE);
 
@@ -1607,16 +1578,6 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	mutex_unlock(&msm_fb_notify_update_sem);
 
 	down(&msm_fb_pan_sem);
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	if (info->node == 0 && !cont_splash_done) { /* primary */
-		mdp_set_dma_pan_info(info, NULL, TRUE);
-		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
-			pr_err("%s: can't turn on display!\n", __func__);
-			return -EINVAL;
-		}
-	}
-#endif
-
 	mdp_set_dma_pan_info(info, dirtyPtr,
 			     (var->activate == FB_ACTIVATE_VBL));
 	mdp_dma_pan_update(info);
@@ -2754,16 +2715,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 				jiffies + ((1000 * HZ) / 1000);
 	add_timer(&mfd->msmfb_no_update_notify_timer);
 	mutex_unlock(&msm_fb_notify_update_sem);
-
-#ifdef CONFIG_FB_MSM_CONT_SPLASH_SCREEN
-	if (info->node == 0 && !cont_splash_done) { /* primary */
-		mdp_set_dma_pan_info(info, NULL, TRUE);
-		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
-			pr_err("%s: can't turn on display!\n", __func__);
-			return -EINVAL;
-		}
-	}
-#endif
 
 	ret = mdp4_overlay_play(info, &req);
 
