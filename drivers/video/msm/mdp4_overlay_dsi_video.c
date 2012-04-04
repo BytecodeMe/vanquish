@@ -62,9 +62,6 @@ void mdp4_dsi_video_fxn_register(cmd_fxn_t fxn)
 	display_on = fxn;
 }
 
-static void mdp4_overlay_dsi_video_wait4event(struct msm_fb_data_type *mfd,
-						int intr_done);
-
 int mdp4_dsi_video_on(struct platform_device *pdev)
 {
 	int dsi_width;
