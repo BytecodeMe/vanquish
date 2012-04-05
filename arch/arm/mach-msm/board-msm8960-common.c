@@ -40,6 +40,7 @@
 #include <linux/msm_tsens.h>
 #include <linux/ks8851.h>
 #include <linux/memory.h>
+#include <linux/memblock.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -67,7 +68,6 @@
 #include <mach/msm_dsps.h>
 #include <mach/msm_xo.h>
 #include <mach/restart.h>
-#include <linux/memblock.h>
 #include <linux/ion.h>
 #include <mach/ion.h>
 
@@ -104,11 +104,6 @@
 #ifdef CONFIG_MSM_RPM_STATS_LOG
 #include "rpm_stats.h"
 #endif
-
-#define MSM8960_FIXED_AREA_START 0xb0000000
-#define MAX_FIXED_AREA_SIZE	0x10000000
-#define MSM_MM_FW_SIZE		0x280000
-#define MSM8960_FW_START	(MSM8960_FIXED_AREA_START - MSM_MM_FW_SIZE)
 
 static struct platform_device msm_fm_platform_init = {
 	.name = "iris_fm",
@@ -1021,6 +1016,7 @@ static void __init reserve_mem_for_ion(enum ion_memory_types mem_type,
 {
 	msm8960_reserve_table[mem_type].size += size;
 }
+
 static void __init msm8960_reserve_fixed_area(unsigned long fixed_area_size)
 {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
@@ -1032,6 +1028,7 @@ static void __init msm8960_reserve_fixed_area(unsigned long fixed_area_size)
 
 	reserve_info->fixed_area_size = fixed_area_size;
 	reserve_info->fixed_area_start = MSM8960_FW_START;
+
 	ret = memblock_remove(reserve_info->fixed_area_start,
 		reserve_info->fixed_area_size);
 	BUG_ON(ret);
@@ -1055,7 +1052,6 @@ static void __init reserve_ion_memory(void)
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
 	unsigned int i;
 	unsigned int reusable_count = 0;
-
 	unsigned int fixed_size = 0;
 	unsigned int fixed_low_size, fixed_middle_size, fixed_high_size;
 	unsigned long fixed_low_start, fixed_middle_start, fixed_high_start;
@@ -1064,7 +1060,6 @@ static void __init reserve_ion_memory(void)
 	fmem_pdata.size = 0;
 	fmem_pdata.reserved_size_low = 0;
 	fmem_pdata.reserved_size_high = 0;
-
 	fixed_low_size = 0;
 	fixed_middle_size = 0;
 	fixed_high_size = 0;
@@ -1102,7 +1097,6 @@ static void __init reserve_ion_memory(void)
 					heap->extra_data)->mem_is_fmem;
 				fixed_position = ((struct ion_cp_heap_pdata *)
 					heap->extra_data)->fixed_position;
-
 				break;
 			case ION_HEAP_TYPE_CARVEOUT:
 				mem_is_fmem = ((struct ion_co_heap_pdata *)
@@ -1114,7 +1108,7 @@ static void __init reserve_ion_memory(void)
 				break;
 			}
 
-	        if (fixed_position != NOT_FIXED)
+			if (fixed_position != NOT_FIXED)
 				fixed_size += heap->size;
 			else
 				reserve_mem_for_ion(MEMTYPE_EBI1, heap->size);
@@ -1154,11 +1148,11 @@ static void __init reserve_ion_memory(void)
 			switch (heap->type) {
 			case ION_HEAP_TYPE_CP:
 				fixed_position = ((struct ion_cp_heap_pdata *)
-								heap->extra_data)->fixed_position;
+					heap->extra_data)->fixed_position;
 				break;
 			case ION_HEAP_TYPE_CARVEOUT:
 				fixed_position = ((struct ion_co_heap_pdata *)
-								heap->extra_data)->fixed_position;
+					heap->extra_data)->fixed_position;
 				break;
 			default:
 				break;
@@ -1327,7 +1321,7 @@ void __init msm8960_reserve(void)
 		pr_info("mm fw at %lx (fixed) size %x\n",
 			reserve_info->fixed_area_start, MSM_MM_FW_SIZE);
 		pr_info("fmem start %lx (fixed) size %lx\n",
-		fmem_pdata.phys, fmem_pdata.size);
+			fmem_pdata.phys, fmem_pdata.size);
 #else
 		fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size);
 #endif
@@ -3427,6 +3421,14 @@ struct platform_device *common_devices[] __initdata = {
 	&msm_device_vidc,
 	&msm_device_bam_dmux,
 	&msm_fm_platform_init,
+
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
+#ifdef CONFIG_MSM_USE_TSIF1
+	&msm_device_tsif[1],
+#else
+	&msm_device_tsif[0],
+#endif
+#endif
 
 #ifdef CONFIG_HW_RANDOM_MSM
 	&msm_device_rng,

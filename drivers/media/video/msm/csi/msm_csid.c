@@ -13,7 +13,6 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/io.h>
-#include <linux/regulator/consumer.h>
 #include <mach/board.h>
 #include <mach/camera.h>
 #include <media/msm_isp.h>
@@ -52,10 +51,6 @@
 #define CSID_TG_DT_n_CFG_1_ADDR                     0xAC
 #define CSID_TG_DT_n_CFG_2_ADDR                     0xB0
 #define CSID_TG_DT_n_CFG_3_ADDR                     0xD8
-
-#define CAM_CSI_VDD_MINUV                  1200000
-#define CAM_CSI_VDD_MAXUV                  1200000
-#define CAM_CSI_LOAD_UA                    20000
 
 #define DBG_CSID 0
 
@@ -122,7 +117,8 @@ static irqreturn_t msm_csid_irq(int irq_num, void *data)
 	uint32_t irq;
 	struct csid_device *csid_dev = data;
 	irq = msm_io_r(csid_dev->base + CSID_IRQ_STATUS_ADDR);
-	CDBG("%s CSID_IRQ_STATUS_ADDR = 0x%x\n", __func__, irq);
+	CDBG("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
+		 __func__, csid_dev->pdev->id, irq);
 	msm_io_w(irq, csid_dev->base + CSID_IRQ_CLEAR_CMD_ADDR);
 	return IRQ_HANDLED;
 }
@@ -153,34 +149,6 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		return rc;
 	}
 
-	if (csid_dev->mipi_csi_vdd == NULL) {
-		csid_dev->mipi_csi_vdd = regulator_get(
-			&csid_dev->pdev->dev, "mipi_csi_vdd");
-		if (IS_ERR(csid_dev->mipi_csi_vdd)) {
-			CDBG("%s: VREG MIPI CSI VDD get failed\n", __func__);
-			csid_dev->mipi_csi_vdd = NULL;
-			return -ENODEV;
-		}
-		if (regulator_set_voltage(
-			csid_dev->mipi_csi_vdd, CAM_CSI_VDD_MINUV,
-			CAM_CSI_VDD_MAXUV)) {
-			CDBG("%s: VREG MIPI CSI VDD set voltage failed\n",
-				__func__);
-			goto mipi_csi_vdd_put;
-		}
-		if (regulator_set_optimum_mode(csid_dev->mipi_csi_vdd,
-			CAM_CSI_LOAD_UA) < 0) {
-			CDBG("%s: VREG MIPI CSI set optimum mode failed\n",
-				__func__);
-			goto mipi_csi_vdd_release;
-		}
-		if (regulator_enable(csid_dev->mipi_csi_vdd)) {
-			CDBG("%s: VREG MIPI CSI VDD enable failed\n",
-				__func__);
-			goto mipi_csi_vdd_disable;
-		}
-	}
-
 	csid_dev->base = ioremap(csid_dev->mem->start,
 		resource_size(csid_dev->mem));
 	if (!csid_dev->base) {
@@ -195,22 +163,14 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		return rc;
 	}
 
+	csid_dev->hw_version =
+		msm_io_r(csid_dev->base + CSID_HW_VERSION_ADDR);
+	*csid_version = csid_dev->hw_version;
+
 #if DBG_CSID
 	enable_irq(csid_dev->irq->start);
 #endif
-
-	*csid_version = csid_dev->hw_version;
-
 	return 0;
-mipi_csi_vdd_disable:
-	regulator_set_optimum_mode(csid_dev->mipi_csi_vdd, 0);
-mipi_csi_vdd_release:
-	regulator_set_voltage(csid_dev->mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
-	regulator_disable(csid_dev->mipi_csi_vdd);
-mipi_csi_vdd_put:
-	regulator_put(csid_dev->mipi_csi_vdd);
-	csid_dev->mipi_csi_vdd = NULL;
-	return -ENODEV;
 }
 
 static int msm_csid_release(struct v4l2_subdev *sd)
@@ -226,34 +186,33 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 		csid_dev->csid_clk, ARRAY_SIZE(csid_clk_info), 0);
 
 	iounmap(csid_dev->base);
-
-	if (csid_dev->mipi_csi_vdd) {
-		regulator_set_voltage(
-			csid_dev->mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
-		regulator_set_optimum_mode(csid_dev->mipi_csi_vdd, 0);
-		regulator_disable(csid_dev->mipi_csi_vdd);
-		regulator_put(csid_dev->mipi_csi_vdd);
-		csid_dev->mipi_csi_vdd = NULL;
-	}
 	return 0;
 }
 
 static long msm_csid_subdev_ioctl(struct v4l2_subdev *sd,
 			unsigned int cmd, void *arg)
 {
+	int rc = -ENOIOCTLCMD;
 	struct csid_cfg_params cfg_params;
+	struct csid_device *csid_dev = v4l2_get_subdevdata(sd);
+	mutex_lock(&csid_dev->mutex);
 	switch (cmd) {
 	case VIDIOC_MSM_CSID_CFG:
 		cfg_params.subdev = sd;
 		cfg_params.parms = arg;
-		return msm_csid_config((struct csid_cfg_params *)&cfg_params);
+		rc = msm_csid_config((struct csid_cfg_params *)&cfg_params);
+		break;
 	case VIDIOC_MSM_CSID_INIT:
-		return msm_csid_init(sd, (uint32_t *)arg);
+		rc = msm_csid_init(sd, (uint32_t *)arg);
+		break;
 	case VIDIOC_MSM_CSID_RELEASE:
-		return msm_csid_release(sd);
+		rc = msm_csid_release(sd);
+		break;
 	default:
-		return -ENOIOCTLCMD;
+		pr_err("%s: command not found\n", __func__);
 	}
+	mutex_unlock(&csid_dev->mutex);
+	return rc;
 }
 
 static struct v4l2_subdev_core_ops msm_csid_subdev_core_ops = {
@@ -313,17 +272,6 @@ static int __devinit csid_probe(struct platform_device *pdev)
 		goto csid_no_resource;
 	}
 	disable_irq(new_csid_dev->irq->start);
-
-	new_csid_dev->base = ioremap(new_csid_dev->mem->start,
-		resource_size(new_csid_dev->mem));
-	if (!new_csid_dev->base) {
-		rc = -ENOMEM;
-		goto csid_no_resource;
-	}
-
-	new_csid_dev->hw_version =
-		msm_io_r(new_csid_dev->base + CSID_HW_VERSION_ADDR);
-	iounmap(new_csid_dev->base);
 
 	new_csid_dev->pdev = pdev;
 	return 0;

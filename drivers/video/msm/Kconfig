@@ -111,12 +111,6 @@ config FB_MSM_TVOUT
 	bool
 	default n
 
-config FB_MSM_CONT_SPLASH_SCREEN
-	depends on FB_MSM_OVERLAY
-	bool "Continuous Splash Screen Select"
-	---help---
-	support Continuous Splash Screen
-
 config FB_MSM_MDDI_TOSHIBA_COMMON
 	bool
 	select FB_MSM_MDDI
