@@ -2582,8 +2582,9 @@ static irqreturn_t cyttsp_irq(int irq, void *handle) {
 			pr_err("%s: Still unable to find IC after IRQ\n", __func__);
 		} else if (IS_BOOTLOADERMODE(ts->bl_data.bl_status)) {
 			pr_info("%s: BL mode found in IDLE state\n", __func__);
-			ts->power_state = CY_BL_STATE;
-			cyttsp_pr_state(ts);
+			memset(ts->prv_trk, CY_NTCH, sizeof(ts->prv_trk));
+			queue_work(ts->cyttsp_wq, &ts->cyttsp_resume_startup_work);
+			pr_info("%s: startup queued\n", __func__);
 		} else {
 			pr_info("%s: ACTIVE mode found in IDLE state\n", __func__);
 			ts->power_state = CY_ACTIVE_STATE;
@@ -2741,13 +2742,18 @@ int cyttsp_resume(void *handle)
 			break;
 		}
 		break;
+		case CY_BL_STATE:
 		case CY_IDLE_STATE:
+		case CY_INVALID_STATE:
+		pr_err("%s: Detecting wrong state, Re-start up\n", __func__);
+		memset(ts->prv_trk, CY_NTCH, sizeof(ts->prv_trk));
+		queue_work(ts->cyttsp_wq, &ts->cyttsp_resume_startup_work);
+		pr_info("%s: startup queued\n", __func__);
+		break;
 		case CY_READY_STATE:
 		case CY_ACTIVE_STATE:
-		case CY_BL_STATE:
 		case CY_LDR_STATE:
 		case CY_SYSINFO_STATE:
-		case CY_INVALID_STATE:
 		default:
 		pr_err("%s: Already in %s state\n", __func__,
 				cyttsp_powerstate_string[ts->power_state]);
