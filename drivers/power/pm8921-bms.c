@@ -1106,10 +1106,8 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	soc = (remaining_usable_charge_uah * 100)
 		/ (fcc_uah - unusable_charge_uah);
 
-	if (soc > 100) {
+	if (soc > 100)
 		soc = 100;
-		pm8921_bms_charging_full();
-	}
 	pr_debug("SOC = %u%%\n", soc);
 
 	if (bms_fake_battery != -EINVAL) {
@@ -1402,16 +1400,19 @@ void pm8921_bms_charging_end(int is_battery_full)
 		if (delta_fcc_uah < 0)
 			delta_fcc_uah = -delta_fcc_uah;
 
-		if (delta_fcc_uah * 100  <= (DELTA_FCC_PERCENT * fcc_uah)) {
+		if ((delta_fcc_uah * 100  <= (DELTA_FCC_PERCENT * fcc_uah)) &&
+		    (new_fcc_uah < fcc_uah)) {
 			pr_debug("delta_fcc=%d < %d percent of fcc=%d\n",
 				delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
 			last_real_fcc_mah = new_fcc_uah/1000;
 			last_real_fcc_batt_temp = batt_temp;
 			readjust_fcc_table();
 		} else {
-			pr_debug("delta_fcc=%d > %d percent of fcc=%d"
-				"will not update real fcc\n",
-				delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
+			pr_debug("delta_fcc=%d > %d percent of fcc=%d "
+				 "or new_fcc_uah=%d increased "
+				 "will not update real fcc\n",
+				 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah,
+				 new_fcc_uah);
 		}
 
 		spin_lock_irqsave(&the_chip->bms_100_lock, flags);
@@ -1488,16 +1489,19 @@ void pm8921_bms_charging_full(void)
 	if (delta_fcc_uah < 0)
 		delta_fcc_uah = -delta_fcc_uah;
 
-	if (delta_fcc_uah * 100  <= (DELTA_FCC_PERCENT * fcc_uah)) {
+	if ((delta_fcc_uah * 100  <= (DELTA_FCC_PERCENT * fcc_uah)) &&
+	    (new_fcc_uah < fcc_uah)) {
 		pr_debug("delta_fcc=%d < %d percent of fcc=%d\n",
 			 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
 		last_real_fcc_mah = new_fcc_uah/1000;
 		last_real_fcc_batt_temp = batt_temp;
 		readjust_fcc_table();
 	} else {
-		pr_debug("delta_fcc=%d > %d percent of fcc=%d"
+		pr_debug("delta_fcc=%d > %d percent of fcc=%d "
+			 "or new_fcc_uah=%d increased "
 			 "will not update real fcc\n",
-			 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
+			 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah,
+			 new_fcc_uah);
 	}
 
 	spin_lock_irqsave(&the_chip->bms_100_lock, flags);

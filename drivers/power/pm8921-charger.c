@@ -1384,11 +1384,21 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 	int percent_soc = pm8921_bms_get_percent_charge();
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
+	/* Round up soc to account for remainder */
+	if (percent_soc > 0)
+		percent_soc += 1;
+
 	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
 	    !(the_chip->factory_mode))
 		return 0;
 	else if (percent_soc <= 0)
 		return 1;
+	else if ((percent_soc >= 100) && (!chip->bms_notify.is_battery_full))
+		return 99;
+	else if ((percent_soc >= 100) && (chip->bms_notify.is_battery_full)) {
+		pm8921_bms_charging_full();
+		return 100;
+	}
 #endif
 
 	if (percent_soc == -ENXIO)
