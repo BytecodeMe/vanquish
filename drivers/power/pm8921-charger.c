@@ -2688,15 +2688,20 @@ static void update_heartbeat(struct work_struct *work)
 	int64_t enable = 0;
 	int64_t retval = 0;
 	int rc = 0;
-	int batt_mvolt = (get_prop_battery_uvolts(chip) / 1000);
-	int batt_temp = (get_prop_batt_temp(chip) / 10);
-	int percent_soc = pm8921_bms_get_percent_charge();
-	int fcc = pm8921_bms_get_fcc() / 1000;
+	int batt_mvolt;
+	int batt_temp;
+	int percent_soc;
+	int fcc;
 	int seconds = 0;
 	u8 temp;
 	int err;
 
 	wake_lock(&chip->heartbeat_wake_lock);
+
+	batt_mvolt = (get_prop_battery_uvolts(chip) / 1000);
+	batt_temp = (get_prop_batt_temp(chip) / 10);
+	percent_soc = pm8921_bms_get_percent_charge();
+	fcc = pm8921_bms_get_fcc() / 1000;
 
 	if ((percent_soc <= 5) &&
 	    (alarm_state == PM_BATT_ALARM_NORMAL)) {
@@ -2761,13 +2766,6 @@ static void update_heartbeat(struct work_struct *work)
 	schedule_delayed_work(&chip->update_heartbeat_work,
 			      round_jiffies_relative(msecs_to_jiffies
 						     (chip->update_time)));
-#ifdef CONFIG_PM8921_EXTENDED_INFO
-	pr_debug("Heartbeat Current Time %d secs\n",
-		 (int)(ktime_to_timespec(alarm_get_elapsed_realtime()).tv_sec));
-	seconds = calculate_suspend_time(chip, fcc, percent_soc, batt_temp);
-	pm8921_chg_program_alarm(chip, seconds);
-	wake_unlock(&chip->heartbeat_wake_lock);
-#endif
 
 	/*
 	 * bit 7 - Write to Register
@@ -2793,6 +2791,14 @@ static void update_heartbeat(struct work_struct *work)
 			return;
 		}
 	}
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	pr_debug("Heartbeat Current Time %d secs\n",
+		 (int)(ktime_to_timespec(alarm_get_elapsed_realtime()).tv_sec));
+	seconds = calculate_suspend_time(chip, fcc, percent_soc, batt_temp);
+	pm8921_chg_program_alarm(chip, seconds);
+	wake_unlock(&chip->heartbeat_wake_lock);
+#endif
 }
 
 enum {
