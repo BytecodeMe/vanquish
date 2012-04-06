@@ -49,6 +49,10 @@
  *	DOCKED      : SMART dock is detected.
  *	UNDOCKED    : No dock is connected.
  *
+ * csdev (charge capability switch)
+ *      CHARGE_NONE          : No charger_msg available
+ *      CHARGE_VLCL_REQ      : Voltage level / Current limit request
+ *
  * noauthdev (No authentication switch) - Used to indicate if
  *                                        authentication is needed
  *      AUTH_REQUIRED     : Need to authenticate
@@ -166,6 +170,14 @@ void semu_audio_register_notify(struct notifier_block *nb)
 	blocking_notifier_chain_register(&semu_audio_notifier_list, nb);
 }
 EXPORT_SYMBOL_GPL(semu_audio_register_notify);
+
+static BLOCKING_NOTIFIER_HEAD(charger_vlcl_notifier_list);
+
+void emu_det_vlcl_register_notify(struct notifier_block *nb)
+{
+	blocking_notifier_chain_register(&charger_vlcl_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(emu_det_vlcl_register_notify);
 
 #undef DEF
 #define STATES	{ \
@@ -306,11 +318,15 @@ struct emu_det_data {
 	struct switch_dev asdev; /* Audio switch */
 	struct switch_dev edsdev; /* Motorola Dock switch */
 	struct switch_dev sdsdev; /* Smart Dock Switch */
+	struct switch_dev csdev;  /* charge capablity switch */
 	struct switch_dev noauthdev; /* If authentication is needed */
 	DECLARE_BITMAP(enabled_irqs, EMU_DET_IRQ_MAX);
 	char dock_id[128];
 	char dock_prop[128];
 	short whisper_auth;
+	char charger_vlcl[CHARGER_CAPABILITY_SIZE];
+	char charger_msg[CHARGER_MSG_SIZE];
+	struct emu_det_vlcl_request *vlcl_req;
 	u8 retries;
 	bool irq_setup;
 	signed emu_gpio[EMU_DET_GPIO_MAX];
@@ -350,6 +366,8 @@ static ssize_t dock_print_name(struct switch_dev *switch_dev, char *buf)
 		return sprintf(buf, "HE\n");
 	case MOBILE_DOCK:
 		return sprintf(buf, "MOBILE\n");
+	case CHARGER_DOCK:
+		return sprintf(buf, "CHARGER\n");
 	}
 
 	return -EINVAL;
@@ -365,6 +383,14 @@ static ssize_t emu_audio_print_name(struct switch_dev *sdev, char *buf)
 	}
 	return -EINVAL;
 }
+
+static ssize_t charger_msg_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct emu_det_data *emud = the_emud;
+	return snprintf(buf, PAGE_SIZE, "%s\n", emud->charger_msg);
+}
+static DEVICE_ATTR(charger_msg, S_IRUGO, charger_msg_show, NULL);
 
 static char *print_sense_bits(unsigned long *sense)
 {
@@ -983,6 +1009,7 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 		switch_set_state(&data->edsdev, NO_DOCK);
 		switch_set_state(&data->wsdev, DOCKED);
 		switch_set_state(&data->sdsdev, UNDOCKED);
+		switch_set_state(&data->csdev, CHARGE_NONE);
 
 	} else {
 		switch_set_state(&data->wsdev, UNDOCKED);
@@ -990,6 +1017,7 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 		switch_set_state(&data->dsdev, NO_DOCK);
 		switch_set_state(&data->edsdev, NO_DOCK);
 		switch_set_state(&data->asdev, NO_DEVICE);
+		switch_set_state(&data->csdev, CHARGE_NONE);
 		if (accy == ACCY_WHISPER_SMART)
 			switch_set_state(&data->sdsdev, DOCKED);
 		else {
@@ -997,6 +1025,7 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 			switch_set_state(&data->sdsdev, UNDOCKED);
 			memset(data->dock_id, 0, CPCAP_WHISPER_ID_SIZE);
 			memset(data->dock_prop, 0, CPCAP_WHISPER_PROP_SIZE);
+			memset(data->charger_vlcl, 0, CHARGER_CAPABILITY_SIZE);
 		}
 	}
 }
@@ -1813,6 +1842,68 @@ static void work_runner(struct work_struct *work)
 	detection_work();
 }
 
+int emu_det_vlcl_request(struct emu_det_vlcl_request *req)
+{
+	struct emu_det_data *emud = the_emud;
+
+	if (!emud || (emud->charger_vlcl[0] == 0) || !req)
+		return -EINVAL;
+
+	if (emud->vlcl_req)
+		return -EBUSY;
+
+	emud->vlcl_req = req;
+	snprintf(emud->charger_msg, sizeof(emud->charger_msg),
+		 "%04x%04x", req->mV, req->mA);
+
+	pr_emu_det(DEBUG, "Requesting %dmA at %dmV\n", req->mA, req->mV);
+	switch_set_state(&emud->csdev, CHARGE_VLCL_REQ);
+
+	return 0;
+}
+
+static long emu_det_ioctl_charger(struct cpcap_charger_request *req)
+{
+	struct emu_det_data *emud = the_emud;
+	int ret = 0;
+	struct emu_det_vlcl_request *vlcl_req = emud->vlcl_req;
+
+	switch (req->cmd) {
+	case CMD_CHARGER_CAPABILITY:
+		strncpy(emud->charger_vlcl, req->charger_capability,
+			sizeof(emud->charger_vlcl));
+		pr_emu_det(DEBUG, "charger vlcl = %s\n", emud->charger_vlcl);
+
+		blocking_notifier_call_chain(&charger_vlcl_notifier_list, 0,
+					     emud->charger_vlcl);
+		break;
+
+	case CMD_CHARGER_VLCL_RESP:
+		/* Cleanup before calling callback */
+		switch_set_state(&emud->csdev, CHARGE_NONE);
+		emud->vlcl_req = NULL;
+
+		if (strncmp(req->charger_msg, emud->charger_msg,
+			    sizeof(emud->charger_msg)) == 0) {
+			pr_emu_det(DEBUG, "Switch voltage/current succeeded\n");
+			vlcl_req->status = 0;
+		} else {
+			pr_emu_det(DEBUG, "Switch voltage/current failed\n");
+			vlcl_req->status = -EIO;
+		}
+
+		if (vlcl_req->callback)
+			vlcl_req->callback(vlcl_req->callback_param);
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
 static long emu_det_ioctl(struct file *file,
 				unsigned int cmd, unsigned long arg)
 {
@@ -1820,6 +1911,7 @@ static long emu_det_ioctl(struct file *file,
 	int retval = -EINVAL;
 	int dock = NO_DOCK;
 	struct cpcap_whisper_request request;
+	struct cpcap_charger_request chrg_req;
 
 	switch (cmd) {
 	case CPCAP_IOCTL_ACCY_WHISPER:
@@ -1852,7 +1944,8 @@ static long emu_det_ioctl(struct file *file,
 							data->whisper_auth);
 
 			if (!(request.cmd & CPCAP_WHISPER_ENABLE_UART)) {
-				mux_ctrl_mode(MUXMODE_USB);
+				if (dock != CHARGER_DOCK)
+					mux_ctrl_mode(MUXMODE_USB);
 				if (dock && (strlen(request.dock_id) <
 					CPCAP_WHISPER_ID_SIZE))
 					strncpy(data->dock_id,
@@ -1905,6 +1998,13 @@ static long emu_det_ioctl(struct file *file,
 							data->whisper_auth);
 			retval = 0;
 		}
+		break;
+
+	case CPCAP_IOCTL_ACCY_CHARGER:
+		if (copy_from_user((void *) &chrg_req, (void *) arg,
+				   sizeof(chrg_req)))
+			return -EFAULT;
+		retval = emu_det_ioctl_charger(&chrg_req);
 		break;
 
 	default:
@@ -2035,11 +2135,20 @@ static int emu_det_probe(struct platform_device *pdev)
 	if (ret)
 		pr_err("couldn't register switch (%s) rc=%d\n",
 					data->sdsdev.name, ret);
+	data->csdev.name = "charge_capability";
+	ret = switch_dev_register(&data->csdev);
+	if (ret)
+		pr_err("couldn't register switch (%s) rc=%d\n",
+					data->csdev.name, ret);
 	data->noauthdev.name = "noauth";
 	ret = switch_dev_register(&data->noauthdev);
 	if (ret)
 		pr_err("couldn't register switch (%s) rc=%d\n",
 					data->noauthdev.name, ret);
+
+	ret = device_create_file(data->csdev.dev, &dev_attr_charger_msg);
+	if (ret)
+		pr_err("Failed to create charger_msg file\n");
 
 	ret = sysfs_create_group(&(pdev->dev.kobj), &emu_dev_attr_groups);
 	if (ret)
@@ -2081,6 +2190,7 @@ static int __exit emu_det_remove(struct platform_device *pdev)
 	switch_dev_unregister(&data->asdev);
 	switch_dev_unregister(&data->edsdev);
 	switch_dev_unregister(&data->sdsdev);
+	switch_dev_unregister(&data->csdev);
 	switch_dev_unregister(&data->noauthdev);
 
 	pm8921_charger_unregister_vbus_sn(0);

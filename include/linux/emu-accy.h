@@ -1,5 +1,5 @@
 /*
- *  * Copyright (C) 2010 Motorola, Inc.
+ * Copyright (C) 2010-2012 Motorola, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -42,6 +42,7 @@ enum {
 	LE_DOCK,
 	HE_DOCK,
 	MOBILE_DOCK,
+	CHARGER_DOCK,
 };
 
 enum {
@@ -73,12 +74,30 @@ enum {
 	MUXMODE_UNDEFINED,
 };
 
-struct emu_accy_platform_data {
-	enum emu_accy accy;
+enum {
+	CHARGE_NONE,
+	CHARGE_VLCL_REQ = 3,
+};
+
+enum {
+	CMD_CHARGER_CAPABILITY = 1,
+	CMD_CHARGER_VLCL_RESP = 3,
+};
+
+#ifdef __KERNEL__
+struct emu_det_vlcl_request {
+	unsigned int mV;
+	unsigned int mA;
+	int status;
+	void (*callback)(void *);
+	void *callback_param;
 };
 
 void set_mux_ctrl_mode_for_audio(int mode);
 void semu_audio_register_notify(struct notifier_block *nb);
+void emu_det_vlcl_register_notify(struct notifier_block *nb);
+int  emu_det_vlcl_request(struct emu_det_vlcl_request *req);
+#endif
 
 /*
  *  CPCAP compatibility section
@@ -93,6 +112,8 @@ void semu_audio_register_notify(struct notifier_block *nb);
 #define CPCAP_WHISPER_ACCY_SHFT		27
 #define CPCAP_WHISPER_ID_SIZE		16
 #define CPCAP_WHISPER_PROP_SIZE		7
+#define CHARGER_CAPABILITY_SIZE         163
+#define CHARGER_MSG_SIZE                9
 
 struct cpcap_whisper_request {
 	unsigned int cmd;
@@ -100,9 +121,19 @@ struct cpcap_whisper_request {
 	char dock_prop[CPCAP_WHISPER_PROP_SIZE];
 };
 
+struct cpcap_charger_request {
+	int cmd;
+	char charger_capability[CHARGER_CAPABILITY_SIZE];
+	char charger_msg[CHARGER_MSG_SIZE];
+};
+
 #define CPCAP_IOCTL_NUM_ACCY_WHISPER	23
+#define CPCAP_IOCTL_NUM_ACCY_CHARGER	24
 
 #define CPCAP_IOCTL_ACCY_WHISPER \
 	_IOW(0, CPCAP_IOCTL_NUM_ACCY_WHISPER, struct cpcap_whisper_request*)
+
+#define CPCAP_IOCTL_ACCY_CHARGER \
+	_IOW(0, CPCAP_IOCTL_NUM_ACCY_CHARGER, struct cpcap_charger_request*)
 
 #endif  /* __EMU_ACCY_H__ */
