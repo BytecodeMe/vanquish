@@ -43,9 +43,10 @@ static int enable_riva_ssr;
 
 static void riva_smsm_cb_fn(struct work_struct *work)
 {
-	if (!enable_riva_ssr)
-		panic(MODULE_NAME ": SMSM reset request received from Riva");
-	else
+	if (!enable_riva_ssr) {
+		pr_err(MODULE_NAME ": SMSM reset request received from Riva");
+		BUG();
+	} else
 		subsystem_restart("riva");
 }
 
@@ -68,9 +69,10 @@ static void smsm_state_cb_hdlr(void *data, uint32_t old_state,
 
 static void riva_fatal_fn(struct work_struct *work)
 {
-	if (!enable_riva_ssr)
-		panic(MODULE_NAME ": Watchdog bite received from Riva");
-	else
+	if (!enable_riva_ssr) {
+		pr_err(MODULE_NAME ": Watchdog bite received from Riva");
+		BUG();
+	} else
 		subsystem_restart("riva");
 }
 

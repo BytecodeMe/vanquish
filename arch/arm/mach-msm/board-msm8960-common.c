@@ -1022,9 +1022,11 @@ static void __init msm8960_reserve_fixed_area(unsigned long fixed_area_size)
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
 	int ret;
 
-	if (fixed_area_size > MAX_FIXED_AREA_SIZE)
-		panic("fixed area size is larger than %dM\n",
+	if (fixed_area_size > MAX_FIXED_AREA_SIZE) {
+		pr_err("fixed area size is larger than %dM\n",
 			MAX_FIXED_AREA_SIZE >> 20);
+		BUG();
+	}
 
 	reserve_info->fixed_area_size = fixed_area_size;
 	reserve_info->fixed_area_start = MSM8960_FW_START;

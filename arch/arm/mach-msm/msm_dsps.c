@@ -657,11 +657,11 @@ static void dsps_fatal_handler(struct work_struct *work)
 	if (dsps_state & SMSM_RESET) {
 		pr_err("%s: DSPS fatal error detected. Resetting\n",
 		       __func__);
-		panic("DSPS fatal error detected.");
+		BUG();
 	} else {
 		pr_debug("%s: User-initiated DSPS reset. Resetting\n",
 			 __func__);
-		panic("User-initiated DSPS reset.");
+		BUG();
 	}
 }
 
@@ -685,7 +685,7 @@ static void dsps_smsm_state_cb(void *data, uint32_t old_state,
 		pr_err
 		    ("%s: SMSM_RESET state detected. restarting the DSPS\n",
 		     __func__);
-		panic("SMSM_RESET state detected.");
+		BUG();
 	}
 }
 

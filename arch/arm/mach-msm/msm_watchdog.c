@@ -286,7 +286,8 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 		msm_watchdog_resume(NULL);
 	}
 
-	panic("Apps watchdog bark received!");
+	pr_err("Apps watchdog bark received!");
+	BUG();
 	return IRQ_HANDLED;
 }
 
