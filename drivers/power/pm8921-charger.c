@@ -947,9 +947,9 @@ static void pm8921_chg_hw_config(struct pm8921_chg_chip *chip)
 	 * care for jeita compliance
 	 */
 	if (!(chip->cool_temp_dc == 0 && chip->warm_temp_dc == 0)) {
-		rc = configure_btm(chip);
-		if (rc)
-			pr_err("couldn't register with btm rc=%d\n", rc);
+		btm_config.low_thr_temp = chip->cool_temp_dc;
+		btm_config.high_thr_temp = chip->warm_temp_dc;
+		schedule_work(&btm_config_work);
 	}
 }
 
