@@ -2368,6 +2368,9 @@ void notify_smsm_cb_clients_worker(struct work_struct *work)
 
 			state_changes = state_info->last_value ^ new_state;
 			if (state_changes) {
+				SMx_POWER_INFO("SMSM Change %d: %08x->%08x\n",
+					n, state_info->last_value, new_state);
+
 				list_for_each_entry(cb_info,
 					&state_info->callbacks, cb_list) {
 
