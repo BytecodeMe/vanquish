@@ -325,6 +325,11 @@ static struct emu_det_dt_data	emu_det_dt_data = {
 	.vdd_voltage	= 2650000,
 };
 
+static int get_l17_voltage(void)
+{
+	return emu_det_dt_data.vdd_voltage;
+}
+
 static u8 uart_over_gsbi12;
 static bool core_power_init, enable_5v_init;
 static struct clk		*iface_clock;
@@ -1198,7 +1203,8 @@ static int mipi_panel_power(int on)
 		}
 
 		if (NULL != reg_vddio) {
-			rc = regulator_set_voltage(reg_vddio, 2650000, 2850000);
+			rc = regulator_set_voltage(reg_vddio,
+						get_l17_voltage(), 2850000);
 			if (rc) {
 				pr_err("set_voltage l17 failed, rc=%d\n", rc);
 				rc = -EINVAL;
@@ -1895,7 +1901,8 @@ static void w1_gpio_enable_regulators(int enable)
 								"8921_l7\n");
 		}
 		if (!IS_ERR_OR_NULL(vdd2)) {
-			rc = regulator_set_voltage(vdd2, 2650000, 2650000);
+			rc = regulator_set_voltage(vdd2,
+						get_l17_voltage(), 2850000);
 			if (!rc) {
 				rc = regulator_enable(vdd2);
 			}
