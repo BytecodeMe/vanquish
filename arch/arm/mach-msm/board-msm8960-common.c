@@ -1573,9 +1573,9 @@ struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
 #endif
 
 static int mdp_core_clk_rate_table[] = {
-	128000000,
+	85330000,
+	85330000,
 	160000000,
-	180000000,
 	200000000,
 };
 

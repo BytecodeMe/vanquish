@@ -2076,6 +2076,7 @@ int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req)
 
 #define OVERLAY_VGA_SIZE	0x04B000
 #define OVERLAY_720P_TILE_SIZE  0x0E6000
+#define OVERLAY_720P_SIZE	0x0E1000 /* 1280x720 */
 #define OVERLAY_WSVGA_SIZE 0x98000 /* 1024x608, align 600 to 32bit */
 
 #define OVERLAY_BUS_SCALE_TABLE_BASE	6
@@ -2115,6 +2116,10 @@ static uint32 mdp4_overlay_get_perf_level(struct mdp_overlay *req,
 		if (ctrl->plist[i].pipe_used && ++cnt > 2)
 			return OVERLAY_PERF_LEVEL1;
 	}
+
+	if (mfd->panel.type == MIPI_VIDEO_PANEL &&
+		mfd->panel_info.xres * mfd->panel_info.yres >= OVERLAY_720P_SIZE)
+		return OVERLAY_PERF_LEVEL1;
 
 	if (mdp4_overlay_is_rgb_type(req->src.format) && is_fg &&
 		((req->src.width * req->src.height) <= OVERLAY_WSVGA_SIZE))
