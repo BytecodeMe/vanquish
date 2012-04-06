@@ -142,6 +142,7 @@ struct pm8xxx_adc {
 	uint32_t				mpp_base;
 	struct device				*hwmon;
 	struct wake_lock			adc_wakelock;
+	struct wake_lock			adc_read_wakelock;
 	int					msm_suspend_check;
 	struct pm8xxx_adc_amux_properties	*conv;
 	struct pm8xxx_adc_scale_tbl		*scale_tbls;
@@ -686,6 +687,7 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 	}
 
 	mutex_lock(&adc_pmic->adc_lock);
+	wake_lock(&adc_pmic->adc_read_wakelock);
 
 	for (i = 0; i < adc_pmic->adc_num_board_channel; i++) {
 		if (channel == adc_pmic->adc_channel[i].channel_name)
@@ -763,6 +765,7 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail_unlock;
 	}
 
+	wake_unlock(&adc_pmic->adc_read_wakelock);
 	mutex_unlock(&adc_pmic->adc_lock);
 
 	return 0;
@@ -771,6 +774,7 @@ fail:
 	if (rc_fail)
 		pr_err("pm8xxx adc power disable failed\n");
 fail_unlock:
+	wake_unlock(&adc_pmic->adc_read_wakelock);
 	mutex_unlock(&adc_pmic->adc_lock);
 	pr_err("pm8xxx adc error with %d\n", rc);
 	return rc;
@@ -1164,6 +1168,7 @@ static int __devexit pm8xxx_adc_teardown(struct platform_device *pdev)
 	int i;
 
 	wake_lock_destroy(&adc_pmic->adc_wakelock);
+	wake_lock_destroy(&adc_pmic->adc_read_wakelock);
 	platform_set_drvdata(pdev, NULL);
 	pmic_adc = NULL;
 	if (!pa_therm) {
@@ -1268,6 +1273,8 @@ static int __devinit pm8xxx_adc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, adc_pmic);
 	wake_lock_init(&adc_pmic->adc_wakelock, WAKE_LOCK_SUSPEND,
 					"pm8xxx_adc_wakelock");
+	wake_lock_init(&adc_pmic->adc_read_wakelock, WAKE_LOCK_SUSPEND,
+					"pm8xxx_adc_read_wakelock");
 	adc_pmic->msm_suspend_check = 0;
 	pmic_adc = adc_pmic;
 
