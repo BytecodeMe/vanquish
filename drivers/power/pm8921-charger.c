@@ -3665,8 +3665,10 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 static int pm8921_charging_reboot(struct notifier_block *nb,
 				  unsigned long event, void *unused)
 {
+#ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	struct pm8xxx_adc_chan_result res;
 #define VBUS_OFF_THRESHOLD 2000000
+#endif
 	/*
 	 * Hack to power down when both VBUS and BPLUS are present.
 	 * This targets factory environment, where we need to power down
@@ -3688,7 +3690,6 @@ static int pm8921_charging_reboot(struct notifier_block *nb,
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 		if (the_chip->arch_reboot_cb)
 			the_chip->arch_reboot_cb();
-#endif
 
 		res.physical = 0;
 		do {
@@ -3699,6 +3700,7 @@ static int pm8921_charging_reboot(struct notifier_block *nb,
 				pr_info("VBUS:= %lld mV\n", res.physical);
 			msleep(100);
 		} while (res.physical > VBUS_OFF_THRESHOLD);
+#endif
 
 		break;
 	default:

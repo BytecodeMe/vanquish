@@ -723,8 +723,8 @@ static void emu_mux_ctrl_config_pin(int io_num, int value)
 	}
 	rc = gpio_request(gpio, name);
 	if (rc) {
-		pr_err("Could not request %s for GPIO %d\n", name, gpio);
-		return;
+		pr_err("Could not request %s for GPIO %d (should only reach here"
+			" if factory shutdown)\n", name, gpio);
 	}
 	rc = gpio_direction_output(gpio, value);
 	if (rc) {
@@ -3272,6 +3272,7 @@ static int mot_tcmd_export_gpio(void)
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 static void mot_factory_reboot_callback(void)
 {
+	pr_err("%s: configuring GPIO for factory shutdown\n", __func__);
 	emu_mux_ctrl_config_pin(EMU_MUX_CTRL0_GPIO, 0);
 	emu_mux_ctrl_config_pin(EMU_MUX_CTRL1_GPIO, 0);
 }
