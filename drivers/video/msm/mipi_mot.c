@@ -36,9 +36,10 @@ static int get_manufacture_id(struct msm_fb_data_type *mfd)
 	display_hw_rev_txt_manufacturer = 0;
 
 	if (manufacture_id == INVALID_VALUE) {
-		if (mot_panel.get_manufacture_id)
+		if (mot_panel.get_manufacture_id) {
+			mipi_dsi_cmd_bta_sw_trigger();
 			manufacture_id = mot_panel.get_manufacture_id(mfd);
-		else {
+		} else {
 			pr_err("%s: can not locate get_manufacture_id()\n",
 								__func__);
 			goto end;
@@ -210,11 +211,6 @@ static int panel_enable(struct platform_device *pdev)
 	if (ret != 0)
 		goto err;
 
-	mipi_dsi_cmd_bta_sw_trigger();
-	get_manufacture_id(mfd);
-	get_controller_ver(mfd);
-	get_controller_drv_ver(mfd);
-
 	if (mot_panel.panel_enable)
 		mot_panel.panel_enable(mfd);
 	else {
@@ -222,6 +218,11 @@ static int panel_enable(struct platform_device *pdev)
 		ret = -ENODEV;
 		goto err;
 	}
+
+	mipi_set_tx_power_mode(0);
+	get_manufacture_id(mfd);
+	get_controller_ver(mfd);
+	get_controller_drv_ver(mfd);
 
 	pr_info("%s completed. Power_mode =0x%x\n",
 				__func__, mipi_mode_get_pwr_mode(mfd));

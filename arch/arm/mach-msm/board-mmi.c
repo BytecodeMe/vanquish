@@ -885,89 +885,139 @@ static void mipi_dsi_panel_pwm_cfg(void)
 }
 #endif
 
-static bool dsi_power_on;
 static bool use_mdp_vsync = MDP_VSYNC_ENABLED;
 
-static int mipi_dsi_panel_power(int on)
+bool mipi_mot_panel_is_cmd_mode(void);
+int mipi_panel_power_en(int on);
+static int mipi_dsi_power(int on)
 {
-	static struct regulator *reg_vddio, *reg_l23, *reg_l2, *reg_vci;
-	static int disp_5v_en, lcd_reset;
-	static int lcd_reset1; /* this is a hacked for vanquish phone */
+	static struct regulator *reg_l23, *reg_l2;
 	int rc;
 
-	pr_info("%s: state : %d\n", __func__, on);
+	pr_debug("%s (%d) is called\n", __func__, on);
 
-	if (!dsi_power_on) {
-		if (is_smd() && system_rev >= HWREV_P2) {
-			/* Vanquish P2 is not using VREG_L17 */
-			reg_vddio = NULL;
-		} else if (is_smd() && system_rev >= HWREV_P1) {
-				reg_vddio = regulator_get(
-						&msm_mipi_dsi1_device.dev,
-						"disp_vddio");
-		} else {
-			reg_vddio = regulator_get(&msm_mipi_dsi1_device.dev,
-				"dsi_vdc");
-		}
+	if (!(reg_l23 || reg_l2)) {
 
-		if (IS_ERR(reg_vddio)) {
-			pr_err("could not get 8921_vddio/vdc, rc = %ld\n",
-				PTR_ERR(reg_vddio));
-			return -ENODEV;
-		}
-		reg_l23 = regulator_get(&msm_mipi_dsi1_device.dev,
-				"dsi_vddio");
+		/*
+		 * This is a HACK for SOL smooth transtion: Because QCOM can
+		 * not keep the MIPI lines at LP11 start when the kernel start
+		 * so, when the first update, we need to reset the panel to
+		 * raise the err detection from panel due to the MIPI lines
+		 * drop.
+		 * - With Video mode, this will be call mdp4_dsi_video_on()
+		 *   before it disable the timing generator. This will prevent
+		 *   the image to fade away.
+		 * - Command mode, then we have to reset in the first call
+		 *   to trun on the power
+		 */
+		if (mipi_mot_panel_is_cmd_mode())
+			mipi_panel_power_en(0);
+
+		reg_l23 = regulator_get(&msm_mipi_dsi1_device.dev, "dsi_vddio");
 		if (IS_ERR(reg_l23)) {
 			pr_err("could not get 8921_l23, rc = %ld\n",
-				PTR_ERR(reg_l23));
-			return -ENODEV;
+							PTR_ERR(reg_l23));
+			rc = -ENODEV;
+			goto end;
 		}
 
-		reg_l2 = regulator_get(&msm_mipi_dsi1_device.dev,
-				"dsi_vdda");
+		reg_l2 = regulator_get(&msm_mipi_dsi1_device.dev, "dsi_vdda");
 		if (IS_ERR(reg_l2)) {
 			pr_err("could not get 8921_l2, rc = %ld\n",
-				PTR_ERR(reg_l2));
-			return -ENODEV;
-		}
-
-		if (is_smd() && system_rev >= HWREV_P1) {
-			reg_vci = regulator_get(&msm_mipi_dsi1_device.dev,
-					"disp_vci");
-			if (IS_ERR(reg_vci)) {
-				pr_err("could not get disp_vci, rc = %ld\n",
-					PTR_ERR(reg_vci));
-				return -ENODEV;
-			}
-		}
-
-		if (NULL != reg_vddio) {
-			rc = regulator_set_voltage(reg_vddio, 2650000, 2850000);
-			if (rc) {
-				pr_err("set_voltage l17 failed, rc=%d\n", rc);
-				return -EINVAL;
-			}
+							PTR_ERR(reg_l2));
+			rc = -ENODEV;
+			goto end;
 		}
 
 		rc = regulator_set_voltage(reg_l23, 1800000, 1800000);
 		if (rc) {
 			pr_err("set_voltage l23 failed, rc=%d\n", rc);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto end;
 		}
 
 		rc = regulator_set_voltage(reg_l2, 1200000, 1200000);
 		if (rc) {
 			pr_err("set_voltage l2 failed, rc=%d\n", rc);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto end;
 		}
-		if (is_smd() && system_rev >= HWREV_P1) {
-			rc = regulator_set_voltage(reg_vci, 3100000, 3100000);
-			if (rc) {
-				pr_err("set_voltage vci failed, rc=%d\n", rc);
-				return -EINVAL;
-			}
+	}
+
+	if (on) {
+		rc = regulator_set_optimum_mode(reg_l23, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			rc = -EINVAL;
+			goto end;
 		}
 
+		rc = regulator_set_optimum_mode(reg_l2, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			rc = -EINVAL;
+			goto end;
+		}
+
+		rc = regulator_enable(reg_l23);
+		if (rc) {
+			pr_err("enable l23 failed, rc=%d\n", rc);
+			rc =  -ENODEV;
+			goto end;
+		}
+
+		rc = regulator_enable(reg_l2);
+		if (rc) {
+			pr_err("enable l2 failed, rc=%d\n", rc);
+			rc = -ENODEV;
+			goto end;
+		}
+
+		msleep(10);
+	} else {
+
+		rc = regulator_disable(reg_l2);
+		if (rc) {
+			pr_err("disable reg_l2 failed, rc=%d\n", rc);
+			rc = -ENODEV;
+			goto end;
+		}
+
+		rc = regulator_disable(reg_l23);
+		if (rc) {
+			pr_err("disable reg_l23 failed, rc=%d\n", rc);
+			rc = -ENODEV;
+			goto end;
+		}
+
+		rc = regulator_set_optimum_mode(reg_l23, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			rc = -EINVAL;
+			goto end;
+		}
+
+		rc = regulator_set_optimum_mode(reg_l2, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			rc = -EINVAL;
+			goto end;
+		}
+	}
+	rc = 0;
+end:
+	return rc;
+}
+
+int mipi_panel_power_en(int on)
+{
+	int rc;
+	static int disp_5v_en, lcd_reset;
+	static int lcd_reset1; /* this is a hacked for vanquish phone */
+
+	pr_debug("%s (%d) is called\n", __func__, on);
+
+	if (lcd_reset == 0) {
 		/*
 		 * This is a work around for Vanquish P1C HW ONLY.
 		 * There are 2 HW versions of vanquish P1C, wing board phone and
@@ -992,7 +1042,8 @@ static int mipi_dsi_panel_power(int on)
 		rc = gpio_request(lcd_reset, "disp_rst_n");
 		if (rc) {
 			pr_err("request lcd_reset failed, rc=%d\n", rc);
-			return -ENODEV;
+			rc = -ENODEV;
+			goto end;
 		}
 
 		if (is_smd() && lcd_reset1 != 0) {
@@ -1000,7 +1051,8 @@ static int mipi_dsi_panel_power(int on)
 			if (rc) {
 				pr_err("request lcd_reset1 failed, rc=%d\n",
 									rc);
-				return -ENODEV;
+				rc = -ENODEV;
+				goto end;
 			}
 		}
 
@@ -1008,27 +1060,32 @@ static int mipi_dsi_panel_power(int on)
 		rc = gpio_request(disp_5v_en, "disp_5v_en");
 		if (rc) {
 			pr_err("request disp_5v_en failed, rc=%d\n", rc);
-			return -ENODEV;
+			rc = -ENODEV;
+			goto end;
 		}
 
 		rc = gpio_direction_output(disp_5v_en, 1);
 		if (rc) {
 			pr_err("set output disp_5v_en failed, rc=%d\n", rc);
-			return -ENODEV;
+			rc = -ENODEV;
+			goto end;
 		}
 
 		if (is_smd() && system_rev < HWREV_P1) {
 			rc = gpio_request(12, "disp_3_3");
 			if (rc) {
 				pr_err("%s: unable to request gpio %d (%d)\n",
-						__func__, 12, rc);
-				return -ENODEV;
+							__func__, 12, rc);
+				rc = -ENODEV;
+				goto end;
 			}
 
 			rc = gpio_direction_output(12, 1);
 			if (rc) {
-				pr_err("%s: Unable to set direction\n", __func__);;
-				return -EINVAL;
+				pr_err("%s: Unable to set direction\n",
+								__func__);
+				rc = -EINVAL;
+				goto end;
 			}
 		}
 
@@ -1036,75 +1093,22 @@ static int mipi_dsi_panel_power(int on)
 			rc = gpio_request(0, "dsi_vci_en");
 			if (rc) {
 				pr_err("%s: unable to request gpio %d (%d)\n",
-						__func__, 0, rc);
-				return -ENODEV;
+							__func__, 0, rc);
+				rc = -ENODEV;
+				goto end;
 			}
 
 			rc = gpio_direction_output(0, 1);
 			if (rc) {
-				pr_err("%s: Unable to set direction\n", __func__);;
-				return -EINVAL;
+				pr_err("%s: Unable to set direction\n",
+								__func__);
+				rc = -EINVAL;
+				goto end;
 			}
 		}
-
-		dsi_power_on = true;
 	}
+
 	if (on) {
-		if (NULL != reg_vddio) {
-			rc = regulator_set_optimum_mode(reg_vddio, 100000);
-			if (rc < 0) {
-				pr_err("set_optimum_mode l8 failed, rc=%d\n",
-						rc);
-				return -EINVAL;
-			}
-		}
-		rc = regulator_set_optimum_mode(reg_l23, 100000);
-		if (rc < 0) {
-			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
-			return -EINVAL;
-		}
-		rc = regulator_set_optimum_mode(reg_l2, 100000);
-		if (rc < 0) {
-			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
-			return -EINVAL;
-		}
-
-		if (is_smd() && system_rev >= HWREV_P1) {
-			rc = regulator_set_optimum_mode(reg_vci, 100000);
-			if (rc < 0) {
-				pr_err("set_optimum_mode vci failed, rc=%d\n", rc);
-				return -EINVAL;
-			}
-		}
-
-		if (NULL != reg_vddio) {
-			rc = regulator_enable(reg_vddio);
-			if (rc) {
-				pr_err("enable l8 failed, rc=%d\n", rc);
-				return -ENODEV;
-			}
-		}
-
-		rc = regulator_enable(reg_l23);
-		if (rc) {
-			pr_err("enable l23 failed, rc=%d\n", rc);
-			return -ENODEV;
-		}
-
-		rc = regulator_enable(reg_l2);
-		if (rc) {
-			pr_err("enable l2 failed, rc=%d\n", rc);
-			return -ENODEV;
-		}
-
-		if (is_smd() && system_rev >= HWREV_P1) {
-			rc = regulator_enable(reg_vci);
-			if (rc) {
-				pr_err("enable vci failed, rc=%d\n", rc);
-				return -ENODEV;
-			}
-		}
-
 		gpio_set_value(disp_5v_en, 1);
 		msleep(5);
 
@@ -1125,56 +1129,8 @@ static int mipi_dsi_panel_power(int on)
 
 		msleep(20);
 	} else {
-		rc = regulator_disable(reg_l2);
-		if (rc) {
-			pr_err("disable reg_l2 failed, rc=%d\n", rc);
-			return -ENODEV;
-		}
-		if (NULL != reg_vddio) {
-			rc = regulator_disable(reg_vddio);
-			if (rc) {
-				pr_err("disable reg_l8 failed, rc=%d\n", rc);
-				return -ENODEV;
-			}
-		}
-		rc = regulator_disable(reg_l23);
-		if (rc) {
-			pr_err("disable reg_l23 failed, rc=%d\n", rc);
-			return -ENODEV;
-		}
-		if (is_smd() && system_rev >= HWREV_P1) {
-			rc = regulator_disable(reg_vci);
-			if (rc) {
-				pr_err("disable reg_vci failed, rc=%d\n", rc);
-				return -ENODEV;
-			}
-		}
-		if (NULL != reg_vddio) {
-			rc = regulator_set_optimum_mode(reg_vddio, 100);
-			if (rc < 0) {
-				pr_err("set_optimum_mode l8 failed, rc=%d\n",
-						rc);
-				return -EINVAL;
-			}
-		}
-		rc = regulator_set_optimum_mode(reg_l23, 100);
-		if (rc < 0) {
-			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
-			return -EINVAL;
-		}
-		rc = regulator_set_optimum_mode(reg_l2, 100);
-		if (rc < 0) {
-			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
-			return -EINVAL;
-		}
-		if (is_smd() && system_rev >= HWREV_P1) {
-			rc = regulator_set_optimum_mode(reg_vci, 100);
-			if (rc < 0) {
-				pr_err("set_optimum_mode vci failed, rc=%d\n", rc);
-				return -EINVAL;
-			}
-		}
 		gpio_set_value_cansleep(lcd_reset, 0);
+
 		if (is_smd() && lcd_reset1 != 0)
 			gpio_set_value_cansleep(lcd_reset1, 0);
 
@@ -1188,19 +1144,170 @@ static int mipi_dsi_panel_power(int on)
 		} else
 			gpio_set_value(disp_5v_en, 0);
 
-		if (is_smd() && system_rev < HWREV_P1) {
+		if (is_smd() && system_rev < HWREV_P1)
 			gpio_set_value_cansleep(12, 0);
-		}
-		if (is_smd() && system_rev >= HWREV_P1) {
+
+		if (is_smd() && system_rev >= HWREV_P1)
 			gpio_set_value_cansleep(0, 0);
+	}
+
+	rc = 0;
+end:
+	return rc;
+}
+
+
+static int mipi_panel_power(int on)
+{
+	static bool panel_power_on;
+	static struct regulator *reg_vddio, *reg_vci;
+	int rc;
+
+	pr_debug("%s (%d) is called\n", __func__, on);
+
+	if (!panel_power_on) {
+		if (is_smd() && system_rev >= HWREV_P2) {
+			/* Vanquish P2 is not using VREG_L17 */
+			reg_vddio = NULL;
+		} else if (is_smd() && system_rev >= HWREV_P1) {
+				reg_vddio = regulator_get(
+						&msm_mipi_dsi1_device.dev,
+						"disp_vddio");
+		} else {
+			reg_vddio = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vdc");
+		}
+
+		if (IS_ERR(reg_vddio)) {
+			pr_err("could not get 8921_vddio/vdc, rc = %ld\n",
+				PTR_ERR(reg_vddio));
+			rc = -ENODEV;
+			goto end;
+		}
+
+		if (is_smd() && system_rev >= HWREV_P1) {
+			reg_vci = regulator_get(&msm_mipi_dsi1_device.dev,
+					"disp_vci");
+			if (IS_ERR(reg_vci)) {
+				pr_err("could not get disp_vci, rc = %ld\n",
+					PTR_ERR(reg_vci));
+				rc = -ENODEV;
+				goto end;
+			}
+		}
+
+		if (NULL != reg_vddio) {
+			rc = regulator_set_voltage(reg_vddio, 2650000, 2850000);
+			if (rc) {
+				pr_err("set_voltage l17 failed, rc=%d\n", rc);
+				rc = -EINVAL;
+				goto end;
+			}
+			/*
+			 * It has been enabled by bootloader. We need to enable
+			 * it or else we couldn't disable this regulator in
+			 * first time.
+			 */
+			regulator_enable(reg_vddio);
+		}
+
+		if (NULL != reg_vci) {
+			rc = regulator_set_voltage(reg_vci, 3100000, 3100000);
+			if (rc) {
+				pr_err("set_voltage vci failed, rc=%d\n", rc);
+				rc = -EINVAL;
+				goto end;
+			}
+			regulator_enable(reg_vci);
+		}
+
+		panel_power_on = true;
+	}
+	if (on) {
+		if (NULL != reg_vddio) {
+			rc = regulator_set_optimum_mode(reg_vddio, 100000);
+			if (rc < 0) {
+				pr_err("set_optimum_mode l8 failed, rc=%d\n",
+						rc);
+				rc = -EINVAL;
+				goto end;
+			}
+
+			rc = regulator_enable(reg_vddio);
+			if (rc) {
+				pr_err("enable l8 failed, rc=%d\n", rc);
+				rc = -ENODEV;
+				goto end;
+			}
+		}
+
+		if (NULL != reg_vci) {
+			rc = regulator_set_optimum_mode(reg_vci, 100000);
+			if (rc < 0) {
+				pr_err("set_optimum_mode vci failed, rc=%d\n",
+									rc);
+				rc = -EINVAL;
+				goto end;
+			}
+
+			rc = regulator_enable(reg_vci);
+			if (rc) {
+				pr_err("enable vci failed, rc=%d\n", rc);
+				rc = -ENODEV;
+				goto end;
+			}
+		}
+
+		mipi_panel_power_en(1);
+
+	} else {
+		mipi_panel_power_en(0);
+
+		if (NULL != reg_vddio) {
+			rc = regulator_disable(reg_vddio);
+			if (rc) {
+				pr_err("disable reg_l8 failed, rc=%d\n", rc);
+				rc = -ENODEV;
+				goto end;
+			}
+
+			rc = regulator_set_optimum_mode(reg_vddio, 100);
+			if (rc < 0) {
+				pr_err("set_optimum_mode l8 failed, rc=%d\n",
+									rc);
+				rc = -EINVAL;
+				goto end;
+			}
+
+		}
+		if (NULL != reg_vci) {
+			rc = regulator_disable(reg_vci);
+			if (rc) {
+				pr_err("disable reg_vci failed, rc=%d\n", rc);
+				rc = -ENODEV;
+				goto end;
+			}
+
+			rc = regulator_set_optimum_mode(reg_vci, 100);
+			if (rc < 0) {
+				pr_err("set_optimum_mode vci failed, rc=%d\n",
+									rc);
+				rc = -EINVAL;
+				goto end;
+			}
 		}
 	}
-	return 0;
+
+	rc = 0;
+end:
+	return rc;
 }
 
 static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_VSYNC_GPIO,
-	.dsi_power_save = mipi_dsi_panel_power,
+	.dsi_power_save = mipi_dsi_power,
+	.panel_power_save = mipi_panel_power,
+	.panel_power_force_off = mipi_panel_power_en,
 };
 
 static void __init msm_fb_add_devices(void)

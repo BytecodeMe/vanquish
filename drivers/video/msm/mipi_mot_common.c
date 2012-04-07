@@ -307,11 +307,12 @@ void mipi_mot_esd_work(void)
 	 */
 
 	for (i = 0; i < MOT_PANEL_ESD_NUM_TRY_MAX; i++) {
-		ret =  mipi_mot_esd_detection(mfd);
-		if ((ret == MOT_ESD_ESD_DETECT) || (ret == MOT_ESD_OK))
-			break;
+		if (i > 0)
+			msleep(100);
 
-		msleep(100);
+		ret =  mipi_mot_esd_detection(mfd);
+		if (ret == MOT_ESD_OK)
+			break;
 	}
 
 	if (i >= MOT_PANEL_ESD_NUM_TRY_MAX)

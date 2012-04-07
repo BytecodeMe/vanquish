@@ -62,6 +62,7 @@ void mdp4_dsi_video_fxn_register(cmd_fxn_t fxn)
 	display_on = fxn;
 }
 
+extern int mipi_panel_power_en(int on);
 int mdp4_dsi_video_on(struct platform_device *pdev)
 {
 	int dsi_width;
@@ -156,6 +157,8 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK,
 			      MDP_BLOCK_POWER_OFF, FALSE);
 		mdp4_overlay_dsi_video_wait4event(mfd, INTR_DMA_P_DONE);
+		/* Turn off panel to avoid fading */
+		mipi_panel_power_en(0);
 		/* disable timing generator */
 		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
 		mipi_dsi_controller_cfg(0);

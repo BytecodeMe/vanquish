@@ -1385,6 +1385,7 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 {
 	int len, ret;
+	int dsi_status1 = 0, dsi_status2 = 0;
 
 #ifdef DSI_HOST_DEBUG
 	int i;
@@ -1403,6 +1404,7 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 	len += 3;
 	len &= ~0x03;	/* multipled by 4 */
 
+	dsi_status1 = MIPI_INP(MIPI_DSI_BASE + 0x04);
 	tp->dmap = dma_map_single(&dsi_dev, tp->data, len, DMA_TO_DEVICE);
 	if (dma_mapping_error(&dsi_dev, tp->dmap)) {
 		pr_err("%s: dmap mapp failed\n", __func__);
@@ -1419,8 +1421,10 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 
 	if (wait_for_completion_timeout(&dsi_dma_comp,
 						msecs_to_jiffies(100)) == 0) {
-		pr_err("%s: timeout waiting for dsi dma completion\n",
-								__func__);
+		dsi_status2 = MIPI_INP(MIPI_DSI_BASE + 0x04);
+		pr_err("%s: timeout waiting for dsi dma completion "
+			" dsi_status2=0x%x dsi_status2=0x%x\n",
+			__func__, dsi_status1, dsi_status2);
 		ret = -1;
 	} else
 		ret =  tp->len;
