@@ -124,6 +124,8 @@
 #define PM8XXX_ADC_HWMON_NAME_LENGTH			32
 #define PM8XXX_ADC_BTM_INTERVAL_MAX			0x14
 
+#define PM8XXX_ADC_TIMEOUT                              (5 * HZ)
+
 struct pm8xxx_adc {
 	struct device				*dev;
 	struct pm8xxx_adc_properties		*adc_prop;
@@ -736,7 +738,22 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail;
 	}
 
-	wait_for_completion(&adc_pmic->adc_rslt_completion);
+	if (!wait_for_completion_timeout(&adc_pmic->adc_rslt_completion,
+					PM8XXX_ADC_TIMEOUT)) {
+		pr_err("%s: ADC timeout rc=%d, channel=%d\n", __func__, rc, channel);
+		disable_irq(adc_pmic->adc_irq);
+		if (pm8xxx_adc_configure(adc_pmic->conv)) {
+			pr_err("%s: Reconfigure ADC failed\n", __func__);
+			rc = -EINVAL;
+			goto fail;
+		}
+		if (!wait_for_completion_timeout(&adc_pmic->adc_rslt_completion,
+						 PM8XXX_ADC_TIMEOUT)) {
+			pr_err("%s: timeout again\n", __func__);
+			disable_irq(adc_pmic->adc_irq);
+			BUG();
+		}
+	}
 
 	rc = pm8xxx_adc_read_adc_code(&result->adc_code);
 	if (rc) {
