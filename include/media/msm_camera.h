@@ -25,6 +25,8 @@
 #include <linux/time.h>
 #endif
 
+#include "msm_camera_query.h"
+
 #ifdef __KERNEL__
 #include <linux/ion.h>
 #endif
@@ -773,7 +775,8 @@ struct msm_snapshot_pp_status {
 #define CFG_SET_SHARPENING		39
 #define CFG_SET_LENSSHADING		40
 #define CFG_SET_TARGET_EXPOSURE		41
-#define CFG_MAX				42
+#define CFG_GET_MODULE_INFO             42
+#define CFG_MAX				43
 
 
 #define MOVE_NEAR	0
@@ -1128,6 +1131,7 @@ struct sensor_cfg_data {
 		struct mirror_flip mirror_flip;
 		struct factory_settings fact_set;
 		struct snapshotdata data;
+		struct otp_info_t module_info;
 	} cfg;
 };
 

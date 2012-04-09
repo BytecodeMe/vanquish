@@ -20,10 +20,17 @@
 
 #define OV8820_DEFAULT_MCLK_RATE 24000000
 
+#define OV8820_OTP_DATA      0x3D00
+#define OV8820_OTP_LOAD      0x3D81
+#define OV8820_OTP_BANK      0x3D84
+#define OV8820_OTP_BANK_SIZE 0x20
+
 DEFINE_MUTEX(ov8820_mut);
 static struct msm_sensor_ctrl_t ov8820_s_ctrl;
 
 static struct regulator *reg_1p8, *reg_2p8;
+
+static struct otp_info_t otp_info;
 
 static struct msm_camera_i2c_reg_conf ov8820_start_settings[] = {
 	{0x0100, 0x01},
@@ -499,6 +506,85 @@ static struct msm_sensor_exp_gain_info_t ov8820_exp_gain_info = {
 	.vert_offset = 6,
 };
 
+static int32_t ov8820_read_otp(struct msm_sensor_ctrl_t *s_ctrl)
+{
+	int32_t rc = 0;
+	int16_t i, j;
+	uint8_t otp[256];
+	uint16_t readData;
+
+	/* Start Stream to read OTP Data */
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0x0100, 0x01, MSM_CAMERA_I2C_BYTE_DATA);
+
+	if (rc < 0) {
+		pr_err("%s: Unable to read otp\n", __func__);
+		return rc;
+	}
+
+	/* Read all 8 banks */
+	for (i = 0; i < 8; i++) {
+		/* Reset OTP Buffer Registers */
+		for (j = 0; j < 32; j++) {
+			rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+					(uint16_t)(OV8820_OTP_DATA+j), 0xFF,
+					MSM_CAMERA_I2C_BYTE_DATA);
+			if (rc < 0)
+				return rc;
+		}
+
+		/* Set OTP Bank & Enable */
+		rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+				OV8820_OTP_BANK, 0x08|i,
+				MSM_CAMERA_I2C_BYTE_DATA);
+		if (rc < 0)
+			return rc;
+
+		/* Set Read OTP Bank */
+		rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+				OV8820_OTP_LOAD, 0x01,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0)
+			return rc;
+
+		/* Delay */
+		msleep(25);
+
+		/* Read OTP Buffer Registers */
+		for (j = 0; j < 32; j++) {
+			rc = msm_camera_i2c_read(s_ctrl->sensor_i2c_client,
+					OV8820_OTP_DATA+j,
+					&readData,
+					MSM_CAMERA_I2C_BYTE_DATA);
+
+			otp[(i*32)+j] = (uint8_t)readData;
+
+			if (rc < 0)
+				return rc;
+		}
+
+		/* Reset Read OTP Bank */
+		rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+				OV8820_OTP_LOAD, 0x00,
+				MSM_CAMERA_I2C_BYTE_DATA);
+
+		if (rc < 0)
+			return rc;
+	}
+
+	/* Stop Streaming */
+	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+			0x0100, 0x00, MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0) {
+		pr_err("%s: Unable to stop streaming of imager\n", __func__);
+		return rc;
+	}
+
+	memcpy((void *)&otp_info, otp, sizeof(struct otp_info_t));
+	return rc;
+}
+
 static int32_t ov8820_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 		uint16_t gain, uint32_t line)
 {
@@ -729,7 +815,21 @@ static int32_t ov8820_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		pr_err("%s: chip id does not match\n", __func__);
 		return -ENODEV;
 	}
+
+	rc = ov8820_read_otp(s_ctrl);
+	if (rc < 0) {
+		pr_err("%s: unable to read otp data\n", __func__);
+		return -ENODEV;
+	}
+
 	pr_info("ov8820: match_id success\n");
+	return 0;
+}
+
+static int32_t ov8820_get_module_info(struct msm_sensor_ctrl_t *s_ctrl,
+		struct otp_info_t *module_info)
+{
+	*(module_info) = otp_info;
 	return 0;
 }
 
@@ -768,6 +868,7 @@ static struct msm_sensor_fn_t ov8820_func_tbl = {
 	.sensor_power_up                = ov8820_power_up,
 	.sensor_power_down              = ov8820_power_down,
 	.sensor_match_id                = ov8820_match_id,
+	.sensor_get_module_info         = ov8820_get_module_info,
 };
 
 static struct msm_sensor_reg_t ov8820_regs = {
