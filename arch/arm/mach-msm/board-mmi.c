@@ -3247,8 +3247,25 @@ static struct msm_gpiomux_config msm8960_batt_eprom_configs[] = {
 	},
 };
 
+struct gpiomux_settings {
+	u16 gpio;
+	u8 setting;
+	u8 func;
+	u8 pull;
+	u8 drv;
+	u8 dir;
+} __attribute__ ((__packed__));
+
+#define DT_PATH_MUX		"/System@0/IOMUX@0"
+#define DT_PROP_MUX_SETTINGS	"settings"
+
 static void __init mot_gpiomux_init(unsigned kp_mode)
 {
+	struct device_node *node;
+	const struct gpiomux_settings *prop;
+	int i, size = 0;
+	struct gpiomux_setting setting, old_setting;
+
 	msm_gpiomux_install(msm8960_mdp_5v_en_configs,
 			ARRAY_SIZE(msm8960_mdp_5v_en_configs));
 #ifdef CONFIG_INPUT_GPIO
@@ -3262,6 +3279,30 @@ static void __init mot_gpiomux_init(unsigned kp_mode)
 #endif
 	msm_gpiomux_install(msm8960_batt_eprom_configs,
 			ARRAY_SIZE(msm8960_batt_eprom_configs));
+
+	/* Override the default setting by devtree */
+	node = of_find_node_by_path(DT_PATH_MUX);
+	if (!node) {
+		pr_info("%s: no node found: %s\n", __func__, DT_PATH_MUX);
+		return;
+	}
+	prop = (const void *)of_get_property(node, DT_PROP_MUX_SETTINGS, &size);
+	if (prop && ((size % sizeof(struct gpiomux_settings)) == 0)) {
+		for (i = 0; i < size / sizeof(struct gpiomux_settings); i++) {
+			setting.func = prop->func;
+			setting.drv = prop->drv;
+			setting.pull = prop->pull;
+			setting.dir = prop->dir;
+			if (msm_gpiomux_write(prop->gpio, prop->setting,
+						&setting, &old_setting))
+				pr_err("%s: gpio%d mux setting %d failed\n",
+					__func__, prop->gpio, prop->setting);
+
+			prop++;
+		}
+	}
+
+	of_node_put(node);
 }
 
 static void __init mot_init_factory_kill(void)
