@@ -1642,11 +1642,11 @@ static int __devinit request_gpios(struct platform_device *pdev)
 		}
 
 		if (emu_det_gpio_data[i].exprt == true) {
-			ret = gpio_export(
-			      emud->emu_gpio[emu_det_gpio_data[i].idx], true);
+			gpio_export(res->start, true);
+			gpio_export_link(emud->dev, emu_det_gpio_data[i].name,
+					 res->start);
 			pr_emu_det(DEBUG, "exporting gpio %s-%d\n",
-				   emu_det_gpio_data[i].name,
-				   emud->emu_gpio[emu_det_gpio_data[i].idx]);
+				   emu_det_gpio_data[i].name, res->start);
 		}
 	}
 	return 0;
