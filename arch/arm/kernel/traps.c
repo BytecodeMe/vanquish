@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#include <linux/nmi.h>
 
 #include <asm/atomic.h>
 #include <asm/cacheflush.h>
@@ -234,6 +235,7 @@ static int __die(const char *str, int err, struct thread_info *thread, struct pt
 	static int die_counter;
 	int ret;
 
+	atomic_notifier_call_chain(&touch_watchdog_notifier_head, 0, NULL);
 	printk(KERN_EMERG "Internal error: %s: %x [#%d]" S_PREEMPT S_SMP "\n",
 	       str, err, ++die_counter);
 
@@ -267,10 +269,11 @@ void die(const char *str, struct pt_regs *regs, int err)
 	struct thread_info *thread = current_thread_info();
 	int ret;
 	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
+	unsigned long flags;
 
 	oops_enter();
 
-	raw_spin_lock_irq(&die_lock);
+	raw_spin_lock_irqsave(&die_lock, flags);
 	console_verbose();
 	bust_spinlocks(1);
 	if (!user_mode(regs))
@@ -284,13 +287,13 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE);
-	raw_spin_unlock_irq(&die_lock);
-	oops_exit();
 
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
+	raw_spin_unlock_irq(&die_lock);
+	oops_exit();
 	if (ret != NOTIFY_STOP)
 		do_exit(SIGSEGV);
 }
