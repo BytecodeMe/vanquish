@@ -326,6 +326,7 @@ struct emu_det_data {
 	struct otg_transceiver *trans;
 	int requested_muxmode;
 	bool vbus_adc_delay;
+	int driver_mode;
 };
 
 static struct mmi_emu_det_platform_data *emu_pdata;
@@ -333,7 +334,6 @@ static struct emu_det_data *the_emud;
 static DEFINE_MUTEX(switch_access);
 static DEFINE_MUTEX(mux_mode_switch);
 static char buffer[512];
-static int driver_mode;
 
 static ssize_t dock_print_name(struct switch_dev *switch_dev, char *buf)
 {
@@ -440,6 +440,11 @@ void switch_mux_mode(int mode, int check_valid_req)
 void set_mux_ctrl_mode_for_audio(int mode)
 {
 	struct emu_det_data *emud = the_emud;
+
+	if (emud->driver_mode == MODE_F_AUDIO) {
+		switch_mux_mode(MUXMODE_AUDIO, 0);
+		return;
+	}
 
 	if ((emud->whisper_auth == AUTH_FAILED) ||
 	    (emud->whisper_auth == AUTH_NOT_STARTED)) {
@@ -615,9 +620,9 @@ static void emu_det_vbus_state(int online)
 	}
 
 	pr_emu_det(DEBUG, "PM8921 USBIN callback (mode-%d): %s\n",
-				driver_mode, online ? "in" : "out");
+			emud->driver_mode, online ? "in" : "out");
 	emud->usb_present = online;
-	if (driver_mode == MODE_NORMAL)
+	if (emud->driver_mode == MODE_NORMAL)
 		QUEUE_DWORK_CHK(emud->wq, &emud->work,
 					msecs_to_jiffies(delay_ms));
 }
@@ -1038,7 +1043,7 @@ static void detection_work(void)
 
 	static unsigned long last_run;
 
-	if (driver_mode != MODE_NORMAL)
+	if (data->driver_mode != MODE_NORMAL)
 		return;
 
 	pr_emu_det(DEBUG, "state %s, time since last run %d ms\n",
@@ -1382,7 +1387,7 @@ static irqreturn_t emu_det_irq_handler(int irq, void *data)
 		}
 	}
 
-	if (driver_mode == MODE_NORMAL)
+	if (emud->driver_mode == MODE_NORMAL)
 		QUEUE_DWORK_CHK(emud->wq, &emud->work, 0);
 
 	prev_jiffies = jiffies;
@@ -1742,8 +1747,8 @@ static DEVICE_ATTR(debug_mask, 0644, debug_mask_show, debug_mask_store);
 static ssize_t mode_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	pr_emu_det(DEBUG, "mode=%d\n", driver_mode);
-	return snprintf(buf, PAGE_SIZE, "%d\n", driver_mode);
+	pr_emu_det(DEBUG, "mode=%d\n", the_emud->driver_mode);
+	return snprintf(buf, PAGE_SIZE, "%d\n", the_emud->driver_mode);
 }
 
 static ssize_t mode_store(struct device *dev,
@@ -1754,13 +1759,13 @@ static ssize_t mode_store(struct device *dev,
 	switch (value) {
 	case MODE_F_USB:
 		pr_emu_det(TRANSITION, "FACTORY (MUX-USB) mode\n");
-		driver_mode = MODE_F_USB;
+		emud->driver_mode = MODE_F_USB;
 		whisper_gpio_mode(GPIO_MODE_ALTERNATE);
 		mux_ctrl_mode(MUXMODE_USB);
 		break;
 	case MODE_F_UART:
 		pr_emu_det(TRANSITION, "FACTORY (MUX-UART) mode\n");
-		driver_mode = MODE_F_UART;
+		emud->driver_mode = MODE_F_UART;
 		whisper_gpio_mode(GPIO_MODE_ALTERNATE);
 		gpio_direction_output(emud->emu_gpio[WHISPER_UART_TX_GPIO], 0);
 		gpio_direction_input(emud->emu_gpio[WHISPER_UART_RX_GPIO]);
@@ -1770,17 +1775,21 @@ static ssize_t mode_store(struct device *dev,
 		break;
 	case MODE_F_AUDIO:
 		pr_emu_det(TRANSITION, "FACTORY (MUX-AUDIO) mode\n");
-		driver_mode = MODE_F_AUDIO;
+		emud->driver_mode = MODE_F_AUDIO;
 		whisper_gpio_mode(GPIO_MODE_ALTERNATE);
-		mux_ctrl_mode(MUXMODE_AUDIO);
+		alternate_mode_enable();
+		blocking_notifier_call_chain(&semu_audio_notifier_list,
+				     (unsigned long)EMU_OUT,
+				     (void *)NULL);
 		break;
 	case MODE_NORMAL:
 		pr_emu_det(TRANSITION, "NORMAL (MUX-AUTO) mode\n");
-		driver_mode = MODE_NORMAL;
+		emud->driver_mode = MODE_NORMAL;
 		whisper_gpio_mode(GPIO_MODE_STANDARD);
 		standard_mode_enable();
 		mux_ctrl_mode(MUXMODE_USB);
 		detection_work();
+		break;
 	default:
 		pr_emu_det(ERROR, "unsupported mode\n");
 		break;
@@ -1974,6 +1983,7 @@ static int emu_det_probe(struct platform_device *pdev)
 	data->requested_muxmode = MUXMODE_UNDEFINED;
 	data->vbus_adc_delay = true;
 	data->suspend_disabled = false;
+	data->driver_mode = MODE_NORMAL;
 	dev_set_drvdata(&pdev->dev, data);
 
 	data->trans = otg_get_transceiver();
