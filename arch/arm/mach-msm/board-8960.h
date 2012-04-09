@@ -325,3 +325,5 @@ uint32_t msm_rpm_get_swfi_latency(void);
 #define MSM_8960_GSBI10_QUP_I2C_BUS_ID 10
 
 #define HDMI_PANEL_NAME	"hdmi_msm"
+
+extern int msm8960_headset_hw_has_gpio(void);

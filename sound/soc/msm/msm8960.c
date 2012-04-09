@@ -28,6 +28,7 @@
 #include <asm/mach-types.h>
 #include <mach/socinfo.h>
 #include <linux/mfd/wcd9310/core.h>
+#include <linux/mfd/wcd9310/pdata.h>
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
 #include <linux/emu-accy.h>
@@ -108,7 +109,7 @@ static struct tabla_mbhc_config mbhc_cfg = {
 	.mclk_rate = TABLA_EXT_CLK_RATE,
 	.gpio = 0,
 	.gpio_irq = 0,
-	.gpio_level_insert = 1,
+	.gpio_level_insert = 0,
 };
 
 static struct mutex cdc_mclk_mutex;
@@ -718,6 +719,7 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	u8 tabla_version;
+	struct tabla_pdata *pdata = dev_get_platdata(codec->dev->parent);
 	struct pm_gpio jack_gpio_cfg = {
 		.direction = PM_GPIO_DIR_IN,
 		.pull = PM_GPIO_PULL_UP_1P5,
@@ -779,7 +781,7 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return err;
 	}
 
-	if (GPIO_DETECT_USED) {
+	if (pdata->hs_detect_gpio_enable) {
 		mbhc_cfg.gpio = PM8921_GPIO_PM_TO_SYS(JACK_DETECT_GPIO);
 		mbhc_cfg.gpio_irq = JACK_DETECT_INT;
 	}

@@ -1938,6 +1938,7 @@ void __init msm8960_allocate_memory_regions(void)
 #ifdef CONFIG_WCD9310_CODEC
 
 #define TABLA_INTERRUPT_BASE (NR_MSM_IRQS + NR_GPIO_IRQS + NR_PM8921_IRQS)
+#define TABLA_CFILT_MV 2700
 
 /* Micbias setting is based on 8660 CDP/MTP/FLUID requirement
  * 4 micbiases are used to power various analog and digital
@@ -1959,9 +1960,9 @@ static struct tabla_pdata tabla_platform_data = {
 	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
 	.micbias = {
 		.ldoh_v = TABLA_LDOH_2P85_V,
-		.cfilt1_mv = 1800,
-		.cfilt2_mv = 1800,
-		.cfilt3_mv = 1800,
+		.cfilt1_mv = TABLA_CFILT_MV,
+		.cfilt2_mv = TABLA_CFILT_MV,
+		.cfilt3_mv = TABLA_CFILT_MV,
 		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
 		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
 		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
@@ -2005,6 +2006,7 @@ static struct tabla_pdata tabla_platform_data = {
 		.optimum_uA = WCD9XXX_VDDD_CDC_A_CUR_MAX,
 	},
 	},
+	.hs_detect_gpio_enable = 1,
 };
 
 static struct slim_device msm_slim_tabla = {
@@ -2026,9 +2028,9 @@ static struct tabla_pdata tabla20_platform_data = {
 	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
 	.micbias = {
 		.ldoh_v = TABLA_LDOH_2P85_V,
-		.cfilt1_mv = 1800,
-		.cfilt2_mv = 1800,
-		.cfilt3_mv = 1800,
+		.cfilt1_mv = TABLA_CFILT_MV,
+		.cfilt2_mv = TABLA_CFILT_MV,
+		.cfilt3_mv = TABLA_CFILT_MV,
 		.bias1_cfilt_sel = TABLA_CFILT1_SEL,
 		.bias2_cfilt_sel = TABLA_CFILT2_SEL,
 		.bias3_cfilt_sel = TABLA_CFILT3_SEL,
@@ -2072,6 +2074,7 @@ static struct tabla_pdata tabla20_platform_data = {
 		.optimum_uA = WCD9XXX_VDDD_CDC_A_CUR_MAX,
 	},
 	},
+	.hs_detect_gpio_enable = 1,
 };
 
 static struct slim_device msm_slim_tabla20 = {
@@ -3518,6 +3521,14 @@ void __init msm8960_add_common_devices(int (*detect_client)(const char *name))
 
 void __init msm8960_init_slim(void)
 {
+	struct tabla_pdata *pdata;
+	int has_gpio = msm8960_headset_hw_has_gpio();
+
+	pdata = msm_slim_devices[0].slim_slave->dev.platform_data;
+	pdata->hs_detect_gpio_enable = has_gpio;
+	pdata = msm_slim_devices[1].slim_slave->dev.platform_data;
+	pdata->hs_detect_gpio_enable = has_gpio;
+
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
 }

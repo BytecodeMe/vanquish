@@ -2639,6 +2639,23 @@ static int mmi_dt_get_hdmi_feature(int *value)
 	return 0;
 }
 
+int msm8960_headset_hw_has_gpio(void)
+{
+	struct device_node *node;
+	const void *prop;
+	int hs_hw_has_gpio = 1 , len = 0;
+
+	node = of_find_node_by_path("/Chosen@0");
+	if (node == NULL)
+		return hs_hw_has_gpio;
+
+	prop = of_get_property(node, "disable_headset_gpio", &len);
+	if (prop && (len == sizeof(u8)) && (*(u8 *)prop))
+		 hs_hw_has_gpio = 0;
+
+	return hs_hw_has_gpio;
+}
+
 /*
  * HACK: Ideally all pinmuxes would be configured directly from the device
  * tree. Don't use this as a template for future device tree changes.
