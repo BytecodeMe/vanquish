@@ -275,7 +275,8 @@ static char *bit_names[] = BITS;
 
 #define SENSE_WHISPER_PPD   (test_bit(SESS_END_BIT, &data->sense) && \
 			     (test_bit(PD_100K_BIT, &data->sense) || \
-			      test_bit(PD_200K_BIT, &data->sense)))
+			      test_bit(PD_200K_BIT, &data->sense)) &&  \
+			     !(test_bit(SE1_BIT, &data->sense)))
 
 #define SENSE_WHISPER_SMART (test_bit(GRND_BIT, &data->sense) && \
 			     test_bit(DP_BIT, &data->sense) && \
