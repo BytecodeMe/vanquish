@@ -1009,10 +1009,11 @@ static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
 	   is writing directly to fb0, the framebuffer pitch
 	   also needs to be 32 pixel aligned */
 
-	if (fb_index == 0) {
-		xres = xres + msm_fb_pdata->fb_xpad;
+	xres = xres + msm_fb_pdata->fb_xpad;
+
+	if (fb_index == 0)
 		return ALIGN(xres, 32) * bpp;
-	} else
+	else
 		return xres * bpp;
 }
 
@@ -1026,7 +1027,6 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	struct fb_var_screeninfo *var;
 	int *id;
 	int fbram_offset;
-	int buffersize, yoffset_cal, var_xresTemp, var_yresTemp;
 
 	/*
 	 * fb info initialization
@@ -1164,87 +1164,32 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		return ret;
 	}
 
-	if (mfd->index == 0) {
-		msm_fb_pdata->fb_xpad = FB_PAD_MAX_X - panel_info->xres;
-		msm_fb_pdata->fb_ypad = FB_PAD_MAX_Y - panel_info->yres;
-		if ((msm_fb_pdata->fb_xpad < 0) ||
-		    (msm_fb_pdata->fb_ypad < 0)) {
-			msm_fb_pdata->fb_xpad = 0;
-			msm_fb_pdata->fb_ypad = 0;
-		}
-	}
-
-	if (mfd->index == 0) {
-		/* each framebuffer needs to be 4K page aligned
-		   so adjusting the fb yres virtual */
-		var_xresTemp =
-			ALIGN((panel_info->xres+msm_fb_pdata->fb_xpad), 32);
-		var_yresTemp = panel_info->yres+msm_fb_pdata->fb_ypad;
-		buffersize = (var_yresTemp * var_xresTemp * bpp);
-		if (buffersize & (PAGE_SIZE-1)) {
-			yoffset_cal = var_yresTemp;
-			while ((buffersize & (PAGE_SIZE-1))) {
-				buffersize =
-					(yoffset_cal++) * var_xresTemp * bpp;
-			}
-			msm_fb_pdata->fb_ypad =
-				yoffset_cal - panel_info->yres - 1;
-		}
-	}
-
 	fix->type = panel_info->is_3d_panel;
 
 	fix->line_length = msm_fb_line_length(mfd->index, panel_info->xres,
 					      bpp);
-
-	if (mfd->index == 0) {
-		/* calculate smem_len based on max size of two supplied modes */
-		fb_size  = (msm_fb_line_length(mfd->index,
-					       panel_info->xres, bpp) *
-				(panel_info->yres + msm_fb_pdata->fb_ypad) *
-				mfd->fb_page);
-		fb_esize = (msm_fb_line_length(mfd->index,
-					       panel_info->mode2_xres, bpp) *
-				(panel_info->mode2_yres +
-				 msm_fb_pdata->fb_ypad) * mfd->fb_page);
-		fix->smem_len = roundup(MAX(fb_size, fb_esize), PAGE_SIZE);
-		var->yoffset = (panel_info->yres + msm_fb_pdata->fb_ypad);
-	} else {
 	/* calculate smem_len based on max size of two supplied modes */
-		fix->smem_len =
-			roundup(MAX(msm_fb_line_length(mfd->index,
-						panel_info->xres,
-						bpp) *
-				panel_info->yres * mfd->fb_page,
-				msm_fb_line_length(mfd->index,
-						panel_info->mode2_xres,
-						bpp) *
-				panel_info->mode2_yres * mfd->fb_page),
-				PAGE_SIZE);
-	}
+
+	fb_size  = (msm_fb_line_length(mfd->index, panel_info->xres, bpp) *
+			(panel_info->yres + msm_fb_pdata->fb_ypad) *
+			mfd->fb_page);
+	fb_esize = (msm_fb_line_length(mfd->index, panel_info->mode2_xres, bpp) *
+			(panel_info->mode2_yres + msm_fb_pdata->fb_ypad) *
+			mfd->fb_page);
+
+	fix->smem_len = roundup(MAX(fb_size, fb_esize), PAGE_SIZE);
+	var->yoffset = (panel_info->yres + msm_fb_pdata->fb_ypad);
+
+	mfd->var_xres = panel_info->xres;
+	mfd->var_yres = panel_info->yres;
 
 	var->pixclock = mfd->panel_info.clk_rate;
 	mfd->var_pixclock = var->pixclock;
 
-	if (mfd->index == 0)
-		var->yoffset = (panel_info->yres + msm_fb_pdata->fb_ypad);
-	else
-		var->yoffset = panel_info->yres;
-
 	var->xres = panel_info->xres;
 	var->yres = panel_info->yres;
-
-	if (mfd->index == 0) {
-		var->xres_virtual =
-			ALIGN((panel_info->xres + msm_fb_pdata->fb_xpad), 32);
-		var->yres_virtual =
-			(panel_info->yres + msm_fb_pdata->fb_ypad) *
-			mfd->fb_page;
-	} else {
-		var->xres_virtual = panel_info->xres;
-		var->yres_virtual = panel_info->yres * mfd->fb_page;
-	}
-
+	var->xres_virtual = panel_info->xres;
+	var->yres_virtual = panel_info->yres * mfd->fb_page;
 	var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
 	if (mfd->dest == DISPLAY_LCD) {
 		var->reserved[4] = panel_info->lcd.refx100 / 100;
