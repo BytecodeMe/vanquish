@@ -433,6 +433,9 @@ static void mdp4_overlay_dtv_ov_start(struct msm_fb_data_type *mfd)
 	if (mfd->ov_start)
 		return;
 
+	if (dtv_pipe == NULL)
+		return;
+
 	if (dtv_pipe->blt_addr) {
 		mdp4_dtv_blt_ov_update(dtv_pipe);
 		dtv_pipe->ov_cnt++;
@@ -503,6 +506,8 @@ void mdp4_external_vsync_dtv()
  */
 void mdp4_overlay1_done_dtv()
 {
+	if (dtv_pipe == NULL)
+		return;
 	if (dtv_pipe->blt_addr) {
 		mdp4_dtv_blt_dmae_update(dtv_pipe);
 		dtv_pipe->dmae_cnt++;
