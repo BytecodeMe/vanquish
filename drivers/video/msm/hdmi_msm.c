@@ -59,6 +59,8 @@
 
 /* Define to allow the output onto non-HDCP devices */
 #define SUPPORT_NON_HDCP_DEVICES
+/* Define to give user space full control on HPD enable/disable */
+#define SUPPORT_US_CTRL_OF_HPD
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
 static boolean first_read_failed;
@@ -4447,6 +4449,7 @@ static int hdmi_msm_hpd_on(bool trigger_handler)
 	return 0;
 }
 
+#ifndef SUPPORT_US_CTRL_OF_HPD
 static int hdmi_msm_power_ctrl(boolean enable)
 {
 	if (!external_common_state->hpd_feature_on)
@@ -4459,6 +4462,7 @@ static int hdmi_msm_power_ctrl(boolean enable)
 
 	return 0;
 }
+#endif
 
 static int hdmi_msm_power_on(struct platform_device *pdev)
 {
@@ -4481,7 +4485,11 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 	changed = hdmi_common_get_video_format_from_drv_data(mfd);
+#ifdef SUPPORT_US_CTRL_OF_HPD
+	if (!external_common_state->hpd_feature_on) {
+#else
 	if (!external_common_state->hpd_feature_on || mfd->ref_cnt) {
+#endif
 		int rc = hdmi_msm_hpd_on(true);
 		DEV_INFO("HPD: panel power without 'hpd' feature on\n");
 		if (rc) {
@@ -4516,7 +4524,9 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
  */
 static int hdmi_msm_power_off(struct platform_device *pdev)
 {
+#ifndef SUPPORT_US_CTRL_OF_HPD
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
+#endif
 
 	if (!hdmi_msm_state->hdmi_app_clk)
 		return -ENODEV;
@@ -4548,8 +4558,13 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 #endif
 
 	mutex_lock(&external_common_state_hpd_mutex);
+#ifdef SUPPORT_US_CTRL_OF_HPD
+	if (!external_common_state->hpd_feature_on)
+		hdmi_msm_hpd_off();
+#else
 	if (!external_common_state->hpd_feature_on || mfd->ref_cnt)
 		hdmi_msm_hpd_off();
+#endif
 	mutex_unlock(&external_common_state_hpd_mutex);
 
 	hdmi_msm_state->panel_power_on = FALSE;
@@ -4828,7 +4843,9 @@ static struct platform_driver this_driver = {
 static struct msm_fb_panel_data hdmi_msm_panel_data = {
 	.on = hdmi_msm_power_on,
 	.off = hdmi_msm_power_off,
+#ifndef SUPPORT_US_CTRL_OF_HPD
 	.power_ctrl = hdmi_msm_power_ctrl,
+#endif
 };
 
 static struct platform_device this_device = {
