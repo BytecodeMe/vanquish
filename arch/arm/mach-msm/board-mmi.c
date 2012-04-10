@@ -973,7 +973,7 @@ static int mipi_dsi_power(int on)
 			goto end;
 		}
 
-		msleep(10);
+		mdelay(10);
 	} else {
 
 		rc = regulator_disable(reg_l2);
@@ -1110,7 +1110,7 @@ int mipi_panel_power_en(int on)
 
 	if (on) {
 		gpio_set_value(disp_5v_en, 1);
-		msleep(5);
+		mdelay(5);
 
 		if (is_smd() && system_rev < HWREV_P1)
 			gpio_set_value_cansleep(12, 1);
@@ -1118,16 +1118,16 @@ int mipi_panel_power_en(int on)
 			gpio_set_value_cansleep(0, 1);
 
 		if (is_smd())
-			msleep(30);
+			mdelay(30);
 		else
-			msleep(10);
+			mdelay(10);
 
 		gpio_set_value_cansleep(lcd_reset, 1);
 
 		if (is_smd() && lcd_reset1 != 0)
 			gpio_set_value_cansleep(lcd_reset1, 1);
 
-		msleep(20);
+		mdelay(20);
 	} else {
 		gpio_set_value_cansleep(lcd_reset, 0);
 

@@ -437,16 +437,16 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds1,
 					ARRAY_SIZE(mot_video_on_cmds1));
 
-	msleep(20);
+	mdelay(20);
 	ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2,
 					ARRAY_SIZE(mot_video_on_cmds2));
-	msleep(120);
+	mdelay(120);
 
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds3,
 					ARRAY_SIZE(mot_video_on_cmds3));
 
-	usleep(5000);
+	mdelay(5);
 
 	return 0;
 }
