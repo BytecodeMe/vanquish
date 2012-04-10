@@ -292,7 +292,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
-	raw_spin_unlock_irq(&die_lock);
+	raw_spin_unlock_irqrestore(&die_lock, flags);
 	oops_exit();
 	if (ret != NOTIFY_STOP)
 		do_exit(SIGSEGV);
