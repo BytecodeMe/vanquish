@@ -1873,6 +1873,10 @@ static int mdp_on(struct platform_device *pdev)
 	mdp4_overlay_ctrl_db_reset();
 
 	mfd = platform_get_drvdata(pdev);
+	if (!(mfd->cont_splash_done)) {
+		mfd->cont_splash_done = 1;
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	}
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	if (is_mdp4_hw_reset()) {
