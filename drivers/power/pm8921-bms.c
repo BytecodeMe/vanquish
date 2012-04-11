@@ -1106,6 +1106,10 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	soc = (remaining_usable_charge_uah * 100)
 		/ (fcc_uah - unusable_charge_uah);
 
+	/* Round up soc to account for remainder */
+	if (soc > 0)
+		soc += 1;
+
 	if (soc > 100) {
 		soc = 100;
 		pm8921_bms_charging_full();
