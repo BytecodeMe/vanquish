@@ -101,6 +101,7 @@ int chk_config_get_id(void)
 		return APQ8060_TOOLS_ID;
 	case AO8960_MACHINE_ID:
 	case MSM8260A_MACHINE_ID:
+	case MSM8660A_MACHINE_ID:
 		return AO8960_TOOLS_ID;
 	case APQ8064_MACHINE_ID:
 		return APQ8064_TOOLS_ID;
@@ -131,6 +132,7 @@ int chk_apps_only(void)
 	case MSM8974_MACHINE_ID:
 	case MDM9615_MACHINE_ID:
 	case MSM8260A_MACHINE_ID:
+	case MSM8660A_MACHINE_ID:
 		return 1;
 	default:
 		return 0;
