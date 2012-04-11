@@ -344,6 +344,7 @@ struct emu_det_data {
 	int requested_muxmode;
 	bool vbus_adc_delay;
 	int driver_mode;
+	int reverse_mode_enable;
 };
 
 static struct mmi_emu_det_platform_data *emu_pdata;
@@ -1758,6 +1759,41 @@ static inline void create_debugfs_entries(void)
 }
 #endif
 
+static ssize_t reverse_mode_voltage_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct emu_det_data *emud = the_emud;
+	int reverse_mode = 0;
+	if (emud->driver_mode != MODE_NORMAL) {
+		reverse_mode = (int)simple_strtoul(buf, NULL, 0);
+		pr_emu_det(DEBUG, "new reverse_mode is = %d\n",
+					reverse_mode);
+		if (reverse_mode == 1 &&
+				 !in_range(adc_vbus_get(), REF_VBUS_PRESENT))
+			external_5V_enable();
+		else if (reverse_mode == 0)
+			external_5V_disable();
+		else {
+			pr_err("Invalid reverse mode value = %d\n",
+					reverse_mode);
+			return -EINVAL;
+		}
+		emud->reverse_mode_enable = reverse_mode;
+	}
+	return strnlen(buf, count);
+}
+
+static ssize_t reverse_mode_voltage_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	pr_emu_det(DEBUG, "reverse_mode_enable = %d\n",
+				the_emud->reverse_mode_enable);
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+					the_emud->reverse_mode_enable);
+}
+static DEVICE_ATTR(reverse_mode_enable, 0664,
+	reverse_mode_voltage_show, reverse_mode_voltage_store);
+
 static ssize_t debug_mask_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -1831,6 +1867,7 @@ static DEVICE_ATTR(mode, 0664, mode_show, mode_store);
 static struct attribute *emu_dev_attrs[] = {
 	&dev_attr_debug_mask.attr,
 	&dev_attr_mode.attr,
+	&dev_attr_reverse_mode_enable.attr,
 	NULL,
 };
 
