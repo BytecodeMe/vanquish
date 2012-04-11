@@ -37,7 +37,7 @@
 #include <mach/bam_dmux.h>
 
 /* Debug message support */
-static int msm_rmnet_bam_debug_mask;
+static int msm_rmnet_bam_debug_mask = 0x7;
 module_param_named(debug_enable, msm_rmnet_bam_debug_mask,
 			int, S_IRUGO | S_IWUSR | S_IWGRP);
 

@@ -54,7 +54,7 @@
 #define LOW_WATERMARK		2
 #define HIGH_WATERMARK		4
 
-static int msm_bam_dmux_debug_enable;
+static int msm_bam_dmux_debug_enable = 1;
 module_param_named(debug_enable, msm_bam_dmux_debug_enable,
 		   int, S_IRUGO | S_IWUSR | S_IWGRP);
 
@@ -313,6 +313,7 @@ static void bam_dmux_log(const char *fmt, ...)
 	len += vscnprintf(buff + len, sizeof(buff) - len, fmt, arg_list);
 	va_end(arg_list);
 	memset(buff + len, 0x0, sizeof(buff) - len);
+	pr_debug("%s: %s", __func__, buff);
 
 	spin_lock_irqsave(&bam_dmux_logging_spinlock, flags);
 	if (kfifo_avail(&bam_dmux_state_log) < LOG_MESSAGE_MAX_SIZE) {
