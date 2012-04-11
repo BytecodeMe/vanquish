@@ -3066,6 +3066,7 @@ void *cyttsp_core_init(struct cyttsp_bus_ops *bus_ops, struct device *dev,
 		goto error_gpio;
 	}
 
+	INIT_WORK(&ts->cyttsp_resume_startup_work, cyttsp_ts_work_func);
 	cyttsp_dbg(ts, CY_DBG_LVL_3, "%s: Initialize IRQ: %d, name: %s\n",
 			__func__, ts->irq, ts->input->name);
 	retval = request_threaded_irq(ts->irq, NULL, cyttsp_irq,
@@ -3101,9 +3102,6 @@ void *cyttsp_core_init(struct cyttsp_bus_ops *bus_ops, struct device *dev,
 	ts->early_suspend.resume = cyttsp_late_resume;
 	register_early_suspend(&ts->early_suspend);
 #endif
-
-	INIT_WORK(&ts->cyttsp_resume_startup_work, cyttsp_ts_work_func);
-
 	goto no_error;
 
 error_input_register_device:
