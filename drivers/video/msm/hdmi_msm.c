@@ -976,12 +976,6 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 			hdcp_deauthenticate();
 			mod_timer(&hdmi_msm_state->hdcp_timer,
 						jiffies + HZ + HZ/2);
-			/* The first_read_failed flag was cleared in
-			 * hdcp_deauthenticate, but we need it to continue
-			 * to be set so the just HDCP is re-enabled in
-			 * hdmi_msm_hdcp_work() when the timer expires.
-			 */
-			first_read_failed = true;
 		} else {
 			hdcp_deauthenticate();
 			mod_timer(&hdmi_msm_state->hdcp_timer,
@@ -997,10 +991,6 @@ static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 
 static void hdmi_msm_hdcp_work(struct work_struct *work)
 {
-#ifdef SUPPORT_NON_HDCP_DEVICES
-	boolean had_first_read_failed = false;
-#endif
-
 	/* Only re-enable if cable still connected */
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (external_common_state->hpd_state &&
@@ -1009,22 +999,9 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 		mutex_unlock(&external_common_state_hpd_mutex);
 
 #ifdef SUPPORT_NON_HDCP_DEVICES
-		/* Code to remove blinking effect.
-		 *
-		 * Save off first read flag and zero it out now
-		 * since the below calls may change the value again.
-		 */
-		had_first_read_failed = first_read_failed;
-		first_read_failed = false;
-
-		if (had_first_read_failed) {
-			DEV_DBG("Calling HDCP ENABLE\n");
-			hdmi_msm_hdcp_enable();
-		} else {
-			DEV_DBG("Calling HDCP TURN ON\n");
-			hdmi_msm_state->reauth = TRUE;
-			hdmi_msm_turn_on();
-		}
+		/* Code to remove blinking effect */
+		DEV_DBG("Calling HDCP ENABLE\n");
+		hdmi_msm_hdcp_enable();
 #else
 		hdmi_msm_state->reauth = TRUE;
 		hdmi_msm_turn_on();
@@ -4226,11 +4203,18 @@ static void hdmi_msm_turn_on(void)
 {
 	uint32 hpd_ctrl;
 	uint32 audio_pkt_ctrl, audio_cfg;
+
 	/*
 	 * Number of wait iterations for QDSP to disable Audio Engine
 	 * before resetting HDMI core
 	 */
 	int i = 10;
+
+	int high_hpd = 0;
+
+	if (HDMI_INP(0x0250) & 0x02)
+		high_hpd = 1;
+
 	audio_pkt_ctrl = HDMI_INP_ND(0x0020);
 	audio_cfg = HDMI_INP_ND(0x01D0);
 
@@ -4293,6 +4277,34 @@ static void hdmi_msm_turn_on(void)
 	mutex_unlock(&hdmi_msm_state_mutex);
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT */
 	DEV_INFO("HDMI Core: Initialized\n");
+
+	/* Trap lost HPD falling transitions - when the core is reset the
+	 * HPD interrupt logic is disabled and it is possible to lose a
+	 * falling edge transition on the HPD line.  The logic below will
+	 * detect a lost falling transition and force the handling of it.
+	 */
+	if (high_hpd & !(HDMI_INP(0x0250) & 0x02)) {
+		mdelay(50);
+		if (!(HDMI_INP(0x0250) & 0x02)) {
+			DEV_INFO("Detected lost falling HPD edge\n");
+			mutex_lock(&hdmi_msm_state_mutex);
+			hdmi_msm_state->hpd_cable_chg_detected = TRUE;
+
+			/* ensure 2 readouts */
+			hdmi_msm_state->hpd_prev_state = 1;
+			external_common_state->hpd_state = 0;
+			hdmi_msm_state->hpd_stable = 0;
+
+			/* Halt any in-progress reauth */
+			del_timer(&hdmi_msm_state->hdcp_timer);
+#ifdef SUPPORT_NON_HDCP_DEVICES
+			about_to_reauth = false;
+#endif
+
+			queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_state_work);
+			mutex_unlock(&hdmi_msm_state_mutex);
+		}
+	}
 }
 
 static void hdmi_msm_hpd_state_timer(unsigned long data)
