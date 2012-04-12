@@ -202,6 +202,11 @@ static void readjust_fcc_table(void)
 		return;
 	}
 
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	if (!the_chip->adjusted_fcc_temp_lut)
+		return;
+#endif
+
 	temp = kzalloc(sizeof(struct single_row_lut), GFP_KERNEL);
 	if (!temp) {
 		pr_err("Cannot allocate memory for adjusted fcc table\n");
@@ -857,7 +862,9 @@ static int calculate_fcc_uah(struct pm8921_bms_chip *chip, int batt_temp,
 							int chargecycles)
 {
 	int initfcc, result, scalefactor = 0;
-
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+	chip->adjusted_fcc_temp_lut = NULL;
+#endif
 	if (chip->adjusted_fcc_temp_lut == NULL) {
 		initfcc = interpolate_fcc(chip, batt_temp);
 
@@ -1107,7 +1114,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		/ (fcc_uah - unusable_charge_uah);
 
 	/* Round up soc to account for remainder */
-	if (soc > 0)
+	if ((soc > 0) && (soc <= 99))
 		soc += 1;
 
 	if (soc > 100) {
@@ -1459,11 +1466,8 @@ EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
 #ifdef CONFIG_PM8921_FLOAT_CHARGE
 void pm8921_bms_charging_full(void)
 {
-	int batt_temp, rc;
-	struct pm8xxx_adc_chan_result result;
 	struct pm8921_soc_params raw;
 	unsigned long flags;
-	int fcc_uah, new_fcc_uah, delta_fcc_uah;
 
 	if (the_chip == NULL)
 		return;
@@ -1473,36 +1477,7 @@ void pm8921_bms_charging_full(void)
 		return;
 #endif
 
-	rc = pm8xxx_adc_read(the_chip->batt_temp_channel, &result);
-	if (rc) {
-		pr_err("error reading adc channel = %d, rc = %d\n",
-				the_chip->batt_temp_channel, rc);
-		return;
-	}
-	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
-						result.measurement);
-	batt_temp = (int)result.physical;
-
 	read_soc_params_raw(the_chip, &raw);
-
-	new_fcc_uah = calculate_real_fcc_uah(the_chip, &raw,
-					     batt_temp, last_chargecycles,
-					     &fcc_uah);
-	delta_fcc_uah = new_fcc_uah - fcc_uah;
-	if (delta_fcc_uah < 0)
-		delta_fcc_uah = -delta_fcc_uah;
-
-	if (delta_fcc_uah * 100  <= (DELTA_FCC_PERCENT * fcc_uah)) {
-		pr_debug("delta_fcc=%d < %d percent of fcc=%d\n",
-			 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
-		last_real_fcc_mah = new_fcc_uah/1000;
-		last_real_fcc_batt_temp = batt_temp;
-		readjust_fcc_table();
-	} else {
-		pr_debug("delta_fcc=%d > %d percent of fcc=%d"
-			 "will not update real fcc\n",
-			 delta_fcc_uah, DELTA_FCC_PERCENT, fcc_uah);
-	}
 
 	spin_lock_irqsave(&the_chip->bms_100_lock, flags);
 	the_chip->ocv_reading_at_100 = raw.last_good_ocv_raw;
