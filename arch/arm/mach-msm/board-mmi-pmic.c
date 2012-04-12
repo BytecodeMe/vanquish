@@ -541,6 +541,7 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.safety_time		= 512,
 	.update_time		= 60000,
+	.ttrkl_time		= 64,
 	.max_voltage		= MAX_VOLTAGE_MV,
 	.min_voltage		= 3200,
 	.resume_voltage_delta	= 100,
