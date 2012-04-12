@@ -132,6 +132,7 @@
 #include <linux/init.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/apanic_mmc.h>
 
 /* Initial PM8921 GPIO configurations vanquish, quinara */
 static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
@@ -2203,6 +2204,8 @@ static void init_mmi_ram_info(void){
 	smem_ddr_info = smem_alloc(SMEM_SDRAM_INFO, sizeof(*smem_ddr_info));
 
 	if (smem_ddr_info != NULL) {
+		char apanic_annotation[128];
+
 		/* identify vendor */
 		vid = smem_ddr_info->mr5 & 0xFF;
 		if (vid < (sizeof(vendors)/sizeof(vendors[0])))
@@ -2225,6 +2228,14 @@ static void init_mmi_ram_info(void){
 
 		/* extract size */
 		sysfsram_ramsize = smem_ddr_info->ramsize;
+
+		snprintf(apanic_annotation, sizeof(apanic_annotation),
+			"RAM: %s, %s, %u MB, MR5:0x%02X, MR6:0x%02X, "
+			"MR7:0x%02X, MR8:0x%02X\n",
+			vname, tname, smem_ddr_info->ramsize,
+			smem_ddr_info->mr5, smem_ddr_info->mr6,
+			smem_ddr_info->mr7, smem_ddr_info->mr8);
+		apanic_mmc_annotate(apanic_annotation);
 	}
 	else
 		pr_err("%s: failed to access DDR info in SMEM\n", __func__);

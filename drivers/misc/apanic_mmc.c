@@ -71,10 +71,12 @@ struct apanic_data {
 	int buf_offset;
 	int written;
 	struct proc_dir_entry *apanic_console;
-	struct proc_dir_entry   *apanic_app_threads;
+	struct proc_dir_entry *apanic_app_threads;
 	struct proc_dir_entry *apanic_threads;
+	struct proc_dir_entry *apanic_annotate;
 	struct hd_struct *hd;
 	struct raw_mmc_panic_ops *mmc_panic_ops;
+	char *annotation;
 };
 
 static int start_apanic_threads;
@@ -298,6 +300,45 @@ static int apanic_proc_write(struct file *file, const char __user * buffer,
 	return count;
 }
 
+int apanic_mmc_annotate(const char *annotation)
+{
+	struct apanic_data *ctx = &drv_ctx;
+	char *buffer;
+	size_t oldlen = 0;
+	size_t newlen;
+
+	newlen = strlen(annotation);
+	if (newlen == 0)
+		return -EINVAL;
+
+	if (ctx->annotation)
+		oldlen = strlen(ctx->annotation);
+
+	buffer = kmalloc(newlen + oldlen + 1, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	if (ctx->annotation) {
+		strcpy(buffer, ctx->annotation);
+		kfree(ctx->annotation);
+	} else
+		buffer[0] = '\0';
+
+	strcat(buffer, annotation);
+
+	ctx->annotation = buffer;
+
+	return 0;
+}
+EXPORT_SYMBOL(apanic_mmc_annotate);
+
+static int apanic_proc_annotate(struct file *file,
+				const char __user *annotation,
+				unsigned long count, void *data)
+{
+	return apanic_mmc_annotate(annotation);
+}
+
 static void mmc_panic_notify_add(struct hd_struct *hd)
 {
 	struct apanic_data *ctx = &drv_ctx;
@@ -410,6 +451,18 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 		}
 
 	}
+
+	ctx->apanic_annotate = create_proc_entry("apanic_annotate",
+						S_IFREG | S_IRUGO, NULL);
+	if (!ctx->apanic_annotate)
+		printk(KERN_ERR "%s: failed creating procfile\n", __func__);
+	else {
+		ctx->apanic_annotate->read_proc = NULL;
+		ctx->apanic_annotate->write_proc = apanic_proc_annotate;
+		ctx->apanic_annotate->size = 1;
+		ctx->apanic_annotate->data = NULL;
+	}
+
 out:
 	return;
 }
@@ -560,6 +613,8 @@ static void apanic_mmc_logbuf_dump(void)
 	       (unsigned long) (uptime.tv_nsec / USEC_PER_SEC));
 	bust_spinlocks(0);
 
+	if (ctx->annotation)
+		printk(KERN_EMERG "%s\n", ctx->annotation);
 
 	/*
 	 * Write out the console
