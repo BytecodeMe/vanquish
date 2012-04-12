@@ -573,7 +573,7 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	pinfo->mipi.data_lane1 = TRUE;
 	pinfo->mipi.data_lane2 = TRUE;
 	pinfo->mipi.data_lane3 = TRUE;
-	pinfo->mipi.hs_clk_always_on = TRUE;
+	pinfo->mipi.force_clk_lane_hs = TRUE;
 
 
 	pinfo->mipi.tx_eot_append = TRUE;

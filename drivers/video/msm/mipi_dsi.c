@@ -188,6 +188,12 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	clk_rate = mfd->fbi->var.pixclock;
 	clk_rate = min(clk_rate, mfd->panel_info.clk_max);
 
+	mipi  = &mfd->panel_info.mipi;
+	/* Clean up the force clk lane to enter HS from previous boot */
+	if ((mfd->panel_info.type == MIPI_VIDEO_PANEL) &&
+							mipi->force_clk_lane_hs)
+		MIPI_OUTP(MIPI_DSI_BASE + 0x00a8, 0);
+
 	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 1);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0);
 
@@ -207,14 +213,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_phy_init(0, &(mfd->panel_info), target_type);
 
-	if (mipi_dsi_pdata && mipi_dsi_pdata->panel_power_save)
-		mipi_dsi_pdata->panel_power_save(1);
-
 	local_bh_disable();
 	mipi_dsi_clk_enable();
 	local_bh_enable();
 
-	mipi  = &mfd->panel_info.mipi;
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		dummy_xres = mfd->panel_info.mipi.xres_pad;
 		dummy_yres = mfd->panel_info.mipi.yres_pad;
@@ -242,9 +244,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 				(vbp + height + dummy_yres + vfp) << 16 |
 					(hbp + width + dummy_xres + hfp));
 		}
-
-		if (mipi->hs_clk_always_on)
-			MIPI_OUTP(MIPI_DSI_BASE + 0x00a8, 0x10000000);
 
 		MIPI_OUTP(MIPI_DSI_BASE + 0x2c, (hspw << 16));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x30, 0);
@@ -275,14 +274,14 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_host_init(mipi);
 
-	if (mipi->force_clk_lane_hs) {
-		u32 tmp;
+	/*
+	 * The MIPI host is done with INIT now, the lines are at LP-11,
+	 * and it is safe to turn on the power to the panel and get it out
+	 * of reset
+	 */
 
-		tmp = MIPI_INP(MIPI_DSI_BASE + 0xA8);
-		tmp |= (1<<28);
-		MIPI_OUTP(MIPI_DSI_BASE + 0xA8, tmp);
-		wmb();
-	}
+	if (mipi_dsi_pdata && mipi_dsi_pdata->panel_power_save)
+		mipi_dsi_pdata->panel_power_save(1);
 
 	if (mdp_rev >= MDP_REV_41)
 		mutex_lock(&mfd->dma->ov_mutex);
@@ -290,6 +289,16 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		down(&mfd->dma->mutex);
 
 	ret = panel_next_on(pdev);
+
+	if ((mfd->panel_info.type == MIPI_VIDEO_PANEL) &&
+						mipi->force_clk_lane_hs) {
+		u32 tmp;
+
+		tmp = MIPI_INP(MIPI_DSI_BASE + 0xA8);
+		tmp |= (1<<28);
+		MIPI_OUTP(MIPI_DSI_BASE + 0xA8, tmp);
+		wmb();
+	}
 
 	mipi_dsi_op_mode_config(mipi->mode);
 

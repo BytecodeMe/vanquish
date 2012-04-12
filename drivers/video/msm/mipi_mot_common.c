@@ -329,6 +329,9 @@ void mipi_mot_esd_work(void)
 		ret =  mipi_mot_esd_detection(mfd);
 		if (ret == MOT_ESD_OK)
 			break;
+		/* If the panel is off then just exit and not queue ESD work */
+		else if (ret == MOT_ESD_PANEL_OFF)
+			return;
 	}
 
 	if (i >= MOT_PANEL_ESD_NUM_TRY_MAX)
