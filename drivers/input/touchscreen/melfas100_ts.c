@@ -110,6 +110,7 @@ struct mms_ts_info {
 
 	/* protects the enabled flag */
 	struct mutex			lock;
+	int				status;
 	bool				enabled;
 };
 
@@ -691,6 +692,7 @@ static void mms_ts_fw_load(const struct firmware *fw, void *context)
 	int retries = 3;
 	struct mms_fw_image *fw_img;
 
+	info->status = info->status & ~(1 << MELFAS_WAITING_FOR_FW_FLAG);
 	ver = get_fw_version(info);
 	if (ver < 0) {
 		ver = 0;
@@ -1126,6 +1128,54 @@ static ssize_t melfas_all_latency_show(struct device *dev,
 static DEVICE_ATTR(latency_times, S_IWUSR | S_IRUGO, \
 			melfas_all_latency_show, NULL);
 
+static ssize_t melfas_debug_ic_reflash_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct mms_ts_info *ts = dev_get_drvdata(dev);
+
+	if (ts->status & (1 << MELFAS_WAITING_FOR_FW_FLAG))
+		return sprintf(buf, "Driver is waiting for firmware load.\n");
+	else
+		return sprintf(buf, "No firmware loading in progress.\n");
+}
+
+static ssize_t melfas_debug_ic_reflash_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int err = 0;
+	struct mms_ts_info *ts = dev_get_drvdata(dev);
+
+
+	if (ts->status & (1 << MELFAS_WAITING_FOR_FW_FLAG)) {
+		printk(KERN_ERR "%s: Driver is already waiting for firmware.\n",
+			__func__);
+		err = -EALREADY;
+		goto melfas_debug_ic_reflash_store_fail;
+	}
+
+	printk(KERN_INFO "%s: Enabling firmware class loader...\n", __func__);
+
+	err = request_firmware_nowait(THIS_MODULE,
+		FW_ACTION_NOHOTPLUG, "", &(ts->client->dev),
+		GFP_KERNEL, ts, mms_ts_fw_load);
+	if (err < 0) {
+		printk(KERN_ERR
+		"%s: Firmware request failed with error code %d.\n",
+		__func__, err);
+		goto melfas_debug_ic_reflash_store_fail;
+	}
+
+	ts->status = ts->status | (1 << MELFAS_WAITING_FOR_FW_FLAG);
+	err = size;
+
+melfas_debug_ic_reflash_store_fail:
+
+	return err;
+}
+
+static DEVICE_ATTR(ic_reflash, S_IWUSR | S_IRUGO,
+		melfas_debug_ic_reflash_show, melfas_debug_ic_reflash_store);
+
 static int __devinit mms_ts_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
 {
@@ -1164,6 +1214,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	info->client = client;
 	info->input_dev = input_dev;
 	info->pdata = client->dev.platform_data;
+	info->status = 0;
 	pdata = client->dev.platform_data;
 	init_completion(&info->init_done);
 	info->irq = -1;
@@ -1309,6 +1360,14 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		goto err_create_hw_irqstat_failed;
 	}
 
+	ret = device_create_file(&info->client->dev, &dev_attr_ic_reflash);
+	if (ret) {
+		pr_err("%s: ic_reflash file device creation failed: %d\n",
+		       __func__, ret);
+		ret = -ENODEV;
+		goto err_create_hw_ic_reflash_failed;
+	}
+
 	ret = device_create_file(&info->client->dev, &dev_attr_latency_debug);
 	if (ret) {
 		pr_err("%s:latency debug file device creation failed: %d\n",
@@ -1342,6 +1401,8 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	}
 	return 0;
 
+err_create_hw_ic_reflash_failed:
+	device_remove_file(&info->client->dev, &dev_attr_hw_irqstat);
 err_create_hw_irqstat_failed:
 	device_remove_file(&info->client->dev, &dev_attr_ic_ver);
 err_create_ic_ver_device_failed:

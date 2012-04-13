@@ -22,6 +22,11 @@
 #define TS_FLIP_X           (1 << 0)
 #define TS_FLIP_Y           (1 << 1)
 
+#define MELFAS_IRQ_ENABLED_FLAG      0
+#define MELFAS_WAITING_FOR_FW_FLAG   1
+#define MELFAS_CHECKSUM_FAILED       2
+#define MELFAS_IGNORE_CHECKSUM       3
+
 #define MELFAS_TOUCH_SCL_GPIO	17
 #define MELFAS_TOUCH_SDA_GPIO	16
 #define MELFAS_TOUCH_INT_GPIO       46
@@ -45,5 +50,6 @@ struct melfas_ts_data {
 	struct early_suspend early_suspend;
 	struct melfas_ts_version_info version_info;
 	atomic_t irq_enabled;
+	uint16_t	status;
 };
 #endif /* _LINUX_MELFAS_TS100_H */
