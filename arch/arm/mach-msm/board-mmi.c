@@ -3119,6 +3119,17 @@ static __init void register_i2c_devices_from_dt(int bus)
 			case 0x00280000: /* Aptina_MT9M114 */
 				info.platform_data =
 					&msm_camera_sensor_mt9m114_data;
+
+				prop = of_get_property(child, "mclk_freq",
+						&len);
+				if (prop && (len == sizeof(u32)))
+					msm_camera_sensor_mt9m114_data.
+						sensor_platform_info->
+						mclk_freq = *(int *)prop;
+				else
+					msm_camera_sensor_mt9m114_data.
+						sensor_platform_info->
+						mclk_freq = 24000000;
 				break;
 
 			case 0x00290000: /* Omnivision_OV8820 */

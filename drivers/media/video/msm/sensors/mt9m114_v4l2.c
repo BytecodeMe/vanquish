@@ -28,6 +28,8 @@ DEFINE_MUTEX(mt9m114_mut);
 static struct msm_sensor_ctrl_t mt9m114_s_ctrl;
 
 #define MT9M114_DEFAULT_MASTER_CLK_RATE 24000000
+#define MT9M114_19_2MHZ_MASTER_CLK_RATE 19200000
+static int32_t mt9m114_update_mclk_settings(struct msm_sensor_ctrl_t *s_ctrl);
 
 static int32_t mt9m114_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 {
@@ -35,10 +37,11 @@ static int32_t mt9m114_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 	struct msm_camera_sensor_platform_info *pinfo =
 		s_ctrl->sensordata->sensor_platform_info;
 
-	pr_info("mt9m114_power_up R:%d D:%d A:%d\n",
+	pr_info("mt9m114_power_up R:%d D:%d A:%d CLK:%d\n",
 			pinfo->sensor_reset,
 			pinfo->digital_en,
-			pinfo->analog_en);
+			pinfo->analog_en,
+			pinfo->mclk_freq);
 
 	/* obtain gpios */
 	rc = gpio_request(pinfo->digital_en, "mt9m114");
@@ -67,7 +70,15 @@ static int32_t mt9m114_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 
 	/* turn on mclk */
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
-	msm_camio_clk_rate_set(MT9M114_DEFAULT_MASTER_CLK_RATE);
+
+	if (pinfo->mclk_freq == MT9M114_DEFAULT_MASTER_CLK_RATE ||
+			pinfo->mclk_freq == MT9M114_19_2MHZ_MASTER_CLK_RATE)
+		msm_camio_clk_rate_set(pinfo->mclk_freq);
+	else {
+		pr_err("mt9m114: Incorrect MCLK setting!\n");
+		rc = -EINVAL;
+		goto power_up_done;
+	}
 	usleep_range(1000, 2000);
 
 	/* toggle reset */
@@ -126,8 +137,13 @@ static int32_t mt9m114_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		pr_err("mt9m114 chip id does not match\n");
 		return -ENODEV;
 	}
+
+	rc = mt9m114_update_mclk_settings(s_ctrl);
+	if (rc < 0)
+		return rc;
+
 	pr_info("mt9m114: match_id success\n");
-	return 0;
+	return rc;
 }
 
 static int32_t mt9m114_set_gamma(struct msm_sensor_ctrl_t *s_ctrl,
@@ -1508,6 +1524,40 @@ static struct msm_camera_i2c_reg_conf mt9m114_config_change_settings[] = {
 		MSM_CAMERA_I2C_UNSET_WORD_MASK, MSM_CAMERA_I2C_CMD_POLL},
 	{0xDC01, 0x31, MSM_CAMERA_I2C_BYTE_DATA},
 };
+
+static int32_t mt9m114_update_mclk_settings(struct msm_sensor_ctrl_t *s_ctrl)
+{
+	int32_t rc = 0;
+	struct msm_camera_sensor_platform_info *pinfo =
+		s_ctrl->sensordata->sensor_platform_info;
+	int size = ARRAY_SIZE(mt9m114_recommend_settings);
+	int i = 0;
+	uint16_t value;
+	bool isFound = false;
+
+	if (pinfo->mclk_freq == MT9M114_19_2MHZ_MASTER_CLK_RATE)
+		value = 0x0128;
+	else if (pinfo->mclk_freq == MT9M114_DEFAULT_MASTER_CLK_RATE)
+		value = 0x0120;
+	else {
+		pr_err("%s: unsupported mclk!\n", __func__);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < size; i++) {
+		if (mt9m114_recommend_settings[i].reg_addr == 0xC980) {
+			mt9m114_recommend_settings[i].reg_data = value;
+			isFound = true;
+			break;
+		}
+	}
+
+	if (!isFound) {
+		pr_err("mt9m114: unable to set registers for mclk!\n");
+		rc = -EINVAL;
+	}
+	return rc;
+}
 
 static void mt9m114_stop_stream(struct msm_sensor_ctrl_t *s_ctrl) {}
 

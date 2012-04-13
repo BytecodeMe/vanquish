@@ -196,6 +196,7 @@ struct msm_camera_sensor_platform_info {
 	int vcm_enable;
 	int privacy_light;
 	void *privacy_light_info;
+	int mclk_freq;
 };
 
 struct msm_camera_gpio_conf {
