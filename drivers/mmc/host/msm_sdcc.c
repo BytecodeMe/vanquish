@@ -4683,7 +4683,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (plat->sdiowakeup_irq)
 		free_irq(plat->sdiowakeup_irq, host);
  pio_irq_free:
-	if (plat->sdiowakeup_irq)
+	if (plat->sdiowakeup_irq || plat->cfg_mpm_sdiowakeup)
 		wake_lock_destroy(&host->sdio_wlock);
 	free_irq(core_irqres->start, host);
  irq_free:
@@ -4757,8 +4757,9 @@ static int msmsdcc_remove(struct platform_device *pdev)
 		free_irq(plat->status_irq, host);
 
 	wake_lock_destroy(&host->sdio_suspend_wlock);
-	if (plat->sdiowakeup_irq) {
+	if (plat->sdiowakeup_irq || plat->cfg_mpm_sdiowakeup)
 		wake_lock_destroy(&host->sdio_wlock);
+	if (plat->sdiowakeup_irq) {
 		irq_set_irq_wake(plat->sdiowakeup_irq, 0);
 		free_irq(plat->sdiowakeup_irq, host);
 	}

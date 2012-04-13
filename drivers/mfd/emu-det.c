@@ -2207,6 +2207,7 @@ free_works:
 	destroy_workqueue(data->wq);
 free_gpios:
 	free_gpios();
+	wake_lock_destroy(&data->wake_lock);
 free_misc_dev:
 	misc_deregister(&emu_det_dev);
 free_data:

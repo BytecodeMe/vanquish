@@ -4749,7 +4749,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	rc = request_irqs(chip, pdev);
 	if (rc) {
 		pr_err("couldn't register interrupts rc=%d\n", rc);
-		goto unregister_batt;
+		goto destroy_wakelock;
 	}
 
 	enable_irq_wake(chip->pmic_chg_irq[USBIN_VALID_IRQ]);
@@ -4802,6 +4802,9 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 
 free_irq:
 	free_irqs(chip);
+destroy_wakelock:
+	wake_lock_destroy(&chip->eoc_wake_lock);
+	wake_lock_destroy(&chip->unplug_ovp_fet_open_wake_lock);
 unregister_batt:
 	power_supply_unregister(&chip->batt_psy);
 unregister_dc:
@@ -4824,6 +4827,9 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 	free_irqs(chip);
 	platform_set_drvdata(pdev, NULL);
 	the_chip = NULL;
+	wake_lock_destroy(&chip->eoc_wake_lock);
+	wake_lock_destroy(&chip->unplug_ovp_fet_open_wake_lock);
+	wake_lock_destroy(&chip->heartbeat_wake_lock);
 	kfree(chip);
 	return 0;
 }
