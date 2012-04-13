@@ -335,7 +335,7 @@ int w1_reset_bus(struct w1_master *dev)
 		 * the following transactions.  Sleeping is safe here.
 		 */
 		/* w1_delay(410); min required time */
-		msleep(1);
+		mdelay(1);
 	}
 
 	return result;
