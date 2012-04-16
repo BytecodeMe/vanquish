@@ -1042,7 +1042,7 @@ static int msm_otg_set_host(struct otg_transceiver *otg, struct usb_bus *host)
 			msm_hsusb_vbus_power(motg, 0);
 			otg->host = NULL;
 			otg->state = OTG_STATE_UNDEFINED;
-			schedule_work(&motg->sm_work);
+			queue_work(motg->wq, &motg->sm_work);
 		} else {
 			otg->host = NULL;
 		}
@@ -1067,7 +1067,7 @@ static int msm_otg_set_host(struct otg_transceiver *otg, struct usb_bus *host)
 	 */
 	if (motg->pdata->mode == USB_HOST || otg->gadget) {
 		pm_runtime_get_sync(otg->dev);
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 	}
 
 	return 0;
@@ -1143,7 +1143,7 @@ static int msm_otg_set_peripheral(struct otg_transceiver *otg,
 			msm_otg_start_peripheral(otg, 0);
 			otg->gadget = NULL;
 			otg->state = OTG_STATE_UNDEFINED;
-			schedule_work(&motg->sm_work);
+			queue_work(motg->wq, &motg->sm_work);
 		} else {
 			otg->gadget = NULL;
 		}
@@ -1164,7 +1164,7 @@ static int msm_otg_set_peripheral(struct otg_transceiver *otg,
 	 */
 	if (motg->pdata->mode == USB_PERIPHERAL || otg->host) {
 		pm_runtime_get_sync(otg->dev);
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 	}
 
 done:
@@ -1336,7 +1336,7 @@ static void msm_otg_id_timer_func(unsigned long data)
 
 	if (msm_chg_check_aca_intr(motg)) {
 		dev_dbg(motg->otg.dev, "timer: aca work\n");
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 	}
 
 	if (!test_bit(ID, &motg->inputs) || test_bit(ID_A, &motg->inputs))
@@ -1679,7 +1679,7 @@ static void msm_chg_detect_work(struct work_struct *w)
 		msm_chg_enable_aca_intr(motg);
 		dev_dbg(otg->dev, "chg_type = %s\n",
 			chg_to_string(motg->chg_type));
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 		return;
 	default:
 		return;
@@ -1869,7 +1869,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 				!test_bit(ID_C, &motg->inputs)) {
 			msm_otg_start_peripheral(otg, 0);
 			otg->state = OTG_STATE_B_IDLE;
-			schedule_work(w);
+			queue_work(motg->wq, w);
 		} else if (test_bit(ID_C, &motg->inputs)) {
 			msm_otg_notify_charger(motg, IDEV_ACA_CHG_MAX);
 		}
@@ -1901,7 +1901,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 				msm_chg_enable_aca_intr(motg);
 			}
 			otg->state = OTG_STATE_B_IDLE;
-			schedule_work(w);
+			queue_work(motg->wq, w);
 		} else if (test_bit(ID_A, &motg->inputs)) {
 			msm_hsusb_vbus_power(motg, 0);
 			msm_otg_notify_charger(motg,
@@ -1942,7 +1942,7 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 		writel(PHY_ALT_INT, USB_USBSTS);
 		if (msm_chg_check_aca_intr(motg)) {
 			dev_dbg(otg->dev, "ACA work from IRQ\n");
-			schedule_work(&motg->sm_work);
+			queue_work(motg->wq, &motg->sm_work);
 		}
 		return IRQ_HANDLED;
 	}
@@ -1960,7 +1960,7 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 			clear_bit(ID, &motg->inputs);
 			msm_chg_enable_aca_det(motg);
 		}
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 	} else if ((otgsc & OTGSC_BSVIS) && (otgsc & OTGSC_BSVIE)) {
 		if (otgsc & OTGSC_BSV) {
 			dev_dbg(otg->dev, "BSV set\n");
@@ -1970,7 +1970,7 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 			clear_bit(B_SESS_VLD, &motg->inputs);
 			msm_chg_check_aca_intr(motg);
 		}
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 	}
 
 	writel(otgsc, USB_OTGSC);
@@ -1997,7 +1997,7 @@ static void msm_otg_set_vbus_state(int online)
 		return;
 	}
 
-	schedule_work(&motg->sm_work);
+	queue_work(motg->wq, &motg->sm_work);
 }
 
 static irqreturn_t msm_pmic_id_irq(int irq, void *data)
@@ -2016,7 +2016,7 @@ static irqreturn_t msm_pmic_id_irq(int irq, void *data)
 	}
 
 	if (motg->otg.state != OTG_STATE_UNDEFINED)
-		schedule_work(&motg->sm_work);
+		queue_work(motg->wq, &motg->sm_work);
 
 	return IRQ_HANDLED;
 }
@@ -2133,7 +2133,7 @@ static int msm_otg_accy_notify(struct notifier_block *nb,
 		goto out;
 	}
 
-	schedule_work(&motg->sm_work);
+	queue_work(motg->wq, &motg->sm_work);
 out:
 	return 0;
 }
@@ -2229,7 +2229,7 @@ static ssize_t msm_otg_mode_write(struct file *file, const char __user *ubuf,
 	}
 
 	pm_runtime_resume(otg->dev);
-	schedule_work(&motg->sm_work);
+	queue_work(motg->wq, &motg->sm_work);
 out:
 	return status;
 }
@@ -2694,13 +2694,18 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	wake_lock_init(&motg->wlock, WAKE_LOCK_SUSPEND, "msm_otg");
 	INIT_WORK(&motg->sm_work, msm_otg_sm_work);
 	INIT_DELAYED_WORK(&motg->chg_work, msm_chg_detect_work);
+	motg->wq = alloc_workqueue("msm_otg_work", WQ_NON_REENTRANT, 0);
+	if (!motg->wq) {
+		ret = -ENOMEM;
+		goto destroy_wlock;
+	}
 	setup_timer(&motg->id_timer, msm_otg_id_timer_func,
 				(unsigned long) motg);
 	ret = request_irq(motg->irq, msm_otg_irq, IRQF_SHARED,
 					"msm_otg", motg);
 	if (ret) {
 		dev_err(&pdev->dev, "request irq failed\n");
-		goto destroy_wlock;
+		goto destroy_wq;
 	}
 
 	otg->init = msm_otg_reset;
@@ -2818,6 +2823,8 @@ remove_otg:
 	otg_set_transceiver(NULL);
 free_irq:
 	free_irq(motg->irq, motg);
+destroy_wq:
+	destroy_workqueue(motg->wq);
 destroy_wlock:
 	wake_lock_destroy(&motg->wlock);
 	clk_disable(motg->core_clk);
@@ -2870,6 +2877,7 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, 0);
 	pm_runtime_disable(&pdev->dev);
+	destroy_workqueue(motg->wq);
 	wake_lock_destroy(&motg->wlock);
 
 	msm_hsusb_mhl_switch_enable(motg, 0);

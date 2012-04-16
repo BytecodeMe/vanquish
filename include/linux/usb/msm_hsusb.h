@@ -278,6 +278,7 @@ struct msm_otg {
 #define PHY_OTG_COMP_DISABLED		BIT(2)
 	struct pm_qos_request_list pm_qos_req_dma;
 	int reset_counter;
+	struct workqueue_struct *wq;
 };
 
 struct msm_hsic_host_platform_data {
