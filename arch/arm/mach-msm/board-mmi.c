@@ -266,6 +266,7 @@ int mot_panel_is_factory_mode(void)
 }
 
 static void emu_mux_ctrl_config_pin(int io_num, int value);
+static int emu_det_enable_5v(int on);
 /*
   MUX switch GPIOs in case EMU detection is disabled
 */
@@ -347,6 +348,25 @@ static struct mmi_emu_det_gpio_data	mmi_emu_det_gpio[EMU_DET_GPIO_MAX] = {
 	},
 };
 
+static void emu_det_hb_powerup(void)
+{
+	static bool init_done;
+	if (!init_done) {
+		if (emu_det_dt_data.ic_type == IC_HONEY_BADGER) {
+			struct pm8xxx_adc_chan_result res;
+			memset(&res, 0, sizeof(res));
+			if (!pm8xxx_adc_read(CHANNEL_USBIN, &res) &&
+				res.physical < 4000000) {
+				pr_info("Powering up HoneyBadger\n");
+				emu_det_enable_5v(1);
+				msleep(50);
+				emu_det_enable_5v(0);
+			}
+		}
+		init_done = true;
+	}
+}
+
 static int emu_det_core_power(int on)
 {
 	int rc = 0;
@@ -375,6 +395,8 @@ static int emu_det_core_power(int on)
 		if (rc)
 			pr_err("failed to enable %s reg\n",
 				emu_det_dt_data.vdd_vreg);
+		else
+			emu_det_hb_powerup();
 	} else {
 		rc = regulator_disable(emu_vdd);
 		if (rc)
