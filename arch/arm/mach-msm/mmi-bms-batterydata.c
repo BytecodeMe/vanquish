@@ -106,8 +106,8 @@ static struct pm8921_charger_battery_data mmi_ev30_charging_data = {
 	.max_bat_chg_current		= 2375,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
-	.cool_bat_voltage		= 3800,
-	.warm_bat_voltage		= 3800,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
 	.step_charge_current		= 1600,
 	.step_charge_voltage		= 4200,
 };
@@ -217,8 +217,8 @@ static struct pm8921_charger_battery_data mmi_eb41_charging_data = {
 	.max_bat_chg_current		= 1678,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
-	.cool_bat_voltage		= 3800,
-	.warm_bat_voltage		= 3800,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
 	.step_charge_current		= 1130,
 	.step_charge_voltage		= 4200,
 };
@@ -321,8 +321,8 @@ static struct pm8921_charger_battery_data mmi_eb20_charging_data = {
 	.max_bat_chg_current		= 1678,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
-	.cool_bat_voltage		= 3800,
-	.warm_bat_voltage		= 3800,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
 	.step_charge_current		= 1130,
 	.step_charge_voltage		= 4200,
 };
@@ -353,8 +353,8 @@ static struct pm8921_charger_battery_data mmi_eb20_pre_charging_data = {
 	.max_bat_chg_current		= 1678,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
-	.cool_bat_voltage		= 3800,
-	.warm_bat_voltage		= 3800,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
 	.step_charge_current		= 1130,
 	.step_charge_voltage		= 4200,
 };
