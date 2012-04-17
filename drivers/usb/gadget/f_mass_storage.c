@@ -507,6 +507,7 @@ void set_cdrom_umount(void);
 #define CDROM_INDEX 0x00
 #define CDROM2_INDEX 0x33
 #define USBNETMTP_INDEX 0x1E
+#define RESET_INDEX 0x41
 #endif
 /*-------------------------------------------------------------------------*/
 

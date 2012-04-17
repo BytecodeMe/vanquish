@@ -135,6 +135,7 @@ struct android_dev {
 	struct work_struct enumeration_work;
 	int cdrom_enable;
 	int cdrom_mount;
+	int switch_index;
 };
 
 static struct class *android_class;
@@ -314,53 +315,66 @@ static void android_enumeration_work(struct work_struct *data)
 	char buf[256], *b;
 	int err = 0;
 	char ch = 0;
+	char *uevent_envp[]  = {"USB_ACTION_NAME=SETPROP",
+				"USB_ACTION_VALUE=switch65",
+				NULL };
 
-	/* disconnect and remove config */
-	usb_gadget_disconnect(cdev->gadget);
-	usb_remove_config(cdev, &android_config_driver);
-	dev->enabled = false;
+	if (dev->switch_index != RESET_INDEX) {
+		/* disconnect and remove config */
+		usb_gadget_disconnect(cdev->gadget);
+		usb_remove_config(cdev, &android_config_driver);
+		dev->enabled = false;
 
-	/*
-	 * only umount when cdrom image was mounted,
-	 * and function type is "usbnet,mtp".
-	 */
-	if (dev->cdrom_mount && dev->current_function_type == USBNETMTP) {
-		/* umount cdrom image */
-		pr_info("%s: USBNETMTP, umount cdrom image\n", __func__);
-		err = mass_storage_function_set_cdrom_lun(&ch);
-		if (!err)
-			dev->cdrom_mount = 0;
-		else
-			pr_err("%s: umount cdrom image fail\n", __func__);
-	}
-
-
-	INIT_LIST_HEAD(&dev->enabled_functions);
-	strncpy(buf, get_function_name(dev), sizeof(buf));
-	pr_info("%s: reenumerate as: %s\n", __func__, buf);
-	b = strim(buf);
-
-	while (b) {
-		name = strsep(&b, ",");
-		if (name) {
-			err = android_enable_function(dev, name);
-			if (err)
-				pr_err("android_usb: Cannot enable '%s'", name);
+		/*
+		 * only umount when cdrom image was mounted,
+		 * and function type is "usbnet,mtp".
+		 */
+		if (dev->cdrom_mount &&
+				dev->current_function_type == USBNETMTP) {
+			/* umount cdrom image */
+			pr_info("%s: USBNETMTP, umount cdrom img\n", __func__);
+			err = mass_storage_function_set_cdrom_lun(&ch);
+			if (!err)
+				dev->cdrom_mount = 0;
+			else
+				pr_err("%s: umount cdrom img fail\n", __func__);
 		}
-	}
 
-	/* connect */
-	/* update values in composite driver's copy of device descriptor */
-	cdev->desc.idVendor = device_desc.idVendor;
-	cdev->desc.idProduct = device_desc.idProduct;
-	cdev->desc.bcdDevice = device_desc.bcdDevice;
-	cdev->desc.bDeviceClass = device_desc.bDeviceClass;
-	cdev->desc.bDeviceSubClass = device_desc.bDeviceSubClass;
-	cdev->desc.bDeviceProtocol = device_desc.bDeviceProtocol;
-	usb_add_config(cdev, &android_config_driver,
-		       android_bind_config);
-	usb_gadget_connect(cdev->gadget);
-	dev->enabled = true;
+
+		INIT_LIST_HEAD(&dev->enabled_functions);
+		strncpy(buf, get_function_name(dev), sizeof(buf));
+		pr_info("%s: reenumerate as: %s\n", __func__, buf);
+		b = strim(buf);
+
+		while (b) {
+			name = strsep(&b, ",");
+			if (name) {
+				err = android_enable_function(dev, name);
+				if (err)
+					pr_err("android_usb: Cannot enable '%s'"
+						, name);
+			}
+		}
+
+		/* connect */
+		/* update values in composite driver's copy of device desc */
+		cdev->desc.idVendor = device_desc.idVendor;
+		cdev->desc.idProduct = device_desc.idProduct;
+		cdev->desc.bcdDevice = device_desc.bcdDevice;
+		cdev->desc.bDeviceClass = device_desc.bDeviceClass;
+		cdev->desc.bDeviceSubClass = device_desc.bDeviceSubClass;
+		cdev->desc.bDeviceProtocol = device_desc.bDeviceProtocol;
+		usb_add_config(cdev, &android_config_driver,
+			       android_bind_config);
+		usb_gadget_connect(cdev->gadget);
+		dev->enabled = true;
+
+	} else {
+		kobject_uevent_env(&dev->dev->kobj, KOBJ_CHANGE, uevent_envp);
+		pr_info("%s: sent uevent %s %s\n", __func__, uevent_envp[0],
+				uevent_envp[1]);
+		dev->switch_index = 0;
+	}
 
 	return;
 }
@@ -377,6 +391,8 @@ void update_function_type_and_reenumerate(int index)
 		dev->current_function_type = CDROM2;
 	else if (index == USBNETMTP_INDEX)
 		dev->current_function_type = USBNETMTP;
+	else if (index == RESET_INDEX)
+		dev->switch_index  = index;
 	else {
 		pr_err("invalidate switch index: 0x%x\n", index);
 		return;
@@ -1833,6 +1849,7 @@ static int android_bind(struct usb_composite_dev *cdev)
 	dev->current_function_type = CDROM;
 	dev->cdrom_enable = 0;
 	dev->cdrom_mount = 0;
+	dev->switch_index = 0;
 
 	id = usb_string_id(cdev);
 	if (id < 0)
