@@ -133,6 +133,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/apanic_mmc.h>
+#include <linux/platform_data/ram_console.h>
 
 /* Initial PM8921 GPIO configurations vanquish, quinara */
 static struct pm8xxx_gpio_init pm8921_gpios_vanquish[] = {
@@ -3524,6 +3525,64 @@ static int sysfs_factory_gsbi12_mode_init(void)
 
 	return retval;
 }
+
+static char acpu_type[20];
+
+static int panic_acpu_handler(struct notifier_block *this,
+			      unsigned long event, void *ptr)
+{
+	printk(KERN_EMERG"CPU type is %s", acpu_type);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block panic_acpu = {
+	.notifier_call	= panic_acpu_handler,
+};
+
+
+static int __init msm8960_get_acputype(void)
+{
+/* PTE EFUSE register. */
+#define QFPROM_PTE_EFUSE_ADDR	(MSM_QFPROM_BASE + 0x00C0)
+
+	uint32_t pte_efuse, pvs;
+
+	pte_efuse = readl_relaxed(QFPROM_PTE_EFUSE_ADDR);
+
+	pvs = (pte_efuse >> 10) & 0x7;
+	if (pvs == 0x7)
+		pvs = (pte_efuse >> 13) & 0x7;
+
+	switch (pvs) {
+	case 0x0:
+	case 0x7:
+		snprintf(acpu_type, 15, "ACPU PVS: Slow\n");
+		break;
+	case 0x1:
+		snprintf(acpu_type, 18, "ACPU PVS: Nominal\n");
+		break;
+	case 0x3:
+		snprintf(acpu_type, 15, "ACPU PVS: Fast\n");
+		break;
+	default:
+		snprintf(acpu_type, 18, "ACPU PVS: Unknown\n");
+		break;
+	}
+
+	atomic_notifier_chain_register(&panic_notifier_list,
+			       &panic_acpu);
+
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	ram_console_ext_oldbuf_print("CPU type is %s", acpu_type);
+#endif
+
+	return 0;
+}
+
+core_initcall(msm8960_get_acputype);
+
+
 
 static void __init msm8960_mmi_init(void)
 {
