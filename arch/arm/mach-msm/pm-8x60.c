@@ -1149,14 +1149,14 @@ static int msm_pm_enter(suspend_state_t state)
 		mAs = (e_uah - uah) * 3600 / 1000;
 		time_in_ms = time;
 		do_div(time_in_ms, NSEC_PER_MSEC);
-		if (mAs != 0 && time_in_ms > 0) {
+		if (time_in_ms > 0) {
 			int remainder;
 			int64_t mAs_abs = abs64(mAs * 1000 * 1000);
 			do_div(mAs_abs, (int)time_in_ms);
 			remainder = do_div(mAs_abs, 1000);
-			pr_info("suspend average current drain: "
-					"%s%lld.%d(mA) @%lld ns\n",
-					mAs > 0 ? "" : "-",
+			if (mAs > 0 && mAs_abs >= 2)
+				pr_info("suspend average current drain: "
+					"%lld.%d(mA) @%lld ns\n",
 					mAs_abs, remainder,
 					time);
 		}
