@@ -82,8 +82,8 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		down(&mfd->dma->mutex);
 
-	/* DSI is in the suspend or off state, don't need to do anything */
-	if (mdp4_overlay_dsi_state_get() <= ST_DSI_SUSPEND)
+	/* DSI is in the suspend state, don't need to do anything */
+	if (mdp4_overlay_dsi_state_get() == ST_DSI_SUSPEND)
 		goto end;
 
 	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
