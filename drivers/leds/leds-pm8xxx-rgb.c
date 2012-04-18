@@ -239,10 +239,6 @@ static void pm8xxx_rgb_led_set(struct led_classdev *led_cdev,
 
 	pr_info("%s: %s, %d\n", __func__, led->cdev.name, value);
 
-	/* If it's already on don't do anything */
-	if (value && led->value)
-		return;
-
 	led->value = value;
 	pwm_disable(led->pwm);
 	if (!value) {
@@ -259,7 +255,7 @@ static void pm8xxx_rgb_led_set(struct led_classdev *led_cdev,
 		pm8xxx_rgb_blink_set(drv_data, 1);
 	} else {
 		ret = pwm_config(led->pwm,
-			PM8XXX_PWM_PERIOD_MAX, PM8XXX_PWM_PERIOD_MAX);
+			1000 * value / LED_FULL, 1000);
 		if (ret)
 			pr_err("%s: pwm_config error %d\n", __func__, ret);
 		pwm_enable(led->pwm);
