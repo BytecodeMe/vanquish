@@ -4994,6 +4994,7 @@ msmsdcc_runtime_resume(struct device *dev)
 
 static int msmsdcc_runtime_idle(struct device *dev)
 {
+#ifdef CONFIG_MMC_MSM_USE_RPM
 	struct mmc_host *mmc = dev_get_drvdata(dev);
 	struct msmsdcc_host *host = mmc_priv(mmc);
 
@@ -5002,7 +5003,7 @@ static int msmsdcc_runtime_idle(struct device *dev)
 
 	/* Idle timeout is not configurable for now */
 	pm_schedule_suspend(dev, MSM_MMC_IDLE_TIMEOUT);
-
+#endif
 	return -EAGAIN;
 }
 
