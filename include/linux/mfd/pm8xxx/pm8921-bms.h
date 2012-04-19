@@ -195,6 +195,16 @@ void pm8921_bms_charging_began(void);
  *				track of chargecycles
  */
 void pm8921_bms_charging_end(int is_battery_full);
+
+void pm8921_bms_calibrate_hkadc(void);
+/**
+ * pm8921_bms_get_simultaneous_battery_voltage_and_current
+ *		- function to take simultaneous vbat and vsense readings
+ *		  this puts the bms in override mode but keeps coulumb couting
+ *		  on. Useful when ir compensation needs to be implemented
+ */
+int pm8921_bms_get_simultaneous_battery_voltage_and_current(int *ibat_ua,
+							    int *vbat_uv);
 #ifdef CONFIG_PM8921_FLOAT_CHARGE
 /**
  * pm8921_bms_charging_full - function to notify the bms driver that charging
@@ -241,6 +251,14 @@ static inline void pm8921_bms_charging_began(void)
 }
 static inline void pm8921_bms_charging_end(int is_battery_full)
 {
+}
+static inline void pm8921_bms_calibrate_hkadc(void)
+{
+}
+static inline int pm8921_bms_get_simultaneous_battery_voltage_and_current(
+						int *ibat_ua, int *vbat_uv)
+{
+	return -ENXIO;
 }
 #endif
 
