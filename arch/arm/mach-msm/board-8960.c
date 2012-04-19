@@ -353,7 +353,7 @@ static int msm8960_paddr_to_memtype(unsigned int paddr)
 	return MEMTYPE_EBI1;
 }
 
-#define FMEM_ENABLED 0
+#define FMEM_ENABLED 1
 
 #ifdef CONFIG_ION_MSM
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -2151,6 +2151,8 @@ static struct platform_device *common_devices[] __initdata = {
 #ifdef CONFIG_MSM_CACHE_DUMP
 	&msm_cache_dump_device,
 #endif
+	&msm8960_cpu_idle_device,
+	&msm8960_msm_gov_device,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
