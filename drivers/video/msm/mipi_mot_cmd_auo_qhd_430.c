@@ -61,6 +61,12 @@ static char cmd_C4_40[2] = {0x00, 0x40};
 static char set_2_dot_inversion_1[2] = {0x00, 0xB3};
 static char set_2_dot_inversion_2[2] = {0xC0, 0x10};
 
+/* Set scan line to 2/3 of the screen */
+static char set_scanline[3] = {DCS_CMD_SET_SCAN_LINE, 0x02, 0x80};
+static struct dsi_cmd_desc mot_cmd_scanline_cmds[] = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(set_scanline), set_scanline},
+};
+
 static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(exit_sleep), exit_sleep},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1), led_pwm1},
@@ -171,6 +177,8 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 		}
 	}
 
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_cmd_scanline_cmds,
+				ARRAY_SIZE(mot_cmd_scanline_cmds));
 	return 0;
 }
 
