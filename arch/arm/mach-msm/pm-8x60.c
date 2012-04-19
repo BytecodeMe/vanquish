@@ -100,12 +100,14 @@ void __init msm_pm_set_rpm_wakeup_irq(unsigned int irq)
 enum {
 	MSM_PM_MODE_ATTR_SUSPEND,
 	MSM_PM_MODE_ATTR_IDLE,
+	MSM_PM_MODE_ATTR_RESIDENCY,
 	MSM_PM_MODE_ATTR_NR,
 };
 
 static char *msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_NR] = {
 	[MSM_PM_MODE_ATTR_SUSPEND] = "suspend_enabled",
 	[MSM_PM_MODE_ATTR_IDLE] = "idle_enabled",
+	[MSM_PM_MODE_ATTR_RESIDENCY] = "residency",
 };
 
 struct msm_pm_kobj_attribute {
@@ -163,6 +165,11 @@ static ssize_t msm_pm_mode_attr_show(
 			u32 arg = mode->idle_enabled;
 			kp.arg = &arg;
 			ret = param_get_ulong(buf, &kp);
+		} else if (!strcmp(attr->attr.name,
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_RESIDENCY])) {
+			u32 arg = mode->residency;
+			kp.arg = &arg;
+			ret = param_get_uint(buf, &kp);
 		}
 
 		break;
@@ -207,6 +214,10 @@ static ssize_t msm_pm_mode_attr_store(struct kobject *kobj,
 			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_IDLE])) {
 			kp.arg = &mode->idle_enabled;
 			ret = param_set_byte(buf, &kp);
+		} else if (!strcmp(attr->attr.name,
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_RESIDENCY])) {
+			kp.arg = &mode->residency;
+			ret = param_set_uint(buf, &kp);
 		}
 
 		break;
@@ -800,7 +811,8 @@ int msm_pm_idle_prepare(struct cpuidle_device *dev)
 		idx = MSM_PM_MODE(dev->cpu, mode);
 
 		allow = msm_pm_modes[idx].idle_enabled &&
-				msm_pm_modes[idx].idle_supported;
+				msm_pm_modes[idx].idle_supported &&
+				(sleep_us > msm_pm_modes[idx].residency);
 
 		switch (mode) {
 		case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
