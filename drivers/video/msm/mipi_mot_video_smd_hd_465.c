@@ -18,6 +18,9 @@
 
 #define NUMBER_BRIGHTNESS_LEVELS 30
 
+/* 200 nits. Default brightness should be same with it in bootloader */
+#define DEFAULT_BRIGHTNESS_LEVELS 19
+
 static struct mipi_mot_panel *mot_panel;
 
 static struct mipi_dsi_phy_ctrl dsi_video_mode_phy_db = {
@@ -356,7 +359,7 @@ static struct dsi_cmd_desc mot_acl_enable_disable[] = {
 					ACL_enable_disable_settings}
 };
 
-static struct dsi_cmd_desc mot_video_on_cmds2[] = {
+static struct dsi_cmd_desc mot_video_on_cmds2_1[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(panel_condition_set_0to18), panel_condition_set_0to18},
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
@@ -367,8 +370,14 @@ static struct dsi_cmd_desc mot_video_on_cmds2[] = {
 		sizeof(set_reg_offset_0), set_reg_offset_0},
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(display_condition_set), display_condition_set},
+};
+
+static struct dsi_cmd_desc mot_video_on_cmds2_2[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(gamma_settings_nit[0]), gamma_settings_nit[0]},
+};
+
+static struct dsi_cmd_desc mot_video_on_cmds2_3[] = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(gamma_ltps_set_update), gamma_ltps_set_update},
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
@@ -383,8 +392,13 @@ static struct dsi_cmd_desc mot_video_on_cmds2[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(etc_condition_set_power_control),
 			etc_condition_set_power_control},
+};
+static struct dsi_cmd_desc mot_video_on_cmds2_4[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(elvss_set[0]), elvss_set[0]},
+};
+
+static struct dsi_cmd_desc mot_video_on_cmds2_5[] = {
 	/* This is the ACL parameter setting */
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(ACL_param_setting), ACL_param_setting},
@@ -426,6 +440,24 @@ static void enable_acl(struct msm_fb_data_type *mfd)
 static int panel_enable(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
+	static int bootloader_nit = 1;
+	int idx;
+
+	if(bootloader_nit) {
+		/*
+		 * Kernel bootup. Set it to default nit which should
+		 * be same with it in bootloader.
+		 */
+		idx = NUMBER_BRIGHTNESS_LEVELS - DEFAULT_BRIGHTNESS_LEVELS -1;
+		bootloader_nit = 0;
+	}
+	else
+		idx = NUMBER_BRIGHTNESS_LEVELS - mfd->bl_level - 1;
+
+	if (idx < 0)
+		idx = 0;
+	if (idx > NUMBER_BRIGHTNESS_LEVELS - 1)
+		idx = NUMBER_BRIGHTNESS_LEVELS - 1;
 
 	if (mot_panel == NULL) {
 		pr_err("%s: Invalid mot_panel\n", __func__);
@@ -439,8 +471,23 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 
 	mdelay(20);
 	ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
-	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2,
-					ARRAY_SIZE(mot_video_on_cmds2));
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2_1,
+					ARRAY_SIZE(mot_video_on_cmds2_1));
+
+	/* Set backlight */
+	mot_video_on_cmds2_2[0].payload = gamma_settings_nit[idx];
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2_2,
+					ARRAY_SIZE(mot_video_on_cmds2_2));
+
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2_3,
+					ARRAY_SIZE(mot_video_on_cmds2_3));
+
+	mot_video_on_cmds2_4[0].payload = elvss_set[getElvssForGamma(idx)];
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2_4,
+					ARRAY_SIZE(mot_video_on_cmds2_4));
+
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds2_5,
+					ARRAY_SIZE(mot_video_on_cmds2_5));
 	mdelay(120);
 
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, mot_video_on_cmds3,
@@ -472,7 +519,7 @@ static void panel_set_backlight(struct msm_fb_data_type *mfd)
 {
 
 	struct mipi_panel_info *mipi;
-	static int bl_level_old;
+	static int bl_level_old = -1;
 	int idx = 0;
 	struct dsi_buf *dsi_tx_buf;
 
