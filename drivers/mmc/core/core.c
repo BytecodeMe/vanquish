@@ -2054,8 +2054,8 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		}
 		host->rescan_disable = 1;
 		spin_unlock_irqrestore(&host->lock, flags);
-		if (cancel_delayed_work_sync(&host->detect))
-			wake_unlock(&host->detect_wake_lock);
+		cancel_delayed_work_sync(&host->detect);
+		wake_unlock(&host->detect_wake_lock);
 
 		if (!host->bus_ops || host->bus_ops->suspend)
 			break;
