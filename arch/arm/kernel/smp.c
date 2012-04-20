@@ -218,7 +218,7 @@ void __cpu_die(unsigned int cpu)
 		pr_err("CPU%u: cpu didn't die\n", cpu);
 		return;
 	}
-	pr_debug("CPU%u: shutdown\n", cpu);
+	printk(KERN_INFO"CPU%u: shutdown\n", cpu);
 
 	if (!platform_cpu_kill(cpu))
 		printk("CPU%u: unable to kill\n", cpu);
@@ -343,6 +343,8 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	set_cpu_online(cpu, true);
 	while (!cpu_active(cpu))
 		cpu_relax();
+
+	printk(KERN_INFO"CPU1 is up\n");
 
 	/*
 	 * OK, it's off to the idle thread for us
