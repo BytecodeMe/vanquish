@@ -2169,6 +2169,10 @@ static int mdp_probe(struct platform_device *pdev)
 #ifdef CONFIG_FB_MSM_OVERLAY
 		mdp_hw_cursor_init();
 #endif
+		/* initialize Post Processing data*/
+		mdp_hist_lut_init();
+		mdp_histogram_init();
+
 		mdp_resource_initialized = 1;
 		return 0;
 	}
@@ -2223,10 +2227,6 @@ static int mdp_probe(struct platform_device *pdev)
 	}
 	mfd->ov0_blt_state  = 0;
 	mfd->use_ov0_blt = 0 ;
-
-	/* initialize Post Processing data*/
-	mdp_hist_lut_init();
-	mdp_histogram_init();
 
 	/* add panel data */
 	if (platform_device_add_data
