@@ -255,6 +255,17 @@ int __init board_baseband_init(char *s)
 }
 __setup("androidboot.baseband=", board_baseband_init);
 
+
+#define BATTERY_DATA_MAX_LEN 32
+static char battery_data[BATTERY_DATA_MAX_LEN+1];
+int __init board_battery_data_init(char *s)
+{
+	strncpy(battery_data, s, BATTERY_DATA_MAX_LEN);
+	battery_data[BATTERY_DATA_MAX_LEN] = '\0';
+	return 1;
+}
+__setup("battery=", board_battery_data_init);
+
 static int boot_mode_is_factory(void)
 {
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
