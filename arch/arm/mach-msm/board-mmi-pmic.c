@@ -801,6 +801,7 @@ struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
+		.residency = 10800,
 	},
 
 	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
@@ -822,6 +823,7 @@ struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
+		.residency = 10800,
 	},
 
 	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
