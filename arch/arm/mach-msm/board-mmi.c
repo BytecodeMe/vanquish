@@ -1633,10 +1633,10 @@ static struct lm3556_platform_data cam_flash_3556 = {
 	.flash_features_reg_def = 0xd2,
 	.current_cntrl_reg_def = 0x2b,
 	.torch_brightness_def = 0x10,
-	.enable_reg_def = 0x00,
+	.enable_reg_def = 0x40,
 	.flag_reg_def = 0x00,
-	.torch_enable_val = 0x02,
-	.flash_enable_val = 0x03,
+	.torch_enable_val = 0x42,
+	.flash_enable_val = 0x43,
 	.hw_enable = 0,
 };
 #endif /* CONFIG_LEDS_LM3556 */
