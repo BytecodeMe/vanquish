@@ -185,8 +185,8 @@ struct touch_platform_data touch_pdata = {
 	.gpio_scl	= MELFAS_TOUCH_SCL_GPIO,
 	.gpio_sda	= MELFAS_TOUCH_SDA_GPIO,
 
-	.max_x = 720,
-	.max_y = 1280,
+	.max_x = 719,
+	.max_y = 1279,
 
 	.invert_x = 1,
 	.invert_y = 1,
