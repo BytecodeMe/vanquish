@@ -271,6 +271,7 @@ struct pm8921_chg_chip {
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
 	int				factory_mode;
+	int				meter_lock;
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	unsigned int			step_charge_current;
 	unsigned int			step_charge_voltage;
@@ -1383,6 +1384,9 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 {
 	int percent_soc = pm8921_bms_get_percent_charge();
 
+	if (chip->meter_lock)
+		return 50;
+
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
 	    !(the_chip->factory_mode))
@@ -1495,6 +1499,9 @@ static int get_prop_batt_status(struct pm8921_chg_chip *chip)
 	int batt_state = POWER_SUPPLY_STATUS_DISCHARGING;
 	int fsm_state = pm_chg_get_fsm_state(chip);
 	int i;
+
+	if (chip->meter_lock)
+		return POWER_SUPPLY_STATUS_UNKNOWN;
 
 #ifdef CONFIG_PM8921_TEST_OVERRIDE
 	if (pm8921_override_get_charge_status(&batt_state))
@@ -4570,6 +4577,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->thermal_mitigation = pdata->thermal_mitigation;
 	chip->thermal_levels = pdata->thermal_levels;
 	chip->factory_mode = pdata->factory_mode;
+	chip->meter_lock = pdata->meter_lock;
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	chip->arch_reboot_cb = pdata->arch_reboot_cb;
 #endif

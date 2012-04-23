@@ -217,6 +217,7 @@ struct pm8921_charger_platform_data {
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
 	int				factory_mode;
+	int				meter_lock;
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	int64_t (*get_batt_info) (int64_t battery_id,
 				  struct pm8921_charger_battery_data *data);

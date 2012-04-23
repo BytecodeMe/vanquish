@@ -266,6 +266,11 @@ int __init board_battery_data_init(char *s)
 }
 __setup("battery=", board_battery_data_init);
 
+static int battery_data_is_meter_locked(void)
+{
+	return !strncmp(battery_data, "meter_lock", BATTERY_DATA_MAX_LEN);
+}
+
 static int boot_mode_is_factory(void)
 {
 	return !strncmp(boot_mode, "factory", BOOT_MODE_MAX_LEN);
@@ -3680,7 +3685,7 @@ static void __init msm8960_mmi_init(void)
 #endif
 
 	pm8921_init(keypad_data, boot_mode_is_factory(), 0, 0,
-				reboot_ptr);
+		    reboot_ptr, battery_data_is_meter_locked());
 
 	/* Init the bus, but no devices at this time */
 	msm8960_spi_init(&msm8960_qup_spi_gsbi1_pdata, NULL, 0);
