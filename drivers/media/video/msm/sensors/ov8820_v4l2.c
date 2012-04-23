@@ -720,6 +720,7 @@ static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 
 	/* Enable AVDD supply*/
 	gpio_direction_output(pinfo->analog_en, 1);
+	usleep(200);
 
 	/*Enable MCLK*/
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);

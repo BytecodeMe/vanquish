@@ -67,6 +67,7 @@ static int32_t mt9m114_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 
 	/* turn on analog supply */
 	gpio_direction_output(pinfo->analog_en, 1);
+	usleep(150);
 
 	/* turn on mclk */
 	msm_sensor_probe_on(&s_ctrl->sensor_i2c_client->client->dev);
