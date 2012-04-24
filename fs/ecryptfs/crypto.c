@@ -1629,8 +1629,11 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 		memset(page_virt, 0, PAGE_CACHE_SIZE);
 		rc = ecryptfs_read_xattr_region(page_virt, ecryptfs_inode);
 		if (rc) {
-			printk(KERN_DEBUG "Valid eCryptfs headers not found in "
-			       "file header region or xattr region\n");
+			/* disable it because this will generate lots of
+			 * informational messages when there are many "clear"
+			 * files in ecryptfs mounted FS */
+			/*printk(KERN_DEBUG"Valid eCryptfs headers not found in"
+			       " file header region or xattr region\n");*/
 			rc = -EINVAL;
 			goto out;
 		}
