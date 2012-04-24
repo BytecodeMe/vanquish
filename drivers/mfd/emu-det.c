@@ -1862,6 +1862,8 @@ static ssize_t mode_store(struct device *dev,
 		pr_emu_det(TRANSITION, "FACTORY (MUX-USB) mode\n");
 		emud->driver_mode = MODE_F_USB;
 		whisper_gpio_mode(GPIO_MODE_ALTERNATE);
+		alternate_mode_enable();
+		gpio_direction_output(emud->emu_gpio[SEMU_ALT_MODE_EN_GPIO], 0);
 		mux_ctrl_mode(MUXMODE_USB);
 		break;
 	case MODE_F_UART:
@@ -1870,8 +1872,6 @@ static ssize_t mode_store(struct device *dev,
 		whisper_gpio_mode(GPIO_MODE_ALTERNATE);
 		gpio_direction_output(emud->emu_gpio[WHISPER_UART_TX_GPIO], 0);
 		gpio_direction_input(emud->emu_gpio[WHISPER_UART_RX_GPIO]);
-		alternate_mode_enable();
-		gpio_direction_output(emud->emu_gpio[SEMU_ALT_MODE_EN_GPIO], 0);
 		mux_ctrl_mode(MUXMODE_UART);
 		break;
 	case MODE_F_AUDIO:
