@@ -2218,6 +2218,9 @@ static u32 mdp4_overlay_blt_enable(struct mdp_overlay *req,
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL)
 		clk_rate = (&mfd->panel_info.mipi)->dsi_pclk_rate;
 
+	if (mfd->panel_info.type == DTV_PANEL)
+		clk_rate = mfd->fbi->var.pixclock;
+
 	if ((mfd->panel_info.type == LCDC_PANEL) ||
 	    (mfd->panel_info.type == MIPI_VIDEO_PANEL) ||
 	    (mfd->panel_info.type == DTV_PANEL))
