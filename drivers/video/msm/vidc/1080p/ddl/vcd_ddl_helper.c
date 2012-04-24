@@ -1056,7 +1056,8 @@ u32 ddl_check_reconfig(struct ddl_client_context *ddl)
 			(decoder->frame_size.scan_lines ==
 			decoder->client_frame_size.scan_lines) &&
 			(decoder->frame_size.stride ==
-			decoder->client_frame_size.stride))
+			decoder->client_frame_size.stride) &&
+			decoder->progressive_only)
 				need_reconfig = false;
 	}
 	DDL_MSG_HIGH("%s(): need_reconfig = %u, cont_mode = %u\n"\
