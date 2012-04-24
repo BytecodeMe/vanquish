@@ -300,21 +300,17 @@ static int apanic_proc_write(struct file *file, const char __user * buffer,
 	return count;
 }
 
-int apanic_mmc_annotate(const char *annotation)
+static int apanic_save_annotation(const char *annotation, unsigned long len)
 {
 	struct apanic_data *ctx = &drv_ctx;
 	char *buffer;
 	size_t oldlen = 0;
-	size_t newlen;
 
-	newlen = strlen(annotation);
-	if (newlen == 0)
-		return -EINVAL;
-
+	pr_debug("%s: %s (%lu)\n", __func__, annotation, len);
 	if (ctx->annotation)
 		oldlen = strlen(ctx->annotation);
 
-	buffer = kmalloc(newlen + oldlen + 1, GFP_KERNEL);
+	buffer = kmalloc(len + oldlen + 1, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
@@ -324,19 +320,52 @@ int apanic_mmc_annotate(const char *annotation)
 	} else
 		buffer[0] = '\0';
 
-	strcat(buffer, annotation);
+	strncat(buffer, annotation, len);
+	if (ctx->apanic_annotate)
+		ctx->apanic_annotate->size = strlen(buffer);
 
 	ctx->annotation = buffer;
 
-	return 0;
+	return (int)len;
+}
+
+int apanic_mmc_annotate(const char *annotation)
+{
+	size_t len;
+
+	len = strlen(annotation);
+	if (len == 0)
+		return -EINVAL;
+
+	return apanic_save_annotation(annotation, len);
 }
 EXPORT_SYMBOL(apanic_mmc_annotate);
+
+static int apanic_proc_read_annotation(char *buffer, char **start,
+				off_t offset, int count, int *peof, void *dat)
+{
+	struct apanic_data *ctx = &drv_ctx;
+
+	if (offset + count > ctx->apanic_annotate->size)
+		count = ctx->apanic_annotate->size - offset;
+	if (count <= 0)
+		return 0;
+
+	memcpy(buffer, ctx->annotation + offset, count);
+
+	*start = (char*)count;
+
+	if ((offset + count) == ctx->apanic_annotate->size)
+		*peof = 1;
+
+	return count;
+}
 
 static int apanic_proc_annotate(struct file *file,
 				const char __user *annotation,
 				unsigned long count, void *data)
 {
-	return apanic_mmc_annotate(annotation);
+	return apanic_save_annotation(annotation, count);
 }
 
 static void mmc_panic_notify_add(struct hd_struct *hd)
@@ -353,7 +382,7 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 	if (!ctx->mmc_panic_ops) {
 		pr_err("apanic: found apanic partition, but apanic not "
 				"initialized\n");
-		goto out;
+		return;
 	}
 
 	bdev = blkdev_get_by_dev(dev->devt, FMODE_WRITE, NULL);
@@ -452,18 +481,18 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 
 	}
 
+out:
 	ctx->apanic_annotate = create_proc_entry("apanic_annotate",
-						S_IFREG | S_IRUGO, NULL);
+				S_IFREG | S_IRUGO | S_IWUSR, NULL);
 	if (!ctx->apanic_annotate)
 		printk(KERN_ERR "%s: failed creating procfile\n", __func__);
 	else {
-		ctx->apanic_annotate->read_proc = NULL;
+		ctx->apanic_annotate->read_proc = apanic_proc_read_annotation;
 		ctx->apanic_annotate->write_proc = apanic_proc_annotate;
-		ctx->apanic_annotate->size = 1;
+		ctx->apanic_annotate->size = 0;
 		ctx->apanic_annotate->data = NULL;
 	}
 
-out:
 	return;
 }
 
