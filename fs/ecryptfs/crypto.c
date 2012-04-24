@@ -344,6 +344,14 @@ static int encrypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 	};
 	int rc = 0;
 
+	/* tfm may be NULL for it to be correctly freed in
+	   ecryptfs_destroy_crypt_stat(), check it to avoid triggering BUG_ON */
+	if (!crypt_stat->tfm) {
+		rc = -EINVAL;
+		ecryptfs_printk(KERN_ERR, "Error, Found NULL tfm!!!!!\n");
+		goto out;
+	}
+
 	BUG_ON(!crypt_stat || !crypt_stat->tfm
 	       || !(crypt_stat->flags & ECRYPTFS_STRUCT_INITIALIZED));
 	if (unlikely(ecryptfs_verbosity > 0)) {
