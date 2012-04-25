@@ -204,7 +204,8 @@ void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		wait_for_completion(&mfd->dma->comp);
+		if (!wait_for_completion_timeout(&mfd->dma->comp, HZ))
+			mdp_hang_panic();
 	}
 }
 
@@ -239,7 +240,8 @@ void mdp4_writeback_overlay_kickoff(struct msm_fb_data_type *mfd,
 	mdp_pipe_kickoff(MDP_OVERLAY2_TERM, mfd);
 	wmb();
 	pr_debug("%s: before ov done interrupt\n", __func__);
-	wait_for_completion_killable(&mfd->dma->comp);
+	if (!wait_for_completion_killable_timeout(&mfd->dma->comp, HZ))
+		mdp_hang_panic();
 }
 void mdp4_writeback_dma_stop(struct msm_fb_data_type *mfd)
 {

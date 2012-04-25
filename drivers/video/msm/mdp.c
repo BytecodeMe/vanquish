@@ -1176,11 +1176,13 @@ static int mdp_do_histogram(struct fb_info *info,
 	mgmt->hist = hist;
 	mutex_unlock(&mgmt->mdp_hist_mutex);
 
-	if (wait_for_completion_killable(&mgmt->mdp_hist_comp)) {
+	ret = wait_for_completion_killable_timeout(&mgmt->mdp_hist_comp, HZ);
+	if (0 > ret) {
 		pr_err("%s(): histogram bin collection killed", __func__);
 		ret = -EINVAL;
 		goto error;
-	}
+	} else if (!ret)
+		mdp_hang_panic();
 
 	mutex_lock(&mgmt->mdp_hist_mutex);
 	if (mgmt->mdp_is_hist_data && mgmt->mdp_is_hist_init)
@@ -1295,7 +1297,8 @@ void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 		INIT_COMPLETION(mdp_ppp_comp);
 		mdp_ppp_waiting = TRUE;
 		outpdw(MDP_BASE + 0x30, 0x1000);
-		wait_for_completion_killable(&mdp_ppp_comp);
+		if (!wait_for_completion_killable_timeout(&mdp_ppp_comp, HZ))
+			mdp_hang_panic();
 		mdp_disable_irq(term);
 
 		if (mdp_debug[MDP_PPP_BLOCK]) {
