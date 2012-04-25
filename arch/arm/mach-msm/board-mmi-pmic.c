@@ -387,7 +387,7 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 		if (batt_temp >= (signed int)(data->warm_temp)) {
 			data->cool_temp =
 				data->warm_temp - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT;
+			data->warm_temp = TEMP_HOT - data->hot_temp_offset;
 			if (batt_mvolt >= data->warm_bat_voltage) {
 				btm_state = BTM_WARM_HV;
 				chrg_enable = 0;
@@ -473,8 +473,10 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 	} else if (btm_state == BTM_WARM_LV) {
 		if (batt_temp >= TEMP_HOT) {
 			btm_state = BTM_HOT;
-			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT;
+			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC
+				- data->hot_temp_offset;
+			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT
+				- data->hot_temp_offset;
 			chrg_enable = 0;
 			btm_change = 1;
 		} else if (batt_temp <=
@@ -487,7 +489,8 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 			btm_state = BTM_WARM_HV;
 			data->cool_temp =
 				data->warm_temp - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT;
+			data->warm_temp = TEMP_HOT
+				- data->hot_temp_offset;
 			data->max_voltage = data->warm_bat_voltage;
 			chrg_enable = 0;
 			btm_change = 1;
@@ -495,8 +498,10 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 	} else if (btm_state == BTM_WARM_HV) {
 		if (batt_temp >= TEMP_HOT) {
 			btm_state = BTM_HOT;
-			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT;
+			data->cool_temp = TEMP_HOT - TEMP_HYSTERISIS_DEGC
+				- data->hot_temp_offset;
+			data->warm_temp = TEMP_HOT + TEMP_OVERSHOOT
+				- data->hot_temp_offset;
 			chrg_enable = 0;
 			btm_change = 1;
 		} else if (batt_temp <=
@@ -509,7 +514,8 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 			btm_state = BTM_WARM_LV;
 			data->cool_temp =
 				data->warm_temp - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT;
+			data->warm_temp = TEMP_HOT
+				- data->hot_temp_offset;
 			data->max_voltage = data->warm_bat_voltage;
 			chrg_enable = 1;
 			btm_change = 1;
@@ -518,7 +524,8 @@ static int64_t temp_range_check(int batt_temp, int batt_mvolt,
 		if (batt_temp <= TEMP_HOT - TEMP_HYSTERISIS_DEGC) {
 			data->cool_temp =
 				data->warm_temp - TEMP_HYSTERISIS_DEGC;
-			data->warm_temp = TEMP_HOT;
+			data->warm_temp = TEMP_HOT
+				- data->hot_temp_offset;
 			if (batt_mvolt >= data->warm_bat_voltage) {
 				btm_state = BTM_WARM_HV;
 				chrg_enable = 0;
@@ -889,9 +896,10 @@ void __init msm8960_pm_init(unsigned wakeup_irq)
 				msm_pm_data);
 }
 
-void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad, 
+void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad,
 						int mode, int cool_temp,
-						int warm_temp, void *cb, int lock)
+			int warm_temp, void *cb, int lock,
+			int hot_temp, int hot_temp_offset)
 {
 	msm8960_device_ssbi_pmic.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
@@ -905,6 +913,10 @@ void __init pm8921_init(struct pm8xxx_keypad_platform_data *keypad,
 	pm8921_platform_data.charger_pdata->factory_mode = mode;
 	battery_timeout = mode;
 	pm8921_platform_data.charger_pdata->meter_lock = lock;
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	pm8921_platform_data.charger_pdata->hot_temp = hot_temp;
+	pm8921_platform_data.charger_pdata->hot_temp_offset = hot_temp_offset;
+#endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	pm8921_platform_data.charger_pdata->arch_reboot_cb = cb;
 #endif

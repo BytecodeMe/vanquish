@@ -281,6 +281,8 @@ struct pm8921_chg_chip {
 	struct alarm			alarm;
 	struct wake_lock		heartbeat_wake_lock;
 	struct work_struct		wakeup_alarm_work;
+	int		 	      	hot_temp_dc;
+	int		 	      	hot_temp_offset_dc;
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);
@@ -1572,6 +1574,12 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
 						result.measurement);
 
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	if ((chip->hot_temp_dc > chip->warm_temp_dc) &&
+	    (result.physical >= chip->hot_temp_dc))
+		result.physical += chip->hot_temp_offset_dc;
+#endif
+
 	if (result.physical > MAX_TOLERABLE_BATT_TEMP_DDC)
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 		result.physical = 800;
@@ -2748,6 +2756,8 @@ static void update_heartbeat(struct work_struct *work)
 		data.max_voltage = chip->max_voltage_mv;
 		data.cool_temp = (chip->cool_temp_dc / 10);
 		data.warm_temp = (chip->warm_temp_dc / 10);
+		data.hot_temp = (chip->hot_temp_dc / 10);
+		data.hot_temp_offset = (chip->hot_temp_offset_dc / 10);
 		data.cool_bat_voltage = chip->cool_bat_voltage;
 		data.warm_bat_voltage = chip->warm_bat_voltage;
 		retval = pdata->temp_range_cb(batt_temp, batt_mvolt,
@@ -4585,6 +4595,10 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->meter_lock = pdata->meter_lock;
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	chip->arch_reboot_cb = pdata->arch_reboot_cb;
+#endif
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	chip->hot_temp_dc = pdata->hot_temp * 10;
+	chip->hot_temp_offset_dc = pdata->hot_temp_offset * 10;
 #endif
 
 	chip->cold_thr = pdata->cold_thr;

@@ -47,14 +47,17 @@
  * @step_charge_voltage:        Batteries with Peak Voltages above 4.2 V
  *                              sometimes require a reduced Charge Rate
  *                              above a voltage threshold; this is that voltage
+ * @hot_temp:		the temperature (degC) at which the battery is
+ *			considered hot charging is stopped
+ * @hot_temp_offset	the offset (degC) to apply when hot temp is reached
  */
 struct pm8921_charger_battery_data {
 	unsigned int			max_voltage;
 	unsigned int			min_voltage;
 	unsigned int			resume_voltage_delta;
 	unsigned int			term_current;
-	unsigned int			cool_temp;
-	unsigned int			warm_temp;
+	int				cool_temp;
+	int				warm_temp;
 	unsigned int			max_bat_chg_current;
 	unsigned int			cool_bat_chg_current;
 	unsigned int			warm_bat_chg_current;
@@ -62,6 +65,8 @@ struct pm8921_charger_battery_data {
 	unsigned int			warm_bat_voltage;
 	unsigned int			step_charge_current;
 	unsigned int			step_charge_voltage;
+	int				hot_temp;
+	int				hot_temp_offset;
 };
 #endif
 
@@ -229,6 +234,8 @@ struct pm8921_charger_platform_data {
 				  enum pm8921_btm_state *state);
 	unsigned int			batt_alarm_delta;
 	unsigned int			lower_battery_threshold;
+	int			       	hot_temp;
+	int			       	hot_temp_offset;
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);

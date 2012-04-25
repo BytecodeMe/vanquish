@@ -335,6 +335,49 @@ static __init int mmi_emu_det_index_by_name(const char *name)
 	return ret;
 }
 
+static int get_hot_temp_dt(void)
+{
+	struct device_node *parent;
+	int len = 0;
+	const void *prop;
+	u8 hot_temp = 0;
+
+	parent = of_find_node_by_path("/System@0/PowerIC@0");
+	if (!parent) {
+		pr_info("Parent Not Found\n");
+		return 0;
+	}
+	prop = of_get_property(parent, "chg-hot-temp", &len);
+	if (prop && (len == sizeof(u8)))
+		hot_temp = *(u8 *)prop;
+
+	of_node_put(parent);
+	pr_info("DT Hot Temp = %d\n", hot_temp);
+	return hot_temp;
+}
+
+static int get_hot_offset_dt(void)
+{
+	struct device_node *parent;
+	int len = 0;
+	const void *prop;
+	u8 hot_temp_off = 0;
+
+	parent = of_find_node_by_path("/System@0/PowerIC@0");
+	if (!parent) {
+		pr_info("Parent Not Found\n");
+		return 0;
+	}
+
+	prop = of_get_property(parent, "chg-hot-temp-offset", &len);
+	if (prop && (len == sizeof(u8)))
+		hot_temp_off = *(u8 *)prop;
+
+	of_node_put(parent);
+	pr_info("DT Hot Temp Offset = %d\n", hot_temp_off);
+	return hot_temp_off;
+}
+
 static struct emu_det_dt_data	emu_det_dt_data = {
 	.ic_type	= IC_EMU_POWER,
 	.uart_gsbi	= UART_GSBI12,
@@ -3685,7 +3728,8 @@ static void __init msm8960_mmi_init(void)
 #endif
 
 	pm8921_init(keypad_data, boot_mode_is_factory(), 0, 0,
-		    reboot_ptr, battery_data_is_meter_locked());
+		    reboot_ptr, battery_data_is_meter_locked(),
+		    get_hot_temp_dt(),  get_hot_offset_dt());
 
 	/* Init the bus, but no devices at this time */
 	msm8960_spi_init(&msm8960_qup_spi_gsbi1_pdata, NULL, 0);
