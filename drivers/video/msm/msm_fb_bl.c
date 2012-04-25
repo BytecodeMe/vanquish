@@ -65,7 +65,10 @@ void msm_fb_config_backlight(struct msm_fb_data_type *mfd)
 		if (!IS_ERR(pbd)) {
 			pr_info("%s: registered lcd-backlight\n", __func__);
 			fbi->bl_dev = pbd;
-			fb_bl_default_curve(fbi,
+			if(pdata->set_backlight_curve)
+				pdata->set_backlight_curve(mfd);
+			else
+				fb_bl_default_curve(fbi,
 					    0,
 					    mfd->panel_info.bl_min,
 					    mfd->panel_info.bl_max);

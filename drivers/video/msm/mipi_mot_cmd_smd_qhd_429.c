@@ -379,6 +379,30 @@ static struct dsi_cmd_desc acl_enable_disable[] = {
 					ACL_enable_disable_settings}
 };
 
+/*
+ * Framework brightness <--> panel nit mapping table
+ * Kernel brigheness is (framework brightness) / 2,
+ * So maximum is 127(255/2).
+ */
+static u8 backlight_curve_mapping[FB_BACKLIGHT_LEVELS] = {
+	/* Framework level / 2: from 0 to 15 */
+	0,   0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  3,  3,
+	/* 16 to 31 */
+	3,   3,  4,  4,  4,  4,  5,  5,  5,  5,  6,  6,  6,  6,  6,  7,
+	/* 32 to 47 */
+	7,   7,  7,  8,  8,  8,  8,  9,  9,  9,  9, 10, 10, 10, 10, 10,
+	/* 48 to 63 */
+	11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14,
+	/* 64 to 79 */
+	14, 15, 15, 15, 15, 16, 16, 16, 16, 17, 17, 17, 17, 18, 18, 18,
+	/* 80 to 95 */
+	18, 18, 19, 19, 19, 19, 20, 20, 20, 20, 21, 21, 21, 21, 22, 22,
+	/* 96 to 111 */
+	22, 22, 22, 23, 23, 23, 23, 24, 24, 24, 24, 25, 25, 25, 25, 26,
+	/* 112 to 127 */
+	26, 26, 26, 26, 27, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29
+};
+
 static void enable_acl(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
@@ -492,6 +516,23 @@ static void panel_set_backlight(struct msm_fb_data_type *mfd)
 	return;
 }
 
+static void panel_set_backlight_curve(struct msm_fb_data_type *mfd)
+{
+	struct fb_info *fbi;
+	int i;
+
+	pr_debug("panel backlight curve is called.\n");
+	fbi = mfd->fbi;
+	if(!fbi) {
+		pr_warning("%s: fb_info is null!\n", __FUNCTION__);
+		return;
+	}
+
+	for (i = 0; i < FB_BACKLIGHT_LEVELS; i++) {
+		fbi->bl_curve[i] = backlight_curve_mapping[i];
+	}
+}
+
 static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 {
 	int ret;
@@ -566,6 +607,7 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
 	mot_panel->set_backlight = panel_set_backlight;
+	mot_panel->set_backlight_curve = panel_set_backlight_curve;
 
 	mot_panel->enable_acl = enable_acl;
 	mot_panel->esd_enabled = false; /*TODO: enable ESD */

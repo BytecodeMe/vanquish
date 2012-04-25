@@ -104,6 +104,7 @@ struct mipi_mot_panel {
 	int (*panel_off)(struct msm_fb_data_type *mfd);
 	void (*esd_run) (void);
 	void (*set_backlight)(struct msm_fb_data_type *mfd);
+	void (*set_backlight_curve)(struct msm_fb_data_type *mfd);
 	u16 (*get_manufacture_id)(struct msm_fb_data_type *mfd);
 	u16 (*get_controller_ver)(struct msm_fb_data_type *mfd);
 	u16 (*get_controller_drv_ver)(struct msm_fb_data_type *mfd);

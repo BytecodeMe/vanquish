@@ -178,6 +178,7 @@ struct msm_fb_panel_data {
 	void (*set_rect) (int x, int y, int xres, int yres);
 	void (*set_vsync_notifier) (msm_fb_vsync_handler_type, void *arg);
 	void (*set_backlight) (struct msm_fb_data_type *);
+	void (*set_backlight_curve) (struct msm_fb_data_type *);
 
 	/* function entry chain */
 	int (*on) (struct platform_device *pdev);

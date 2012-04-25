@@ -419,6 +419,9 @@ int mipi_mot_device_register(struct msm_panel_info *pinfo,
 	if (mot_panel.set_backlight)
 		mot_panel_data.set_backlight = mot_panel.set_backlight;
 
+	if (mot_panel.set_backlight_curve)
+		mot_panel_data.set_backlight_curve = mot_panel.set_backlight_curve;
+
 	ret = platform_device_add_data(pdev, &mot_panel_data,
 		sizeof(mot_panel_data));
 	if (ret) {
