@@ -1396,7 +1396,7 @@ static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
-	    !(the_chip->factory_mode))
+	    !(chip->factory_mode))
 		return 0;
 	else if (percent_soc <= 0)
 		return 1;
@@ -1444,7 +1444,7 @@ static int get_prop_batt_health(struct pm8921_chg_chip *chip)
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	if ((alarm_state == PM_BATT_ALARM_SHUTDOWN) &&
-	    !(the_chip->factory_mode))
+	    !(chip->factory_mode))
 		return POWER_SUPPLY_HEALTH_DEAD;
 	else if (alarm_state == PM_BATT_ALARM_OV)
 		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
@@ -2744,9 +2744,9 @@ static void update_heartbeat(struct work_struct *work)
 	} else if ((percent_soc > 5) &&
 		   (alarm_state == PM_BATT_ALARM_WARNING)) {
 		rc = update_batt_alarm_settings(
-			the_chip->lower_battery_threshold,
-			(the_chip->max_voltage_mv +
-			 the_chip->batt_alarm_delta),
+			chip->lower_battery_threshold,
+			(chip->max_voltage_mv +
+			 chip->batt_alarm_delta),
 			PM8XXX_BATT_ALARM_HOLD_TIME_16_MS);
 		if (!rc)
 			alarm_state = PM_BATT_ALARM_NORMAL;
