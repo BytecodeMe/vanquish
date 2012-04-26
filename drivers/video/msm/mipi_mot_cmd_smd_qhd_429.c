@@ -411,6 +411,8 @@ static void enable_acl(struct msm_fb_data_type *mfd)
 		dsi_tx_buf = mot_panel->mot_tx_buf;
 		mutex_lock(&mfd->dma->ov_mutex);
 		mdp4_dsi_cmd_dma_busy_wait(mfd);
+		/* Todo: add 50us delay between frame and cmd or between frames */
+		mipi_dsi_mdp_busy_wait(mfd);
 		mdp4_dsi_blt_dmap_busy_wait(mfd);
 		mipi_set_tx_power_mode(0);
 		ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
@@ -502,6 +504,8 @@ static void panel_set_backlight(struct msm_fb_data_type *mfd)
 
 	mutex_lock(&mfd->dma->ov_mutex);
 	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	/* Todo: add 50us delay between frame and cmd or between frames */
+	mipi_dsi_mdp_busy_wait(mfd);
 	mdp4_dsi_blt_dmap_busy_wait(mfd);
 
 	mipi_set_tx_power_mode(0);
