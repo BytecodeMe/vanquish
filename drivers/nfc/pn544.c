@@ -347,7 +347,7 @@ static ssize_t pn544_debug_read (struct device *dev,
        return snprintf(buf, 50, "pn544_debug_read returning\n");
 }
 
-static DEVICE_ATTR(pn544_control_dev, 0666, pn544_debug_read, pn544_control_func);
+static DEVICE_ATTR(pn544_control_dev, 0660, pn544_debug_read, pn544_control_func);
 
 static int pn544_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
