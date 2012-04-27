@@ -25,9 +25,6 @@
 
 #define KGSL_NAME "kgsl"
 
-/* Timestamp window used to detect rollovers */
-#define KGSL_TIMESTAMP_WINDOW 0x80000000
-
 /*cache coherency ops */
 #define DRM_KGSL_GEM_CACHE_OP_TO_DEV	0x0001
 #define DRM_KGSL_GEM_CACHE_OP_FROM_DEV	0x0002
@@ -64,6 +61,9 @@ KGSL_PAGETABLE_ENTRY_SIZE, PAGE_SIZE)
 
 #define KGSL_STATS_ADD(_size, _stat, _max) \
 	do { _stat += (_size); if (_stat > _max) _max = _stat; } while (0)
+
+/* Timestamp window used to detect rollovers (half of integer range) */
+#define KGSL_TIMESTAMP_WINDOW 0x80000000
 
 struct kgsl_device;
 
@@ -206,14 +206,24 @@ static inline uint8_t *kgsl_gpuaddr_to_vaddr(struct kgsl_memdesc *memdesc,
 	return memdesc->hostptr + (gpuaddr - memdesc->gpuaddr);
 }
 
-static inline int timestamp_cmp(unsigned int new, unsigned int old)
+static inline int timestamp_cmp(unsigned int a, unsigned int b)
 {
-	int ts_diff = new - old;
-
-	if (ts_diff == 0)
+	/* check for equal */
+	if (a == b)
 		return 0;
 
-	return ((ts_diff > 0) || (ts_diff < -KGSL_TIMESTAMP_WINDOW)) ? 1 : -1;
+	/* check for greater-than for non-rollover case */
+	if ((a > b) && (a - b < KGSL_TIMESTAMP_WINDOW))
+		return 1;
+
+	/* check for greater-than for rollover case
+	 * note that <= is required to ensure that consistent
+	 * results are returned for values whose difference is
+	 * equal to the window size
+	 */
+	a += KGSL_TIMESTAMP_WINDOW;
+	b += KGSL_TIMESTAMP_WINDOW;
+	return ((a > b) && (a - b <= KGSL_TIMESTAMP_WINDOW)) ? 1 : -1;
 }
 
 static inline void
