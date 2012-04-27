@@ -333,42 +333,51 @@ static int msm8960_mic_event(struct snd_soc_dapm_widget *w,
 static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *k, int event)
 {
+	static int emu_on;
 	pr_debug("%s() %x\n", __func__, SND_SOC_DAPM_EVENT_ON(event));
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
-		if (msm8960_check_for_emu_audio()) {
-			pr_debug("EMU dock connected, don't enable speaker, route to dock\n");
-			set_mux_ctrl_mode_for_audio(MUXMODE_AUDIO);
-			return 0;
-		}
-
-		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18))
+		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18)) {
 			msm8960_ext_spk_power_amp_on(BOTTOM_SPK_AMP_POS);
-		else if (!strncmp(w->name, "Ext Spk Bottom Neg", 18))
+			emu_on += 1;
+		} else if (!strncmp(w->name, "Ext Spk Bottom Neg", 18)) {
 			msm8960_ext_spk_power_amp_on(BOTTOM_SPK_AMP_NEG);
-		else if (!strncmp(w->name, "Ext Spk Top Pos", 15))
+		} else if (!strncmp(w->name, "Ext Spk Top Pos", 15)) {
+			emu_on += 1;
 			msm8960_ext_spk_power_amp_on(TOP_SPK_AMP_POS);
-		else if  (!strncmp(w->name, "Ext Spk Top Neg", 15))
+		} else if  (!strncmp(w->name, "Ext Spk Top Neg", 15)) {
 			msm8960_ext_spk_power_amp_on(TOP_SPK_AMP_NEG);
-		else {
+		} else {
 			pr_err("%s() Invalid Speaker Widget = %s\n",
 					__func__, w->name);
 			return -EINVAL;
 		}
 
+		pr_debug("emu_on = %d\n", emu_on);
+		if ((emu_on == 2) && msm8960_check_for_emu_audio()) {
+			pr_debug("EMU dock connected, route to dock\n");
+			set_mux_ctrl_mode_for_audio(MUXMODE_AUDIO);
+		}
 	} else {
-		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18))
+		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18)) {
 			msm8960_ext_spk_power_amp_off(BOTTOM_SPK_AMP_POS);
-		else if (!strncmp(w->name, "Ext Spk Bottom Neg", 18))
+			emu_on -= 1;
+		} else if (!strncmp(w->name, "Ext Spk Bottom Neg", 18)) {
 			msm8960_ext_spk_power_amp_off(BOTTOM_SPK_AMP_NEG);
-		else if (!strncmp(w->name, "Ext Spk Top Pos", 15))
+		} else if (!strncmp(w->name, "Ext Spk Top Pos", 15)) {
+			emu_on -= 1;
 			msm8960_ext_spk_power_amp_off(TOP_SPK_AMP_POS);
-		else if  (!strncmp(w->name, "Ext Spk Top Neg", 15))
+		} else if  (!strncmp(w->name, "Ext Spk Top Neg", 15)) {
 			msm8960_ext_spk_power_amp_off(TOP_SPK_AMP_NEG);
-		else {
+		} else {
 			pr_err("%s() Invalid Speaker Widget = %s\n",
 					__func__, w->name);
 			return -EINVAL;
+		}
+
+		if ((emu_on == 0) && msm8960_check_for_emu_audio()) {
+			pr_debug("Don't route audio to EMU anymore\n");
+			set_mux_ctrl_mode_for_audio(MUXMODE_USB);
 		}
 	}
 	return 0;
