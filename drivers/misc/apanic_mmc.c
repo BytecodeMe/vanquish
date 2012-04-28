@@ -80,6 +80,7 @@ struct apanic_data {
 };
 
 static int start_apanic_threads;
+static int emergency_dump_flag;
 static struct apanic_data drv_ctx;
 static struct work_struct proc_removal_work;
 /* avoid collision of proc interface operation and proc removal */
@@ -581,12 +582,19 @@ int is_apanic_threads_dump(void)
 	return start_apanic_threads;
 }
 
+int is_emergency_dump(void)
+{
+	return emergency_dump_flag;
+}
+
 void emergency_dump(void)
 {
 	struct apanic_data *ctx = &drv_ctx;
 
+	emergency_dump_flag = 1;
 	ctx->buf_offset = ALIGN(ctx->written, 512);
 	ctx->written += apanic_write_console_mmc(ctx->buf_offset);
+	emergency_dump_flag = 0;
 }
 
 static void apanic_mmc_logbuf_dump(void)

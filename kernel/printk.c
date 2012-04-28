@@ -801,12 +801,15 @@ asmlinkage int printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
+
 #ifdef CONFIG_MSM_RTB
 	void *caller = __builtin_return_address(0);
 
 	uncached_logk_pc(LOGK_LOGBUF, caller, (void *)log_end);
 #endif
 
+	if (is_emergency_dump())
+		return 0;
 #ifdef CONFIG_KGDB_KDB
 	if (unlikely(kdb_trap_printk)) {
 		va_start(args, fmt);
