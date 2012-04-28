@@ -17,6 +17,8 @@
 #include <linux/errno.h>
 #include <linux/proc_fs.h>
 #include <linux/cpu.h>
+#include <asm/cacheflush.h>
+#include <mach/cache-krait.h>
 #include <mach/msm-krait-l2-accessors.h>
 
 #define CESR_DCTPE		BIT(0)
@@ -28,8 +30,8 @@
 #define CESR_TLBMH		BIT(16)
 #define CESR_I_MASK		0x000000CC
 
-/* Print a message for everything but TLB MH events */
-#define CESR_PRINT_MASK		0x000000FF
+/* Panic only for non-correctable events. */
+#define CESR_PANIC_MASK		0x000000F0
 
 #define L2ESR_IND_ADDR		0x204
 #define L2ESYNR0_IND_ADDR	0x208
@@ -45,6 +47,9 @@
 #define L2ESR_DSEDB             BIT(5)
 #define L2ESR_MSE		BIT(6)
 #define L2ESR_MPLDREXNOK	BIT(8)
+#define L2ESR_SP		BIT(20)
+
+#define L2ESR_ERR_MASK		(L2ESR_SP | 0x1FF)
 
 #define L2ESR_CPU_MASK		0x0F
 #define L2ESR_CPU_SHIFT		16
@@ -64,13 +69,13 @@
 #ifdef CONFIG_MSM_L2_ERP_1BIT_PANIC
 #define ERP_1BIT_ERR(a) do { pr_err(a); BUG(); } while (0)
 #else
-#define ERP_1BIT_ERR(a) do { } while (0)
+#define ERP_1BIT_ERR(a) WARN(1, a)
 #endif
 
 #ifdef CONFIG_MSM_L2_ERP_2BIT_PANIC
 #define ERP_2BIT_ERR(a) do { pr_err(a); BUG(); } while (0)
 #else
-#define ERP_2BIT_ERR(a) do { } while (0)
+#define ERP_2BIT_ERR(a) WARN(1, a)
 #endif
 
 #define MODULE_NAME "msm_cache_erp"
@@ -185,12 +190,10 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	struct msm_l1_err_stats *l1_stats = dev_id;
 	unsigned int cesr = read_cesr();
 	unsigned int i_cesynr, d_cesynr;
-	int print_regs = cesr & CESR_PRINT_MASK;
+	int panic_regs = cesr & CESR_PANIC_MASK;
 
-	if (print_regs) {
-		pr_alert("L1 Error detected on CPU %d!\n", smp_processor_id());
-		pr_alert("\tCESR    = 0x%08x\n", cesr);
-	}
+	pr_alert("L1 Error detected on CPU %d!\n", smp_processor_id());
+	pr_alert("\tCESR    = 0x%08x\n", cesr);
 
 	if (cesr & CESR_DCTPE) {
 		pr_alert("D-cache tag parity error\n");
@@ -223,9 +226,16 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	}
 
 	if (cesr & CESR_TLBMH) {
+		pr_alert("TLB multi-hit error\n");
 		asm ("mcr p15, 0, r0, c8, c7, 0");
 		l1_stats->tlbmh++;
 	}
+
+	if (cesr & (CESR_ICTPE | CESR_ICDPE))
+		__flush_icache_all();
+
+	if (cesr & (CESR_DCTPE | CESR_DCDPE))
+		krait_inval_l1_dcache_all();
 
 	if (cesr & (CESR_ICTPE | CESR_ICDPE | CESR_ICTE)) {
 		i_cesynr = read_cesynr();
@@ -248,7 +258,7 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	/* Clear the interrupt bits we processed */
 	write_cesr(cesr);
 
-	if (print_regs)
+	if (panic_regs)
 		ERP_L1_ERR("L1 cache error detected");
 
 	return IRQ_HANDLED;
@@ -273,10 +283,12 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 
 	pr_alert("L2 Error detected!\n");
 	pr_alert("\tL2ESR    = 0x%08x\n", l2esr);
-	pr_alert("\tL2ESYNR0 = 0x%08x\n", l2esynr0);
-	pr_alert("\tL2ESYNR1 = 0x%08x\n", l2esynr1);
-	pr_alert("\tL2EAR0   = 0x%08x\n", l2ear0);
-	pr_alert("\tL2EAR1   = 0x%08x\n", l2ear1);
+	if ((l2esr & L2ESR_ERR_MASK) != L2ESR_MPSLV) {
+		pr_alert("\tL2ESYNR0 = 0x%08x\n", l2esynr0);
+		pr_alert("\tL2ESYNR1 = 0x%08x\n", l2esynr1);
+		pr_alert("\tL2EAR0   = 0x%08x\n", l2ear0);
+		pr_alert("\tL2EAR1   = 0x%08x\n", l2ear1);
+	}
 	pr_alert("\tCPU bitmap = 0x%x\n", (l2esr >> L2ESR_CPU_SHIFT) &
 						    L2ESR_CPU_MASK);
 
@@ -288,7 +300,6 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 
 	if (l2esr & L2ESR_MPSLV) {
 		pr_alert("L2 master port slave error\n");
-		port_error++;
 		msm_l2_erp_stats.mpslv++;
 	}
 
