@@ -178,7 +178,7 @@ struct pm8xxx_keypad_platform_data mmi_qwerty_keypad_data = {
 static struct gpio_keys_button mmi_gpio_keys_table[] = {
 	{KEY_VOLUMEDOWN, PM8921_GPIO_PM_TO_SYS(33), 1,
 			"VOLUME_DOWN", EV_KEY, 1, 20},
-	{SW_LID, 11, 0, "SLIDE", EV_SW,  1, 20},
+	{SW_LID, 11, 1, "SLIDE", EV_SW,  1, 20},
 };
 
 static struct gpio_keys_platform_data mmi_gpio_keys_data = {
