@@ -69,12 +69,6 @@
 #define MOT_PANEL_OFF     0x0
 #define MOT_PANEL_ON      0x1
 
-struct mipi_mot_panel_MID {
-	u8 MID1;
-	u8 MID2;
-	u8 MID3;
-};
-
 enum {
 	MOT_ESD_PANEL_OFF = 0,
 	MOT_ESD_ESD_DETECT,
@@ -90,7 +84,6 @@ struct mipi_mot_panel {
 	struct mutex lock;
 	boolean acl_support_present;
 	boolean acl_enabled;
-	struct mipi_mot_panel_MID panel_MID;
 
 	atomic_t state;
 	bool esd_enabled;
@@ -108,7 +101,8 @@ struct mipi_mot_panel {
 	u16 (*get_manufacture_id)(struct msm_fb_data_type *mfd);
 	u16 (*get_controller_ver)(struct msm_fb_data_type *mfd);
 	u16 (*get_controller_drv_ver)(struct msm_fb_data_type *mfd);
-	void (*enable_acl) (struct msm_fb_data_type *mfd);
+	void (*enable_acl)(struct msm_fb_data_type *mfd);
+	int (*is_valid_manufacture_id)(struct msm_fb_data_type *mfd, u8 id);
 };
 
 int mipi_mot_device_register(struct msm_panel_info *pinfo, u32 channel,

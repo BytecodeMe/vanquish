@@ -90,6 +90,10 @@ static int panel_disable(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
+static int is_valid_manufacture_id(struct msm_fb_data_type *mfd, u8 id)
+{
+	return id == 0x40 || id == 0xc0;
+}
 
 static int __init mipi_cmd_mot_auo_qhd_450_init(void)
 {
@@ -165,9 +169,7 @@ static int __init mipi_cmd_mot_auo_qhd_450_init(void)
 
 	/* For ESD detection information */
 	mot_panel->esd_enabled = true;
-	mot_panel->panel_MID.MID1 = 0x40;
-	mot_panel->panel_MID.MID2 = 0xc0;
-	mot_panel->panel_MID.MID3 = INVALID_VALUE;
+	mot_panel->is_valid_manufacture_id = is_valid_manufacture_id;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM,
 						MIPI_DSI_PANEL_HD);

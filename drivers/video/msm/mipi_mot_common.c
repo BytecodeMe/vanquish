@@ -278,24 +278,18 @@ static int mipi_mot_esd_detection(struct msm_fb_data_type *mfd)
 		goto esd_detect;
 	}
 
-	if ((rd_manufacture_id == mot_panel->panel_MID.MID1) ||
-		(rd_manufacture_id == mot_panel->panel_MID.MID2) ||
-		(rd_manufacture_id == mot_panel->panel_MID.MID3))
+	if (mot_panel->is_valid_manufacture_id(mfd, rd_manufacture_id))
 		ret = MOT_ESD_OK;
 	else {
-		pr_err("%s: wrong manufacture_id: "
-			"Read_MID=0x%x MID1=0x%x MID2=0x%x MID3=0x%x\n",
-			__func__, rd_manufacture_id, mot_panel->panel_MID.MID1,
-			mot_panel->panel_MID.MID2, mot_panel->panel_MID.MID3);
+		pr_err("%s: wrong manufacture_id: 0x%x\n",
+			__func__, rd_manufacture_id);
 		ret = MOT_ESD_ESD_DETECT;
 	}
 
 esd_detect:
 	pr_debug("%s: Cur_mode=0x%x Expected_mode=0x%x.. "
-			"Read_MID=0x%x MID1=0x%x MID2=0x%x MID3=0x%x\n",
-			__func__, pwr_mode, expected_mode,
-			 rd_manufacture_id, mot_panel->panel_MID.MID1,
-			mot_panel->panel_MID.MID2, mot_panel->panel_MID.MID3);
+			"manufacture_id=0x%x\n",
+			__func__, pwr_mode, expected_mode, rd_manufacture_id);
 	return ret;
 }
 
