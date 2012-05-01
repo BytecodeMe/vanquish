@@ -1959,6 +1959,7 @@ static struct led_pwm_gpio pm8xxx_pwm_gpio_leds[] = {
 static struct led_pwm_gpio_platform_data pm8xxx_rgb_leds_pdata = {
 	.num_leds = ARRAY_SIZE(pm8xxx_pwm_gpio_leds),
 	.leds = pm8xxx_pwm_gpio_leds,
+	.max_brightness = LED_FULL,
 };
 
 static struct platform_device pm8xxx_rgb_leds_device = {
@@ -3030,6 +3031,22 @@ out:
 	return;
 }
 
+static __init void load_pm8921_rgb_leds_from_dt(void)
+{
+	int max_brightness = 0;
+	struct device_node *parent;
+
+	parent = of_find_node_by_path("/System@0/PowerIC@0/RGBLED@0");
+	if (parent) {
+		max_brightness = dt_get_u32_or_die(parent, "max_brightness");
+		if (max_brightness)
+			pm8xxx_rgb_leds_pdata.max_brightness = max_brightness;
+	}
+	of_node_put(parent);
+
+	return;
+}
+
 static __init void load_pm8921_leds_from_dt(void)
 {
 	struct device_node *parent, *child;
@@ -3718,6 +3735,9 @@ static void __init msm8960_mmi_init(void)
 
 	/* configure pm8921 leds */
 	load_pm8921_leds_from_dt();
+
+	/* configure pm8921 RGB LED */
+	load_pm8921_rgb_leds_from_dt();
 
 	/* needs to happen before msm_clock_init */
 	config_camera_single_mclk_from_dt();

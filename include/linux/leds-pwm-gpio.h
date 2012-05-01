@@ -17,6 +17,7 @@ struct led_pwm_gpio {
 struct led_pwm_gpio_platform_data {
 	int num_leds;
 	struct led_pwm_gpio *leds;
+	int max_brightness;
 };
 
 #endif

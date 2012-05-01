@@ -45,6 +45,7 @@ struct pm8xxx_rgb_led_drv_data {
 	unsigned long ramp_up;
 	unsigned long ramp_down;
 	unsigned blinking;
+	int max_brightness;
 };
 
 #define PM8XXX_RGB_PWM_FLAGS	(PM_PWM_LUT_LOOP | PM_PWM_LUT_RAMP_UP |\
@@ -80,7 +81,8 @@ static int pm8xxx_rgb_blink_set(struct pm8xxx_rgb_led_drv_data *drv_data,
 	int num_top;
 	int i;
 	int ret = 0;
-	int max = 100;
+	int init_max, max = 100;
+	int max_level;
 	int step;
 #if 0
 	int duty_pcts[] = {100};
@@ -163,8 +165,15 @@ static int pm8xxx_rgb_blink_set(struct pm8xxx_rgb_led_drv_data *drv_data,
 		pause_lo = 0;
 		period = duty_ms * PM_PWM_LUT_SIZE + pause_hi;
 
+		/* Equalize all LEDs' levels to max */
+		max_level = drv_data->leds[0].value;
+		for (i = 1; i < drv_data->num_leds; i++) {
+			if (drv_data->leds[i].value > max_level)
+				max_level = drv_data->leds[i].value;
+		}
+		init_max = 100 * max_level/LED_FULL;
 		/* Ramp up */
-		max = 100;
+		max = init_max;
 		step = max/(num_up - 1);
 		if (drv_data->ramp_up) {
 			for (i = num_up-1; i >= 0; i--) {
@@ -182,11 +191,11 @@ static int pm8xxx_rgb_blink_set(struct pm8xxx_rgb_led_drv_data *drv_data,
 				duty_pcts_ramp[i] = max;
 		}
 		/* Top */
-		max = 100;
+		max = init_max;
 		for (i = num_up; i < num_up+num_top; i++)
 			duty_pcts_ramp[i] = max;
 		/* Ramp down */
-		max = 100;
+		max = init_max;
 		if (drv_data->ramp_down) {
 			for (i = num_down+num_top; i <= PM_PWM_LUT_SIZE-2; i++) {
 				duty_pcts_ramp[i] = max;
@@ -239,7 +248,6 @@ static void pm8xxx_rgb_led_set(struct led_classdev *led_cdev,
 
 	pr_info("%s: %s, %d\n", __func__, led->cdev.name, value);
 
-	led->value = value;
 	pwm_disable(led->pwm);
 	if (!value) {
 		if (led->blinking) {
@@ -248,14 +256,15 @@ static void pm8xxx_rgb_led_set(struct led_classdev *led_cdev,
 		}
 		return;
 	}
+	/* Scale by max_brightness */
+	led->value = value * drv_data->max_brightness/LED_FULL;
 
 	/* If the whole thing is blinking we need to blink this one as well;
 		but we need to stop and restart blinking so that it's synchronous */
 	if (drv_data->blinking) {
 		pm8xxx_rgb_blink_set(drv_data, 1);
 	} else {
-		ret = pwm_config(led->pwm,
-			1000 * value / LED_FULL, 1000);
+		ret = pwm_config(led->pwm, 1000 * led->value / LED_FULL, 1000);
 		if (ret)
 			pr_err("%s: pwm_config error %d\n", __func__, ret);
 		pwm_enable(led->pwm);
@@ -312,7 +321,46 @@ static ssize_t pm8xxx_rgb_blink_store(struct device *dev,
 	return strlen(buf);
 }
 
+static ssize_t pm8xxx_rgb_max_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct pm8xxx_rgb_led_data *led_dat = dev_get_drvdata(dev);
+	struct pm8xxx_rgb_led_drv_data *drv_data = led_dat->drv_data;
+	int max_brightness = LED_FULL;
+	int ret;
+
+	ret = kstrtoint(buf, 10, &max_brightness);
+	if (ret != 0)
+		return -EINVAL;
+	if (max_brightness > LED_FULL || max_brightness == 0)
+		max_brightness = LED_FULL;
+	drv_data->max_brightness = max_brightness;
+
+	return count;
+}
+
+static ssize_t pm8xxx_rgb_max_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct pm8xxx_rgb_led_data *led_dat = dev_get_drvdata(dev);
+	struct pm8xxx_rgb_led_drv_data *drv_data = led_dat->drv_data;
+
+	snprintf(buf, 5, "%d\n", drv_data->max_brightness);
+	return strnlen(buf, 5);
+}
+
 static DEVICE_ATTR(blink, 0664, pm8xxx_rgb_blink_show, pm8xxx_rgb_blink_store);
+static DEVICE_ATTR(max, 0664, pm8xxx_rgb_max_show, pm8xxx_rgb_max_store);
+
+static struct attribute *pm8xxx_rgb_led_attributes[] = {
+	&dev_attr_blink.attr,
+	&dev_attr_max.attr,
+	NULL,
+};
+
+static struct attribute_group pm8xxx_rgb_attribute_group = {
+	.attrs = pm8xxx_rgb_led_attributes
+};
 
 static int __devinit create_pm8xxx_rgb_led(const struct led_pwm_gpio *led,
 	struct pm8xxx_rgb_led_data *led_dat, struct device *parent)
@@ -372,14 +420,13 @@ static int __devinit create_pm8xxx_rgb_led(const struct led_pwm_gpio *led,
 		__func__, led->name, led->gpio, led_dat->can_sleep);
 
 	if (!strcmp(led_dat->cdev.name, "red")) {
-		ret = device_create_file(led_dat->cdev.dev, &dev_attr_blink);
+		ret = sysfs_create_group(&led_dat->cdev.dev->kobj,
+			&pm8xxx_rgb_attribute_group);
 		if (ret) {
-			pr_err("%s: unable to create \'blink\' device file for %s\n",
+			pr_err("%s: unable to create attribute group for %s\n",
 				__func__, led_dat->cdev.name);
-			goto err_blink;
+			goto err_attr;
 		}
-		pr_info("%s: created \'blink\' device file for %s, dev=0x%x\n",
-			__func__, led_dat->cdev.name, (unsigned)led_dat->cdev.dev);
 	}
 
 	led_dat->pwm = pwm_request(led_dat->pwm_id, led_dat->cdev.name);
@@ -394,8 +441,9 @@ static int __devinit create_pm8xxx_rgb_led(const struct led_pwm_gpio *led,
 	return 0;
 
 err_pwm_request:
-	device_remove_file(led_dat->cdev.dev, &dev_attr_blink);
-err_blink:
+	sysfs_remove_group(&led_dat->cdev.dev->kobj,
+		&pm8xxx_rgb_attribute_group);
+err_attr:
 	led_classdev_unregister(&led_dat->cdev);
 err:
 	gpio_free(led_dat->gpio);
@@ -406,7 +454,8 @@ static void delete_pm8xxx_rgb_led(struct pm8xxx_rgb_led_data *led)
 {
 	if (!gpio_is_valid(led->gpio))
 		return;
-	device_remove_file(led->cdev.dev, &dev_attr_blink);
+	sysfs_remove_group(&led->cdev.dev->kobj,
+		&pm8xxx_rgb_attribute_group);
 	led_classdev_unregister(&led->cdev);
 	gpio_free(led->gpio);
 	pwm_free(led->pwm);
@@ -444,6 +493,9 @@ static int __devinit pm8xxx_rgb_led_probe(struct platform_device *pdev)
 	drv_data->leds = leds_data;
 	drv_data->num_leds = pdata->num_leds;
 	drv_data->blinking = 0;
+	drv_data->max_brightness = pdata->max_brightness;
+	if (drv_data->max_brightness == 0)
+		drv_data->max_brightness = LED_FULL;
 
 	pr_info("%s: num_leds is %d\n", __func__, pdata->num_leds);
 	for (i = 0; i < pdata->num_leds; i++) {
