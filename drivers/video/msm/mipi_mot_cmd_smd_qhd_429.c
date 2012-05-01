@@ -471,6 +471,11 @@ static int panel_disable(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
+static int is_valid_manufacture_id(struct msm_fb_data_type *mfd, u8 id)
+{
+	return id == 0x22;
+}
+
 static void panel_set_backlight(struct msm_fb_data_type *mfd)
 {
 
@@ -596,7 +601,7 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 	pinfo->mipi.stream = 0;	/* dma_p */
 	pinfo->mipi.mdp_trigger = DSI_CMD_TRIGGER_NONE;
 	pinfo->mipi.dma_trigger = DSI_CMD_TRIGGER_SW;
-	pinfo->mipi.te_sel = 0; /* TODO: enable TE */
+	pinfo->mipi.te_sel = 1;
 	pinfo->mipi.interleave_max = 1;
 	pinfo->mipi.insert_dcs_cmd = TRUE;
 	pinfo->mipi.wr_mem_continue = 0x3c;
@@ -612,9 +617,9 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 	mot_panel->panel_disable = panel_disable;
 	mot_panel->set_backlight = panel_set_backlight;
 	mot_panel->set_backlight_curve = panel_set_backlight_curve;
-
 	mot_panel->enable_acl = enable_acl;
-	mot_panel->esd_enabled = false; /*TODO: enable ESD */
+	mot_panel->esd_enabled = true;
+	mot_panel->is_valid_manufacture_id = is_valid_manufacture_id;
 
 	ret = mipi_mot_device_register(pinfo, MIPI_DSI_PRIM,
 						MIPI_DSI_PANEL_HD);
