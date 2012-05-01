@@ -1998,6 +1998,8 @@ static long emu_det_ioctl(struct file *file,
 
 		if ((data->state == CHARGER) || (data->state == WHISPER_PPD)) {
 			if (request.cmd & CPCAP_WHISPER_ENABLE_UART) {
+				if (emu_pdata->cfg_l2_err)
+					emu_pdata->cfg_l2_err(0);
 				data->whisper_auth = AUTH_IN_PROGRESS;
 				mux_ctrl_mode(MUXMODE_UART);
 			}
@@ -2016,6 +2018,8 @@ static long emu_det_ioctl(struct file *file,
 			pr_emu_det(STATUS, "Whisper_auth =%d\n",
 							data->whisper_auth);
 			if (!(request.cmd & CPCAP_WHISPER_ENABLE_UART)) {
+				if (emu_pdata->cfg_l2_err)
+					emu_pdata->cfg_l2_err(1);
 				if (dock != CHARGER_DOCK)
 					mux_ctrl_mode(MUXMODE_USB);
 				if (dock && (strlen(request.dock_id) <

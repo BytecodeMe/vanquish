@@ -661,6 +661,14 @@ static void configure_gsbi_ctrl(int restore)
 	iounmap(gsbi_ctrl);
 }
 
+static void configure_l2_error(int enable)
+{
+	if (enable)
+		enable_msm_l2_erp_irq();
+	else
+		disable_msm_l2_erp_irq();
+}
+
 static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.enable_5v = emu_det_enable_5v,
 	.core_power = emu_det_core_power,
@@ -670,6 +678,7 @@ static struct mmi_emu_det_platform_data mmi_emu_det_data = {
 	.adc_id = emu_det_adc_id,
 	.dp_dm_mode = emu_det_dp_dm_mode,
 	.gsbi_ctrl = configure_gsbi_ctrl,
+	.cfg_l2_err = configure_l2_error,
 };
 
 static struct platform_device emu_det_device = {

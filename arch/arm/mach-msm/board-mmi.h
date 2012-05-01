@@ -91,6 +91,8 @@ void msm8960_get_dsps_fw_name(char *name);
 void __init mmi_vibrator_init(void);
 int __init mapphone_touch_panel_init(struct i2c_board_info *i2c_info,
 		struct device_node *node);
+void enable_msm_l2_erp_irq(void);
+void disable_msm_l2_erp_irq(void);
 
 #define  MMI_KEYPAD_RESET	0x1
 #define  MMI_KEYPAD_SLIDER	0x2
