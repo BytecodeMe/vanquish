@@ -119,5 +119,9 @@ int mipi_mot_panel_on(struct msm_fb_data_type *mfd);
 int mipi_mot_panel_off(struct msm_fb_data_type *mfd);
 u8 mipi_mode_get_pwr_mode(struct msm_fb_data_type *mfd);
 void mipi_mot_esd_work(void);
+int32 get_panel_info(struct msm_fb_data_type *mfd,
+				struct  mipi_mot_panel *mot_panel,
+				struct dsi_cmd_desc *cmd);
+
 
 #endif /* MIPI_MOT_PANEL_H */

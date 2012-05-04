@@ -298,10 +298,6 @@ static char etc_condition_set2_B[2] = { /* DTYPE_DCS_WRITE1 */
 static char etc_condition_set2_C[4] = {
 	0xB1, 0x01, 0x00, 0x16,
 };
-static char etc_condition_set2_D[5] = {
-	0xB2, 0x08, 0x08, 0x08, 0x08,
-};
-
 static struct dsi_cmd_desc smd_qhd_429_cmds_4[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 			sizeof(etc_condition_set2_1), etc_condition_set2_1},
@@ -327,8 +323,6 @@ static struct dsi_cmd_desc smd_qhd_429_cmds_4[] = {
 			sizeof(etc_condition_set2_B), etc_condition_set2_B},
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 			sizeof(etc_condition_set2_C), etc_condition_set2_C},
-	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
-			sizeof(etc_condition_set2_D), etc_condition_set2_D},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120,
 			sizeof(exit_sleep), exit_sleep},
 };
@@ -377,6 +371,21 @@ static struct dsi_cmd_desc acl_enable_disable[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(ACL_enable_disable_settings),
 					ACL_enable_disable_settings}
+};
+
+/* default elvss set, update based on 0xD4 */
+static char elvss_output_set[5] = {
+	0xB2,
+	0x08, 0x08, 0x08, 0x08,
+};
+static struct dsi_cmd_desc elvss_set_cmd[] = {
+	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
+		sizeof(elvss_output_set), elvss_output_set}
+};
+
+static char elvss_val[2] = {0xD4, 0x00};
+static struct dsi_cmd_desc elvss_get_cmd = {
+	DTYPE_DCS_READ, 1, 0, 1, DEFAULT_DELAY, sizeof(elvss_val), elvss_val
 };
 
 /*
@@ -429,9 +438,35 @@ static struct dsi_cmd_desc set_brightness_cmds[] = {
 		sizeof(gamma_set_update), gamma_set_update}
 };
 
+static int mipi_mot_get_elvss(struct msm_fb_data_type *mfd)
+{
+	struct dsi_cmd_desc *cmd;
+	static int elvss_value = INVALID_VALUE;
+
+	if (elvss_value == INVALID_VALUE) {
+		if (mot_panel == NULL) {
+			pr_err("%s: invalid mot_panel\n", __func__);
+			return -EINVAL;
+		}
+		cmd = &elvss_get_cmd;
+		elvss_value =  get_panel_info(mfd, mot_panel, cmd);
+		if (elvss_value > 0) {
+			elvss_value = elvss_value & 0x3F;
+			pr_info("%s: elvss_value[D4 5:0] = 0x%2x\n", __func__,
+				 elvss_value);
+		} else
+			pr_err("%s: failed to read elvss_value[D4h] = %d\n",
+				 __func__, elvss_value);
+	}
+
+	return elvss_value;
+}
+
 static int panel_enable(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
+	int elvss_value = INVALID_VALUE;
+	int i;
 
 	if (mot_panel == NULL) {
 		pr_err("%s: Invalid mot_panel\n", __func__);
@@ -451,6 +486,14 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 			ARRAY_SIZE(smd_qhd_429_cmds_5));
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, smd_qhd_429_cmds_6,
 			ARRAY_SIZE(smd_qhd_429_cmds_6));
+	/* elvss */
+	elvss_value = mipi_mot_get_elvss(mfd);
+	if (elvss_value > 0)
+		for (i = 1; i < 5; i++)
+			elvss_output_set[i] = (u8) elvss_value;
+
+	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, elvss_set_cmd,
+		ARRAY_SIZE(elvss_set_cmd));
 
 	return 0;
 }
@@ -611,7 +654,7 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 	pinfo->mipi.rx_eot_ignore = 0;
 
 	mot_panel->acl_support_present = TRUE;
-	mot_panel->acl_enabled = TRUE; /* By default the ACL is enabled. */
+	mot_panel->acl_enabled = FALSE; /* By default the ACL is disbled. */
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
