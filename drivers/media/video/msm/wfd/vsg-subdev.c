@@ -402,6 +402,8 @@ static long vsg_queue_buffer(struct v4l2_subdev *sd, void *arg)
 					&temp->mdp_buf_info);
 			list_del(&temp->node);
 
+			list_del(&temp->node);
+
 			if (!is_last_buffer &&
 				!(temp->flags & VSG_NEVER_RELEASE)) {
 				vsg_release_input_buffer(context, temp);
@@ -423,6 +425,17 @@ static long vsg_queue_buffer(struct v4l2_subdev *sd, void *arg)
 
 			if (timespec_compare(&diff, &temp) >= 0)
 				push = true;
+		}
+	} else if (context->mode == VSG_MODE_CFR) {
+		if (!context->last_buffer) {
+			push = true;
+			/*
+			 * We need to reset the timer after pushing the buffer
+			 * otherwise, diff between two consecutive frames might
+			 * be less than max_frame_interval (for just one sample)
+			 */
+			hrtimer_forward_now(&context->threshold_timer,
+				ns_to_ktime(context->max_frame_interval));
 		}
 	}
 
