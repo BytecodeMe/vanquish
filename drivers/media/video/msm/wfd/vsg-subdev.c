@@ -402,8 +402,6 @@ static long vsg_queue_buffer(struct v4l2_subdev *sd, void *arg)
 					&temp->mdp_buf_info);
 			list_del(&temp->node);
 
-			list_del(&temp->node);
-
 			if (!is_last_buffer &&
 				!(temp->flags & VSG_NEVER_RELEASE)) {
 				vsg_release_input_buffer(context, temp);
