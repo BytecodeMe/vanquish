@@ -2361,12 +2361,18 @@ static u32 msmsdcc_setup_pwr(struct msmsdcc_host *host, struct mmc_ios *ios)
 			host->plat->cfg_mpm_sdiowakeup(
 				mmc_dev(mmc), SDC_DAT1_DISABLE);
 		/*
-		 * As VDD pad rail is always on, set low voltage for VDD
-		 * pad rail when slot is unused (when card is not present
-		 * or during system suspend).
+		 * Don't brown-out the uSD slot.  It makes some cards mad.
 		 */
-		msmsdcc_set_vddp_low_vol(host);
-		msmsdcc_setup_pins(host, false);
+		if (mmc->caps & MMC_CAP_NONREMOVABLE) {
+			/*
+			 * As VDD pad rail is always on, set low voltage for
+			 * VDD pad rail when slot is unused (when card is not
+			 * present or during system suspend).
+			 */
+			msmsdcc_set_vddp_low_vol(host);
+			msmsdcc_setup_pins(host, false);
+		} else
+			pr_debug("%s: not powering off\n", mmc_hostname(host->mmc));
 		break;
 	case MMC_POWER_UP:
 		/* writing PWR_UP bit is redundant */
@@ -4884,10 +4890,8 @@ msmsdcc_runtime_suspend(struct device *dev)
 	int rc = 0;
 	unsigned long flags;
 
-
 	if (host->plat->is_sdio_al_client)
 		return 0;
-	pr_debug("%s: %s: start\n", mmc_hostname(mmc), __func__);
 	if (mmc) {
 		host->sdcc_suspending = 1;
 		mmc->suspend_task = current;
