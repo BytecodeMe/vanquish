@@ -3756,6 +3756,10 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 		the_chip->bms_notify.is_battery_full = 0;
 #endif
 
+	/* Clear Any Charge Failures */
+	if (btm_state == BTM_NORM)
+		pm_chg_failed_clear(the_chip, 1);
+
 	the_chip->emu_accessory = (enum emu_accy) status;
 	pr_info("%s: accy_state: %d\n", __func__, the_chip->emu_accessory);
 	power_supply_changed(&the_chip->batt_psy);
@@ -4805,6 +4809,9 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 
 	INIT_WORK(&chip->bms_notify.work, bms_notify);
 	INIT_WORK(&chip->battery_id_valid_work, battery_id_valid);
+
+	/* Clear Any Charge Failures */
+	pm_chg_failed_clear(chip, 1);
 
 	/* determine what state the charger is in */
 	determine_initial_state(chip);
