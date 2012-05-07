@@ -892,7 +892,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			buf = temp;
 #endif
 	} /* Disable log masks */
-	if (*buf == 0x73 && *(int *)(buf+4) == 0) {
+	else if (*buf == 0x73 && *(int *)(buf+4) == 0) {
 		buf += 8;
 		/* Disable mask for each log code */
 		diag_disable_log_mask();

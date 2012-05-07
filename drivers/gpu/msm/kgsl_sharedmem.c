@@ -485,6 +485,8 @@ _kgsl_sharedmem_vmalloc(struct kgsl_memdesc *memdesc,
 		flush_dcache_page(page);
 		sg_set_page(&memdesc->sg[i], page, PAGE_SIZE, 0);
 	}
+	outer_cache_range_op_sg(memdesc->sg, memdesc->sglen,
+				KGSL_CACHE_OP_FLUSH);
 
 	ret = kgsl_mmu_map(pagetable, memdesc, protflags);
 
@@ -514,7 +516,6 @@ kgsl_sharedmem_vmalloc(struct kgsl_memdesc *memdesc,
 	BUG_ON(size == 0);
 
 	size = ALIGN(size, PAGE_SIZE * 2);
-
 	ret =  _kgsl_sharedmem_vmalloc(memdesc, pagetable, size,
 		GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (!ret)
