@@ -34,23 +34,29 @@ static int32_t dw9714_wrapper_i2c_write(struct msm_actuator_ctrl_t *a_ctrl,
 }
 
 static uint8_t dw9714_hw_params[] = {
-	0x0,
-	0x5,
-	0x6,
-	0x8,
-	0xB,
+	0x0,/*0*/
+	0x7,/*1*/
+	0x6,/*2*/
+	0x5,/*3*/
+	0xA,/*4*/
+	0xE,/*5*/
 };
 
 static uint16_t dw9714_macro_scenario[] = {
 	/* MOVE_NEAR dir*/
+	1,
+	3,
 	4,
+	8,
+	14,
 	DW9714_TOTAL_STEPS_NEAR_TO_FAR_MAX,
 };
 
 static uint16_t dw9714_inf_scenario[] = {
-	/* MOVE_FAR dir */
-	8,
-	22,
+	/* MOVE_NEAR dir*/
+	1,
+	6,
+	24,
 	DW9714_TOTAL_STEPS_NEAR_TO_FAR_MAX,
 };
 
@@ -84,6 +90,30 @@ static struct damping_params_t dw9714_macro_reg1_damping[] = {
 		.damping_delay = 1500,
 		.hw_params = &dw9714_hw_params[0],
 	},
+	/* Scene 3 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 1500,
+		.hw_params = &dw9714_hw_params[0],
+	},
+	/* Scene 4 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 1500,
+		.hw_params = &dw9714_hw_params[0],
+	},
+	/* Scene 5 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 1500,
+		.hw_params = &dw9714_hw_params[0],
+	},
+	/* Scene 6 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 1500,
+		.hw_params = &dw9714_hw_params[0],
+	},
 };
 
 static struct damping_params_t dw9714_macro_reg2_damping[] = {
@@ -92,13 +122,37 @@ static struct damping_params_t dw9714_macro_reg2_damping[] = {
 	{
 		.damping_step = 0xFF,
 		.damping_delay = 4500,
-		.hw_params = &dw9714_hw_params[4],
+		.hw_params = &dw9714_hw_params[1],
 	},
 	/* Scene 2 => Damping params */
 	{
 		.damping_step = 0xFF,
 		.damping_delay = 4500,
+		.hw_params = &dw9714_hw_params[2],
+	},
+	/* Scene 3 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 4500,
 		.hw_params = &dw9714_hw_params[3],
+	},
+	/* Scene 4 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 4500,
+		.hw_params = &dw9714_hw_params[2],
+	},
+	/* Scene 5 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 4500,
+		.hw_params = &dw9714_hw_params[4],
+	},
+	/* Scene 6 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 4500,
+		.hw_params = &dw9714_hw_params[5],
 	},
 };
 
@@ -108,19 +162,25 @@ static struct damping_params_t dw9714_inf_reg1_damping[] = {
 	{
 		.damping_step = 0xFF,
 		.damping_delay = 450,
-		.hw_params = &dw9714_hw_params[0],
+		.hw_params = &dw9714_hw_params[4],
 	},
 	/* Scene 2 => Damping params */
 	{
 		.damping_step = 0xFF,
 		.damping_delay = 450,
-		.hw_params = &dw9714_hw_params[0],
+		.hw_params = &dw9714_hw_params[4],
 	},
 	/* Scene 3 => Damping params */
 	{
 		.damping_step = 0xFF,
 		.damping_delay = 450,
-		.hw_params = &dw9714_hw_params[0],
+		.hw_params = &dw9714_hw_params[4],
+	},
+	/* Scene 4 => Damping params */
+	{
+		.damping_step = 0xFF,
+		.damping_delay = 450,
+		.hw_params = &dw9714_hw_params[4],
 	},
 };
 
@@ -129,20 +189,26 @@ static struct damping_params_t dw9714_inf_reg2_damping[] = {
 	/* Scene 1 => Damping params */
 	{
 		.damping_step = 0x1FF,
-		.damping_delay = 4500,
-		.hw_params = &dw9714_hw_params[2],
+		.damping_delay = 1000,
+		.hw_params = &dw9714_hw_params[1],
 	},
 	/* Scene 2 => Damping params */
 	{
 		.damping_step = 0x1FF,
-		.damping_delay = 4500,
-		.hw_params = &dw9714_hw_params[1],
+		.damping_delay = 24000,
+		.hw_params = &dw9714_hw_params[2],
 	},
 	/* Scene 3 => Damping params */
 	{
-		.damping_step = 27,
-		.damping_delay = 2700,
-		.hw_params = &dw9714_hw_params[0],
+		.damping_step = 0x1FF,
+		.damping_delay = 28000,
+		.hw_params = &dw9714_hw_params[4],
+	},
+	/* Scene 4 => Damping params */
+	{
+		.damping_step = 135,
+		.damping_delay = 20000,
+		.hw_params = &dw9714_hw_params[4],
 	},
 };
 
@@ -173,6 +239,14 @@ static struct damping_t dw9714_inf_regions[] = {
 
 static int32_t dw9714_set_params(struct msm_actuator_ctrl_t *a_ctrl)
 {
+	msm_camera_i2c_write(&a_ctrl->i2c_client,
+		0xEC, 0xA3, MSM_CAMERA_I2C_BYTE_DATA);
+	msm_camera_i2c_write(&a_ctrl->i2c_client,
+		0xA1, 0x04, MSM_CAMERA_I2C_BYTE_DATA);
+	msm_camera_i2c_write(&a_ctrl->i2c_client,
+		0xF2, 0x38, MSM_CAMERA_I2C_BYTE_DATA);
+	msm_camera_i2c_write(&a_ctrl->i2c_client,
+		0xDC, 0x51, MSM_CAMERA_I2C_BYTE_DATA);
 	return 0;
 }
 
