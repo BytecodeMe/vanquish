@@ -197,16 +197,14 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 		MSM_SAW1_BASE,
 	};
 
-	if (print_regs) {
-		pr_alert("L1 / TLB Error detected on CPU %d!\n", cpu);
-		pr_alert("\tCESR      = 0x%08x\n", cesr);
-		pr_alert("\tCPU speed = %lu\n", acpuclk_get_rate(cpu));
-		pr_alert("\tMIDR      = 0x%08x\n", read_cpuid_id());
-		pr_alert("\tPTE fuses = 0x%08x\n",
-					readl_relaxed(MSM_QFPROM_BASE + 0xC0));
-		pr_alert("\tPMIC_VREG = 0x%08x\n",
-					readl_relaxed(saw_bases[cpu] + 0x14));
-	}
+	pr_alert("L1 / TLB Error detected on CPU %d!\n", cpu);
+	pr_alert("\tCESR      = 0x%08x\n", cesr);
+	pr_alert("\tCPU speed = %lu\n", acpuclk_get_rate(cpu));
+	pr_alert("\tMIDR      = 0x%08x\n", read_cpuid_id());
+	pr_alert("\tPTE fuses = 0x%08x\n",
+				readl_relaxed(MSM_QFPROM_BASE + 0xC0));
+	pr_alert("\tPMIC_VREG = 0x%08x\n",
+				readl_relaxed(saw_bases[cpu] + 0x14));
 
 	if (cesr & CESR_DCTPE) {
 		pr_alert("D-cache tag parity error\n");

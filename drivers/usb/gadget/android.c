@@ -197,6 +197,11 @@ static int cable_connected;
 static int pc_command_adb;
 static u16 ctrl_adb_pid;
 
+static u16 cdrom_pid = DEFAULT_CDROM_PRODUCT_ID;
+static u16 cdrom2_pid = DEFAULT_CDROM2_PRODUCT_ID;
+static u16 usbnet_mtp_pid = DEFAULT_USBNETMTP_PRODUCT_ID;
+static u16 usbnet_mtp_adb_pid = DEFAULT_USBNETMTP_ADB_PRODUCT_ID;
+
 void android_usb_set_connected(int connected)
 {
 	cable_connected = connected;
@@ -275,31 +280,31 @@ static char *get_function_name(struct android_dev *dev)
 	switch (dev->current_function_type) {
 	case CDROM:
 		/* cdrom */
-		device_desc.idProduct = DEFAULT_CDROM_PRODUCT_ID;
+		device_desc.idProduct = cdrom_pid;
 		strncpy(function_name, "mass_storage", sizeof(function_name));
 		break;
 	case CDROM2:
 		/* cdrom2 */
-		device_desc.idProduct = DEFAULT_CDROM2_PRODUCT_ID;
+		device_desc.idProduct = cdrom2_pid;
 		strncpy(function_name, "mass_storage", sizeof(function_name));
 		break;
 	case USBNETMTP:
 		/* usbnetmtp */
 		if (pc_command_adb == PC_COMMAND_ADB_ON) {
-			device_desc.idProduct = DEFAULT_USBNETMTP_ADB_PRODUCT_ID;
+			device_desc.idProduct = usbnet_mtp_adb_pid;
 			strncpy(function_name, "mtp,usbnet,adb", sizeof(function_name));
 		} else {
-			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+			device_desc.idProduct = usbnet_mtp_pid;
 			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		}
 		break;
 	default:
 		/* usbnetmtp */
 		if (pc_command_adb == PC_COMMAND_ADB_ON) {
-			device_desc.idProduct = DEFAULT_USBNETMTP_ADB_PRODUCT_ID;
+			device_desc.idProduct = usbnet_mtp_adb_pid;
 			strncpy(function_name, "mtp,usbnet,adb", sizeof(function_name));
 		} else {
-			device_desc.idProduct = DEFAULT_USBNETMTP_PRODUCT_ID;
+			device_desc.idProduct = usbnet_mtp_pid;
 			strncpy(function_name, "mtp,usbnet", sizeof(function_name));
 		}
 		break;
@@ -1687,25 +1692,26 @@ pc_command_adb_store(struct device *pdev, struct device_attribute *attr,
 	return size;
 }
 
-static ssize_t
-ctrl_adb_pid_show(struct device *dev, struct device_attribute *attr,
-		char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%04x", ctrl_adb_pid);
-}
-
-static ssize_t
-ctrl_adb_pid_store(struct device *dev, struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	int value;
-	if (sscanf(buf, "%04x", &value) == 1) {
-		ctrl_adb_pid = value;
-		return size;
-	}
-
-	return -1;
-}
+#define PID_ATTR(field)							\
+static ssize_t								\
+field ## _show(struct device *dev, struct device_attribute *attr,	\
+		char *buf)						\
+{									\
+	return snprintf(buf, PAGE_SIZE, "%04x", field);			\
+}									\
+static ssize_t								\
+field ## _store(struct device *dev, struct device_attribute *attr,	\
+		const char *buf, size_t size)				\
+{									\
+	int value;							\
+	if (sscanf(buf, "%04x", &value) == 1) {				\
+		field = value;						\
+		return size;						\
+	}								\
+									\
+	return -1;							\
+}									\
+static DEVICE_ATTR(field, S_IRUGO | S_IWUSR, field ## _show, field ## _store);
 
 #define DESCRIPTOR_ATTR(field, format_string)				\
 static ssize_t								\
@@ -1766,7 +1772,12 @@ static DEVICE_ATTR(remote_wakeup, S_IRUGO | S_IWUSR,
 		remote_wakeup_show, remote_wakeup_store);
 static DEVICE_ATTR(smversion, S_IRUGO | S_IWUSR, smversion_show, smversion_store);
 static DEVICE_ATTR(pc_command_adb, S_IWUSR, NULL, pc_command_adb_store);
-static DEVICE_ATTR(ctrl_adb_pid, S_IRUGO | S_IWUSR, ctrl_adb_pid_show, ctrl_adb_pid_store);
+
+PID_ATTR(ctrl_adb_pid);
+PID_ATTR(cdrom_pid);
+PID_ATTR(cdrom2_pid);
+PID_ATTR(usbnet_mtp_pid);
+PID_ATTR(usbnet_mtp_adb_pid);
 
 static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_idVendor,
@@ -1786,6 +1797,10 @@ static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_remote_wakeup,
 	&dev_attr_pc_command_adb,
 	&dev_attr_ctrl_adb_pid,
+	&dev_attr_cdrom_pid,
+	&dev_attr_cdrom2_pid,
+	&dev_attr_usbnet_mtp_pid,
+	&dev_attr_usbnet_mtp_adb_pid,
 	NULL
 };
 

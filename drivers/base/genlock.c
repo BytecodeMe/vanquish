@@ -307,12 +307,15 @@ static int _genlock_lock(struct genlock *lock, struct genlock_handle *handle,
 	if (handle_has_lock(lock, handle)) {
 
 		/*
-		 * If the handle already holds the lock and the type matches,
-		 * then just increment the active pointer. This allows the
-		 * handle to do recursive locks
+		 * If the handle already holds the lock and the lock type is
+		 * a read lock then just increment the active pointer. This
+		 * allows the handle to do recursive read locks. Recursive
+		 * write locks are not allowed in order to support
+		 * synchronization within a process using a single gralloc
+		 * handle.
 		 */
 
-		if (lock->state == op) {
+		if (lock->state == _RDLOCK && op == _RDLOCK) {
 			handle->active++;
 			goto done;
 		}
@@ -321,32 +324,45 @@ static int _genlock_lock(struct genlock *lock, struct genlock_handle *handle,
 		 * If the handle holds a write lock then the owner can switch
 		 * to a read lock if they want. Do the transition atomically
 		 * then wake up any pending waiters in case they want a read
-		 * lock too.
+		 * lock too. In order to support synchronization within a
+		 * process the caller must explicity request to convert the
+		 * lock type with the GENLOCK_WRITE_TO_READ flag.
 		 */
 
-		if (op == _RDLOCK && handle->active == 1) {
-			lock->state = _RDLOCK;
-			wake_up(&lock->queue);
+		if (flags & GENLOCK_WRITE_TO_READ) {
+			if (lock->state == _WRLOCK && op == _RDLOCK) {
+				lock->state = _RDLOCK;
+				wake_up(&lock->queue);
+				goto done;
+			} else {
+				GENLOCK_LOG_ERR("Invalid state to convert"
+					"write to read\n");
+				ret = -EINVAL;
+				goto done;
+			}
+		}
+	} else {
+
+		/*
+		 * Check to ensure the caller has not attempted to convert a
+		 * write to a read without holding the lock.
+		 */
+
+		if (flags & GENLOCK_WRITE_TO_READ) {
+			GENLOCK_LOG_ERR("Handle must have lock to convert"
+				"write to read\n");
+			ret = -EINVAL;
 			goto done;
 		}
 
 		/*
-		 * Otherwise the user tried to turn a read into a write, and we
-		 * don't allow that.
+		 * If we request a read and the lock is held by a read, then go
+		 * ahead and share the lock
 		 */
-		GENLOCK_LOG_ERR("Trying to upgrade a read lock to a write"
-				"lock\n");
-		ret = -EINVAL;
-		goto done;
+
+		if (op == GENLOCK_RDLOCK && lock->state == _RDLOCK)
+			goto dolock;
 	}
-
-	/*
-	 * If we request a read and the lock is held by a read, then go
-	 * ahead and share the lock
-	 */
-
-	if (op == GENLOCK_RDLOCK && lock->state == _RDLOCK)
-		goto dolock;
 
 	/* Treat timeout 0 just like a NOBLOCK flag and return if the
 	   lock cannot be aquired without blocking */
@@ -356,15 +372,26 @@ static int _genlock_lock(struct genlock *lock, struct genlock_handle *handle,
 		goto done;
 	}
 
-	/* Wait while the lock remains in an incompatible state */
+	/*
+	 * Wait while the lock remains in an incompatible state
+	 * state    op    wait
+	 * -------------------
+	 * unlocked n/a   no
+	 * read     read  no
+	 * read     write yes
+	 * write    n/a   yes
+	 */
 
-	while (lock->state != _UNLOCKED) {
+	while ((lock->state == _RDLOCK && op == _WRLOCK) ||
+			lock->state == _WRLOCK) {
 		signed long elapsed;
 
 		spin_unlock_irqrestore(&lock->lock, irqflags);
 
 		elapsed = wait_event_interruptible_timeout(lock->queue,
-			lock->state == _UNLOCKED, ticks);
+			lock->state == _UNLOCKED ||
+			(lock->state == _RDLOCK && op == _RDLOCK),
+			ticks);
 
 		spin_lock_irqsave(&lock->lock, irqflags);
 
@@ -381,7 +408,7 @@ dolock:
 
 	list_add_tail(&handle->entry, &lock->active);
 	lock->state = op;
-	handle->active = 1;
+	handle->active++;
 
 done:
 	spin_unlock_irqrestore(&lock->lock, irqflags);
