@@ -106,7 +106,8 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MSM_ION_SF_SIZE		MSM_PMEM_SIZE
 #define MSM_ION_MM_FW_SIZE	0x200000
 #define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
-#define MSM_ION_QSECOM_SIZE	0x600000 /* (6MB) */
+#define MSM_ION_QSECOM_SIZE	0x200000 /* (2MB) */
+
 #define MSM_ION_MFC_SIZE	SZ_8K
 #define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
 #define MSM_ION_HEAP_NUM	8
