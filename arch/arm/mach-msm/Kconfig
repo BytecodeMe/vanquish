@@ -1703,6 +1703,13 @@ config MSM_LPASS_8960
 	 lpass hardware watchdog interrupt lines and plugs into the subsystem
 	 restart and PIL drivers. For MSM9615, it only supports a full chip reset.
 
+config KERNEL_PMEM_AUDIO_MMI
+	tristate "MSM 8960 PMEM AUDIO"
+	depends on (ARCH_MSM8960 || ARCH_MSM9615)
+	help
+	 This option disables use of the AUDIO related ION heap and leaves the pmem_audio
+	 allocation support enabled for the MSM8960 and MSM9615.
+
 config MSM_WCNSS_SSR_8960
 	tristate "MSM 8960 WCNSS restart module"
 	depends on (ARCH_MSM8960)
