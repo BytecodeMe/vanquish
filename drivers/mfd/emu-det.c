@@ -343,6 +343,7 @@ struct emu_det_data {
 
 #define SCI_OUT_DEBOUNCE_TMOUT	400	/* ms */
 #define VBUS_5V_LIMIT		3999	/* mV */
+#define VBUS_SETTLE_TIME	3000	/* ms */
 
 #define external_5V_enable()	external_5V_setup(1)
 #define external_5V_disable()	external_5V_setup(0)
@@ -1265,20 +1266,16 @@ static void detection_work(void)
 		last_irq = get_sense();
 
 		if (!test_bit(SESS_VLD_BIT, &data->sense) &&
-		    !test_bit(FLOAT_BIT, &data->sense) &&
-		    (data->whisper_auth == AUTH_PASSED)) {
+		    !test_bit(FLOAT_BIT, &data->sense)) {
 			pr_emu_det(STATUS, "detection_work:" \
-					" SPD->PPD transition\n");
-			/* SPD->PPD transition */
-			emu_id_protection_off();
-			/* ID behavior is undetermined during
-			   transition; need a flag to debounce */
-			data->spd_ppd_transition = true;
-			notify_whisper_switch(ACCY_WHISPER_PPD);
-			notify_accy(ACCY_WHISPER_PPD);
-			data->state = WHISPER_PPD;
+				   " SPD->PPD transition\n");
+			notify_accy(ACCY_NONE);
+			notify_whisper_switch(ACCY_NONE);
+			data->state = CONFIG;
+			msleep(VBUS_SETTLE_TIME);
+			queue_delayed_work(data->wq, &data->work, 0);
 		} else if (!test_bit(SESS_VLD_BIT, &data->sense) &&
-			    test_bit(SESS_END_BIT, &data->sense)) {
+		    test_bit(SESS_END_BIT, &data->sense)) {
 			/* charger disconnect */
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->work, 0);
@@ -1296,39 +1293,29 @@ static void detection_work(void)
 		if (test_bit(FLOAT_BIT, &data->sense)) {
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->work, 0);
-		} else if (test_bit(SESS_VLD_BIT, &data->sense) &&
-				data->spd_ppd_transition) {
-			/* Successful transition completes with VBUS */
-			/* interrupt due to 5V provided to SWB+.     */
-			data->spd_ppd_transition = false;
-			pr_emu_det(DEBUG, "SPD->PPD complete\n");
-			/* Car docks misbehave and fire extra SCI_OUT*/
-			/* that has to be debounced to avoid getting */
-			/* into CHARGER loop because of this misfire.*/
-			if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
-				pr_emu_det(DEBUG, "false SCI_OUT debounced\n");
-			}
-		} else if ((last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) &&
-			    ((data->whisper_auth == AUTH_PASSED) ||
-			     (data->whisper_auth == AUTH_FAILED))) {
+		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
 			if (whisper_audio_check(data) == 0)  {
+				emu_det_disable_irq(EMU_SCI_OUT_IRQ);
 				pm8921_charger_unregister_vbus_sn(0);
-				pr_emu_det(STATUS, "detection_work:" \
-						" Enter CHARGER loop\n");
 				external_5V_disable();
 				msleep(20);
 				if (adc_vbus_get() > VBUS_5V_LIMIT) {
-					pr_emu_det(STATUS, "detection work:" \
-						" PPD->SPD transition\n");
-					notify_accy(ACCY_CHARGER);
-					notify_whisper_switch(
-						ACCY_CHARGER);
-					data->state = CHARGER;
+					pr_emu_det(STATUS, "detection_work:" \
+						   "PPD->SPD transition\n");
+					notify_accy(ACCY_NONE);
+					notify_whisper_switch(ACCY_NONE);
+					data->state = CONFIG;
+					msleep(VBUS_SETTLE_TIME);
+					queue_delayed_work(data->wq,
+							   &data->work, 0);
 				} else {
+					pr_emu_det(STATUS, "detection_work:" \
+						   "Erroneous ID interrupt\n");
 					external_5V_enable();
 				}
 				pm8921_charger_register_vbus_sn(
 					&emu_det_vbus_state);
+				emu_det_enable_irq(EMU_SCI_OUT_IRQ);
 			}
 		}
 		break;
