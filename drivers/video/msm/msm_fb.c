@@ -1515,6 +1515,13 @@ static int msm_fb_release(struct fb_info *info, int user)
 		     msm_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 				      mfd->op_enable)) != 0) {
 			printk(KERN_ERR "msm_fb_release: can't turn off display!\n");
+			/*
+			 * It should be framework exited in early suspend.
+			 * add 1 back to mfd->ref_cnt so fb could be opened
+			 * in next time.
+			 */
+			mfd->ref_cnt++;
+			pm_runtime_put(info->dev);
 			return ret;
 		}
 	}
