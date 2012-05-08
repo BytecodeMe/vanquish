@@ -3756,7 +3756,7 @@ static void __init msm8960_mmi_init(void)
 	msm8960_init_hdmi(&hdmi_msm_device, &hdmi_msm_data);
 #endif
 
-	pm8921_init(keypad_data, boot_mode_is_factory(), 0, 0,
+	pm8921_init(keypad_data, boot_mode_is_factory(), 0, 45,
 		    reboot_ptr, battery_data_is_meter_locked(),
 		    get_hot_temp_dt(),  get_hot_offset_dt());
 
