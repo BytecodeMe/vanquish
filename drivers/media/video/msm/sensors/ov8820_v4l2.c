@@ -597,6 +597,7 @@ static int32_t ov8820_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 	if (line > (fl_lines - offset))
 		fl_lines = line + offset;
 
+	fl_lines += (fl_lines & 0x1);
 	s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_output_reg_addr->frame_length_lines, fl_lines,
