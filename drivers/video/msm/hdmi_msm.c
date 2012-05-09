@@ -4385,12 +4385,14 @@ static void hdmi_msm_hpd_off(void)
 
 	hdmi_msm_set_mode(FALSE);
 	hdmi_msm_state->hpd_initialized = FALSE;
+	hdmi_msm_state->pd->enable_5v(0);
+
+#ifndef SUPPORT_US_CTRL_OF_HPD
 	hdmi_msm_powerdown_phy();
 	hdmi_msm_state->pd->cec_power(0);
-	hdmi_msm_state->pd->enable_5v(0);
 	hdmi_msm_state->pd->core_power(0, 1);
 	hdmi_msm_clk(0);
-	hdmi_msm_state->hpd_initialized = FALSE;
+#endif
 }
 
 static void hdmi_msm_dump_regs(const char *prefix)
@@ -4460,9 +4462,20 @@ static int hdmi_msm_hpd_on(bool trigger_handler)
 	return 0;
 }
 
-#ifndef SUPPORT_US_CTRL_OF_HPD
 static int hdmi_msm_power_ctrl(boolean enable)
 {
+#ifdef SUPPORT_US_CTRL_OF_HPD
+	/* If HPD is disabled by user space and the HDMI FB is
+	 * being suspended, disable all the power and clocks
+	 * as was intended to be done in hdmi_msm_hpd_off()
+	 */
+	if (!external_common_state->hpd_feature_on && !enable) {
+		hdmi_msm_powerdown_phy();
+		hdmi_msm_state->pd->cec_power(0);
+		hdmi_msm_state->pd->core_power(0, 1);
+		hdmi_msm_clk(0);
+	}
+#else
 	if (!external_common_state->hpd_feature_on)
 		return 0;
 
@@ -4470,10 +4483,9 @@ static int hdmi_msm_power_ctrl(boolean enable)
 		hdmi_msm_hpd_on(true);
 	else
 		hdmi_msm_hpd_off();
-
+#endif
 	return 0;
 }
-#endif
 
 static int hdmi_msm_power_on(struct platform_device *pdev)
 {
@@ -4854,9 +4866,7 @@ static struct platform_driver this_driver = {
 static struct msm_fb_panel_data hdmi_msm_panel_data = {
 	.on = hdmi_msm_power_on,
 	.off = hdmi_msm_power_off,
-#ifndef SUPPORT_US_CTRL_OF_HPD
 	.power_ctrl = hdmi_msm_power_ctrl,
-#endif
 };
 
 static struct platform_device this_device = {
