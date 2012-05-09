@@ -54,7 +54,7 @@ void __list_del_entry(struct list_head *entry)
 	    WARN(next->prev != entry,
 		"list_del corruption. next->prev should be %p, "
 		"but was %p\n", entry, next->prev))
-		BUG();
+		return;
 
 	__list_del(prev, next);
 }
