@@ -515,6 +515,19 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				rc = -EFAULT;
 			break;
 
+		case CFG_SET_FPS_RANGE:
+			if (s_ctrl->func_tbl->sensor_set_frame_rate_range
+					== NULL) {
+				pr_err("%s: sensor_set_frame_rate_range!\n",
+						__func__);
+				rc = -EFAULT;
+				break;
+			}
+			rc = s_ctrl->func_tbl->sensor_set_frame_rate_range(
+					s_ctrl,
+					&cdata.cfg.fps_range);
+			break;
+
 		default:
 			rc = -EFAULT;
 			break;

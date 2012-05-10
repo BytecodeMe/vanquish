@@ -776,7 +776,8 @@ struct msm_snapshot_pp_status {
 #define CFG_SET_LENSSHADING		40
 #define CFG_SET_TARGET_EXPOSURE		41
 #define CFG_GET_MODULE_INFO             42
-#define CFG_MAX				43
+#define CFG_SET_FPS_RANGE		43
+#define CFG_MAX				44
 
 
 #define MOVE_NEAR	0
@@ -1092,6 +1093,11 @@ struct factory_settings {
 	uint8_t target_exposure;
 };
 
+struct fps_range_t {
+	uint16_t max_fps;
+	uint16_t min_fps;
+};
+
 struct sensor_cfg_data {
 	int cfgtype;
 	int mode;
@@ -1132,6 +1138,7 @@ struct sensor_cfg_data {
 		struct factory_settings fact_set;
 		struct snapshotdata data;
 		struct otp_info_t module_info;
+		struct fps_range_t fps_range;
 	} cfg;
 };
 
