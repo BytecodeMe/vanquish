@@ -801,6 +801,10 @@ static void msm_hs_stop_tx_locked(struct uart_port *uport)
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 
 	msm_uport->tx.tx_ready_int_en = 0;
+	pr_info("==>>%s(): tx_ready_int_en:%d\t"
+			"tx_dma_in_flight:%d <<==\n", __func__,
+			msm_uport->tx.tx_ready_int_en,
+			msm_uport->tx.dma_in_flight);
 }
 
 /*
@@ -899,6 +903,13 @@ static void msm_hs_submit_tx_locked(struct uart_port *uport)
 				   sizeof(u32), DMA_TO_DEVICE);
 
 	msm_dmov_enqueue_cmd(msm_uport->dma_tx_channel, &tx->xfer);
+	pr_info("==>>%s(): Queue Tx Cmd on channel:%d<<==\n",
+			__func__, msm_uport->dma_tx_channel);
+
+	pr_info("==>>%s(): tx_ready_int_en:%d\t"
+			"tx_dma_in_flight:%d <<==\n", __func__,
+			msm_uport->tx.tx_ready_int_en,
+			msm_uport->tx.dma_in_flight);
 }
 
 /* Start to receive the next chunk of data */
@@ -1103,8 +1114,15 @@ static void msm_hs_start_tx_locked(struct uart_port *uport )
 
 	if (msm_uport->tx.tx_ready_int_en == 0) {
 		msm_uport->tx.tx_ready_int_en = 1;
-		if (msm_uport->tx.dma_in_flight == 0)
+		if (msm_uport->tx.dma_in_flight == 0) {
+
+			pr_info("==>>%s(): tx_ready_int_en:%d\t"
+				"tx_dma_in_flight:%d <<==\n",
+				__func__,
+				msm_uport->tx.tx_ready_int_en,
+				msm_uport->tx.dma_in_flight);
 			msm_hs_submit_tx_locked(uport);
+		}
 	}
 
 	clk_disable(msm_uport->clk);
@@ -1127,6 +1145,7 @@ static void msm_hs_dmov_tx_callback(struct msm_dmov_cmd *cmd_ptr,
 
 	msm_uport = container_of(cmd_ptr, struct msm_hs_port, tx.xfer);
 
+	pr_info("==>>%s(): Tx CMD Complete <<==\n", __func__);
 	tasklet_schedule(&msm_uport->tx.tlet);
 }
 
@@ -1139,6 +1158,7 @@ static void msm_serial_hs_tx_tlet(unsigned long tlet_ptr)
 	spin_lock_irqsave(&(msm_uport->uport.lock), flags);
 	clk_enable(msm_uport->clk);
 
+	pr_info("==>>%s(): Set TX READY interrupt <<==\n", __func__);
 	msm_uport->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
 	msm_hs_write(&(msm_uport->uport), UARTDM_IMR_ADDR, msm_uport->imr_reg);
 	/* Calling clk API. Hence mb() requires. */
@@ -1451,8 +1471,13 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		tx->dma_in_flight = 0;
 
 		uport->icount.tx += tx->tx_count;
-		if (tx->tx_ready_int_en)
+		if (tx->tx_ready_int_en) {
+			pr_info("==>>%s(): tx_ready_int_en:%d\t"
+				"tx_dma_in_flight:%d <<==\n", __func__,
+				msm_uport->tx.tx_ready_int_en,
+				msm_uport->tx.dma_in_flight);
 			msm_hs_submit_tx_locked(uport);
+		}
 
 		if (uart_circ_chars_pending(tx_buf) < WAKEUP_CHARS)
 			uart_write_wakeup(uport);
