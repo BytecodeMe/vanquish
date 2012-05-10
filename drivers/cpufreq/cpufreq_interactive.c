@@ -360,10 +360,12 @@ static int cpufreq_interactive_up_task(void *data)
 			pcpu = &per_cpu(cpuinfo, cpu);
 			smp_rmb();
 
-			if (!pcpu->governor_enabled)
-				continue;
-
 			mutex_lock(&set_speed_lock);
+
+			if (!pcpu->governor_enabled) {
+				mutex_unlock(&set_speed_lock);
+				continue;
+			}
 
 			for_each_cpu(j, pcpu->policy->cpus) {
 				struct cpufreq_interactive_cpuinfo *pjcpu =
@@ -580,6 +582,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		break;
 
 	case CPUFREQ_GOV_STOP:
+		mutex_lock(&set_speed_lock);
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
 			pcpu->governor_enabled = 0;
@@ -594,7 +597,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			 */
 			pcpu->idle_exit_time = 0;
 		}
-
+		mutex_unlock(&set_speed_lock);
 		flush_work(&freq_scale_down_work);
 		if (atomic_dec_return(&active_count) > 0)
 			return 0;
