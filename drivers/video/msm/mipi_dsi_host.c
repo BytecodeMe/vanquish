@@ -1610,6 +1610,7 @@ int mipi_reg_write(struct msm_fb_data_type *mfd, __u16 size, __u8 *buf,
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mipi_dsi_mdp_busy_wait(mfd);
 	mdp4_dsi_blt_dmap_busy_wait(mfd);
 
 	old_tx_mode = mipi_get_tx_power_mode();
@@ -1667,6 +1668,7 @@ int mipi_reg_read(struct msm_fb_data_type *mfd, __u16 address,
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mipi_dsi_mdp_busy_wait(mfd);
 	mdp4_dsi_blt_dmap_busy_wait(mfd);
 
 	old_tx_mode = mipi_get_tx_power_mode();
