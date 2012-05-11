@@ -803,8 +803,9 @@ void __mdp_histogram_reset(struct mdp_hist_mgmt *mgmt);
 void mdp_footswitch_ctrl(boolean on);
 
 static inline void mdp_hang_panic(void) {
-	print_hex_dump(KERN_ERR, "MDP_HANG", DUMP_PREFIX_OFFSET, 32, 4,
-		       (void *)MDP_BASE, 0xF0600, false);
+	print_hex_dump(KERN_ERR, "MDP_HANG:", DUMP_PREFIX_OFFSET, 32, 4,
+		       (void *)MDP_BASE + 0xE0000, 0x100, false);
+	pr_err("MDP dump finished.\n");
 	BUG();
 }
 
