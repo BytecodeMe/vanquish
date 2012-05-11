@@ -277,6 +277,39 @@ static struct pm8xxx_adc_scale_tbl adc_scale_tbls[ADC_SCALE_NONE] = {
 };
 
 #ifdef CONFIG_MACH_MSM8960_MMI
+static struct regulator *therm_reg;
+static int therm_reg_enable;
+
+void pm8921_chg_force_therm_bias(struct device *dev, int enable)
+{
+	int rc = 0;
+
+	if (!therm_reg) {
+		therm_reg = regulator_get(dev, "8921_l14");
+		therm_reg_enable = 0;
+	}
+
+	if (enable && !therm_reg_enable) {
+		if (!IS_ERR_OR_NULL(therm_reg)) {
+			rc = regulator_set_voltage(therm_reg, 1800000, 1800000);
+			if (!rc)
+				rc = regulator_enable(therm_reg);
+			if (rc)
+				pr_err("L14 failed to set voltage 8921_l14\n");
+			else
+				therm_reg_enable = 1;
+		}
+	} else if(!enable && therm_reg_enable) {
+		if (!IS_ERR_OR_NULL(therm_reg)) {
+			rc = regulator_disable(therm_reg);
+			if (rc)
+				pr_err("L14 unable to disable 8921_l14\n");
+			else
+				therm_reg_enable = 0;
+		}
+	}
+}
+
 static int battery_timeout;
 
 int find_mmi_battery(struct mmi_battery_cell *cell_info)
@@ -572,6 +605,7 @@ static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.temp_range_cb          = temp_range_check,
 	.batt_alarm_delta	= 100,
 	.lower_battery_threshold = 3400,
+	.force_therm_bias	= pm8921_chg_force_therm_bias,
 #endif
 };
 #else

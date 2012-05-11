@@ -236,6 +236,7 @@ struct pm8921_charger_platform_data {
 	unsigned int			lower_battery_threshold;
 	int			       	hot_temp;
 	int			       	hot_temp_offset;
+	void (*force_therm_bias) (struct device *dev, int enable);
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);

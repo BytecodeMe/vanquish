@@ -1569,10 +1569,15 @@ calculate_percent:
 			last_chargecycles);
 	the_chip->start_percent = -EINVAL;
 	the_chip->end_percent = -EINVAL;
+}
+EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
+
+void pm8921_bms_no_external_accy(void)
+{
 	pm_bms_masked_write(the_chip, BMS_TOLERANCES,
 				IBAT_TOL_MASK, IBAT_TOL_NOCHG);
 }
-EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
+EXPORT_SYMBOL_GPL(pm8921_bms_no_external_accy);
 
 #ifdef CONFIG_PM8921_FLOAT_CHARGE
 void pm8921_bms_charging_full(void)

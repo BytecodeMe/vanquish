@@ -3735,6 +3735,9 @@ static int pm8921_charging_reboot(struct notifier_block *nb,
 static int pm8921_chg_accy_notify(struct notifier_block *nb,
 		unsigned long status, void *unused)
 {
+	struct pm8921_charger_platform_data *pdata =
+		the_chip->dev->platform_data;
+
 	if ((enum emu_accy) status == EMU_ACCY_FACTORY) {
 		__pm8921_charger_vbus_draw(1500);
 		pm_chg_auto_enable(the_chip, 0);
@@ -3752,8 +3755,16 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 	}
 
 #ifdef CONFIG_PM8921_FLOAT_CHARGE
-	if ((enum emu_accy) status == EMU_ACCY_NONE)
+	if ((enum emu_accy) status == EMU_ACCY_NONE) {
 		the_chip->bms_notify.is_battery_full = 0;
+		pm8921_bms_no_external_accy();
+		if (pdata->force_therm_bias)
+			pdata->force_therm_bias(the_chip->dev, 0);
+	}
+	else {
+		if (pdata->force_therm_bias)
+			pdata->force_therm_bias(the_chip->dev, 1);
+	}
 #endif
 
 	/* Clear Any Charge Failures */

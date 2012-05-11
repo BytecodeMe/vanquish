@@ -211,6 +211,11 @@ int pm8921_bms_get_simultaneous_battery_voltage_and_current(int *ibat_ua,
  *				is Full.
  */
 void pm8921_bms_charging_full(void);
+/**
+ * pm8921_bms_no_external_accy - function to notify the bms driver that No Accy
+ *				is attached.
+ */
+void pm8921_bms_no_external_accy(void);
 #else
 static inline void pm8921_bms_charging_full(void)
 {
@@ -259,6 +264,9 @@ static inline int pm8921_bms_get_simultaneous_battery_voltage_and_current(
 						int *ibat_ua, int *vbat_uv)
 {
 	return -ENXIO;
+}
+static inline void pm8921_bms_no_external_accy(void)
+{
 }
 #endif
 
