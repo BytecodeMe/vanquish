@@ -70,9 +70,9 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MDP_VSYNC_DISABLED	false
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 3) /* 4 bpp x 3 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1280 * 736 * 4 * 3) /* 4 bpp x 3 pages */
 #else
-#define MSM_FB_PRIM_BUF_SIZE (1920 * 1200 * 4 * 2) /* 4 bpp x 2 pages */
+#define MSM_FB_PRIM_BUF_SIZE (1280 * 736 * 4 * 2) /* 4 bpp x 2 pages */
 #endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
@@ -83,8 +83,15 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
+#ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+#define MSM_FB_WRITEBACK_BUF_SIZE (1280 * 720 * 2) /* 2 bpp x 1 page */
+#else
+#define MSM_FB_WRITEBACK_BUF_SIZE 0
+#endif
+
 /* Note: must be multiple of 4096 */
-#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE, 4096)
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + \
+			MSM_FB_EXT_BUF_SIZE + MSM_FB_WRITEBACK_BUF_SIZE, 4096)
 
 #ifdef CONFIG_I2C
 
