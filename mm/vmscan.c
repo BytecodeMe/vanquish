@@ -1047,14 +1047,14 @@ static void lru_list_move(struct list_head * list, struct list_head *head)
 		list, LIST_POISON1) ||
 	    WARN(prev == LIST_POISON2,
 		"lru_list_move corruption, %p->prev is LIST_POISON2 (%p)\n",
-		list, LIST_POISON2) ||
-	    WARN(prev->next != list,
-		"lru_list_move corruption. prev->next should be %p, "
-		"but was %p\n", list, prev->next) ||
-	    WARN(next->prev != list,
-		"lru_list_move corruption. next->prev should be %p, "
-		"but was %p\n", list, next->prev))
+		list, LIST_POISON2))
+		return;
+	if ((prev->next != list) || (next->prev != list)) {
+		smp_send_all_cpu_backtrace();
+		printk(KERN_ERR"BUG! list = %p, prev->next = %p, next->prev=%p \n",
+			list, prev->next, next->prev);
 		BUG();
+	}
 
 	list_move(list, head);
 }
