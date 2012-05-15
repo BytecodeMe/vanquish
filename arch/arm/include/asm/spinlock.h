@@ -87,6 +87,9 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	WFE("ne")
 "	strexeq	%0, %2, [%1]\n"
 "	teqeq	%0, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bne	1b"
 	: "=&r" (tmp)
 	: "r" (&lock->lock), "r" (1)
@@ -271,6 +274,9 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	WFE("ne")
 "	strexeq	%0, %2, [%1]\n"
 "	teq	%0, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bne	1b"
 	: "=&r" (tmp)
 	: "r" (&rw->lock), "r" (0x80000000)
@@ -337,6 +343,9 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 "	strexpl	%1, %0, [%2]\n"
 	WFE("mi")
 "	rsbpls	%0, %1, #0\n"
+#if __LINUX_ARM_ARCH__ >= 7
+"	dmb\n"
+#endif
 "	bmi	1b"
 	: "=&r" (tmp), "=&r" (tmp2)
 	: "r" (&rw->lock)
