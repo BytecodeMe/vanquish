@@ -517,6 +517,7 @@ static struct acpu_level acpu_freq_tbl_8960_kraitv2_nom[] = {
 	{ 0, { 0 } }
 };
 
+/*
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_fast[] = {
 	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   850000 },
 	{ 1, {   384000, PLL_8, 0, 2, 0x00 }, L2(1),   850000 },
@@ -543,7 +544,7 @@ static struct acpu_level acpu_freq_tbl_8960_kraitv2_fast[] = {
 	{ 1, {  1512000, HFPLL, 1, 0, 0x38 }, L2(16), 1150000 },
 	{ 0, { 0 } }
 };
-
+*/
 /* TODO: Update vdd_dig and vdd_mem when voltage data is available. */
 #undef L2
 #define L2(x) (&l2_freq_tbl_8064[(x)])
@@ -1341,8 +1342,8 @@ static const int krait_needs_vmin(void)
 static void kraitv2_apply_vmin(struct acpu_level *tbl)
 {
 	for (; tbl->speed.khz != 0; tbl++)
-		if (tbl->vdd_core < 1200000)
-			tbl->vdd_core = 1200000;
+		if (tbl->vdd_core < 1150000)
+			tbl->vdd_core = 1150000;
 }
 
 static struct acpu_level * __init select_freq_plan(void)
@@ -1374,7 +1375,8 @@ static struct acpu_level * __init select_freq_plan(void)
 		case 0x3:
 			pr_info("ACPU PVS: Fast\n");
 			v1 = acpu_freq_tbl_8960_kraitv1_nom_fast;
-			v2 = acpu_freq_tbl_8960_kraitv2_fast;
+			/* v2 = acpu_freq_tbl_8960_kraitv2_fast; */
+			v2 = acpu_freq_tbl_8960_kraitv2_nom;
 			break;
 		default:
 			pr_warn("ACPU PVS: Unknown. Defaulting to slow.\n");
