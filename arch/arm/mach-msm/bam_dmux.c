@@ -1457,7 +1457,6 @@ static void ul_timeout(struct work_struct *work)
 {
 	unsigned long flags;
 	int ret;
-	static int stall_count;
 
 	if (in_global_reset)
 		return;
@@ -1479,13 +1478,6 @@ static void ul_timeout(struct work_struct *work)
 					__func__, info->ts_sec, info->ts_nsec);
 				DBG_INC_TX_STALL_CNT();
 				ul_packet_written = 1;
-				++stall_count;
-				if (stall_count > 30)
-					panic("%s: stalled for %d continous"
-						" checks\n", __func__,
-						stall_count);
-			} else {
-				stall_count = 0;
 			}
 			spin_unlock(&bam_tx_pool_spinlock);
 		}
