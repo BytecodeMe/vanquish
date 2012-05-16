@@ -106,7 +106,7 @@ struct iv_lmk_private {
 enum flags { DM_CRYPT_SUSPENDED, DM_CRYPT_KEY_VALID };
 
 /*
- * The fields in here must be read only after initialization.
+ * The fields in here must be read only after initialization,
  */
 struct crypt_config {
 	struct dm_dev *dev;
@@ -330,6 +330,7 @@ static void crypt_iv_essiv_dtr(struct crypt_config *cc)
 		crypto_free_cipher(essiv_tfm);
 
 	cc->iv_private = NULL;
+
 }
 
 static int crypt_iv_essiv_ctr(struct crypt_config *cc, struct dm_target *ti,
@@ -383,6 +384,7 @@ bad:
 static int crypt_iv_essiv_gen(struct crypt_config *cc, u8 *iv,
 			      struct dm_crypt_request *dmreq)
 {
+
 	struct crypto_cipher *essiv_tfm = cc->iv_private;
 
 	memset(iv, 0, cc->iv_size);
