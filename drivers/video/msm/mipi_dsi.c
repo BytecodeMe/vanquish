@@ -171,11 +171,21 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	u32 ystride, bpp, data;
 	u32 dummy_xres, dummy_yres;
 	int target_type = 0;
+	int old_nice;
 
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
 	var = &fbi->var;
 	pinfo = &mfd->panel_info;
+
+	/*
+	 * Now first priority is to turn on LCD quickly for better
+	 * user experience. We set current task to higher priority
+	 * and restore it after panel is on.
+	 */
+	old_nice = task_nice(current);
+	if (old_nice > -20)
+		set_user_nice(current, -20);
 
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(1);
@@ -194,6 +204,17 @@ static int mipi_dsi_on(struct platform_device *pdev)
 							mipi->force_clk_lane_hs)
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00a8, 0);
 
+	mipi_dsi_phy_ctrl(1);
+
+	if (mdp_rev == MDP_REV_42 && mipi_dsi_pdata)
+		target_type = mipi_dsi_pdata->target_type;
+
+	mipi_dsi_phy_init(0, &(mfd->panel_info), target_type);
+
+	local_bh_disable();
+	mipi_dsi_clk_enable();
+	local_bh_enable();
+
 	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 1);
 	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0);
 
@@ -205,17 +226,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	vspw = var->vsync_len;
 	width = mfd->panel_info.xres;
 	height = mfd->panel_info.yres;
-
-	mipi_dsi_phy_ctrl(1);
-
-	if (mdp_rev == MDP_REV_42 && mipi_dsi_pdata)
-		target_type = mipi_dsi_pdata->target_type;
-
-	mipi_dsi_phy_init(0, &(mfd->panel_info), target_type);
-
-	local_bh_disable();
-	mipi_dsi_clk_enable();
-	local_bh_enable();
 
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		dummy_xres = mfd->panel_info.mipi.xres_pad;
@@ -359,6 +369,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		mutex_unlock(&mfd->dma->ov_mutex);
 	else
 		up(&mfd->dma->mutex);
+
+	/* Restore current priority */
+	if (old_nice > -20)
+		set_user_nice(current, old_nice);
 
 	pr_debug("%s-:\n", __func__);
 
