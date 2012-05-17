@@ -38,11 +38,15 @@ struct genlock_lock {
 	struct genlock_lock)
 #define GENLOCK_IOC_ATTACH _IOW(GENLOCK_IOC_MAGIC, 2, \
 	struct genlock_lock)
+
+/* Deprecated */
 #define GENLOCK_IOC_LOCK _IOW(GENLOCK_IOC_MAGIC, 3, \
 	struct genlock_lock)
 
 /* Deprecated */
 #define GENLOCK_IOC_RELEASE _IO(GENLOCK_IOC_MAGIC, 4)
 #define GENLOCK_IOC_WAIT _IOW(GENLOCK_IOC_MAGIC, 5, \
+	struct genlock_lock)
+#define GENLOCK_IOC_DREADLOCK _IOW(GENLOCK_IOC_MAGIC, 6, \
 	struct genlock_lock)
 #endif

@@ -417,7 +417,7 @@ done:
 }
 
 /**
- * genlock_lock - Acquire or release a lock
+ * genlock_lock - Acquire or release a lock (depreciated)
  * @handle - pointer to the genlock handle that is requesting the lock
  * @op - the operation to perform (RDLOCK, WRLOCK, UNLOCK)
  * @flags - flags to control the operation
@@ -427,6 +427,61 @@ done:
  */
 
 int genlock_lock(struct genlock_handle *handle, int op, int flags,
+	uint32_t timeout)
+{
+	struct genlock *lock;
+	unsigned long irqflags;
+
+	int ret = 0;
+
+	if (IS_ERR_OR_NULL(handle)) {
+		GENLOCK_LOG_ERR("Invalid handle\n");
+		return -EINVAL;
+	}
+
+	lock = handle->lock;
+
+	if (lock == NULL) {
+		GENLOCK_LOG_ERR("Handle does not have a lock attached\n");
+		return -EINVAL;
+	}
+
+	switch (op) {
+	case GENLOCK_UNLOCK:
+		ret = _genlock_unlock(lock, handle);
+		break;
+	case GENLOCK_RDLOCK:
+		spin_lock_irqsave(&lock->lock, irqflags);
+		if (handle_has_lock(lock, handle)) {
+			/* request the WRITE_TO_READ flag for compatibility */
+			flags |= GENLOCK_WRITE_TO_READ;
+		}
+		spin_unlock_irqrestore(&lock->lock, irqflags);
+		/* fall through to take lock */
+	case GENLOCK_WRLOCK:
+		ret = _genlock_lock(lock, handle, op, flags, timeout);
+		break;
+	default:
+		GENLOCK_LOG_ERR("Invalid lock operation\n");
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(genlock_lock);
+
+/**
+ * genlock_dreadlock - Acquire or release a lock
+ * @handle - pointer to the genlock handle that is requesting the lock
+ * @op - the operation to perform (RDLOCK, WRLOCK, UNLOCK)
+ * @flags - flags to control the operation
+ * @timeout - optional timeout to wait for the lock to come free
+ *
+ * Returns: 0 on success or error code on failure
+ */
+
+int genlock_dreadlock(struct genlock_handle *handle, int op, int flags,
 	uint32_t timeout)
 {
 	struct genlock *lock;
@@ -461,7 +516,7 @@ int genlock_lock(struct genlock_handle *handle, int op, int flags,
 
 	return ret;
 }
-EXPORT_SYMBOL(genlock_lock);
+EXPORT_SYMBOL(genlock_dreadlock);
 
 /**
  * genlock_wait - Wait for the lock to be released
@@ -682,6 +737,14 @@ static long genlock_dev_ioctl(struct file *filep, unsigned int cmd,
 			return -EFAULT;
 
 		return genlock_lock(handle, param.op, param.flags,
+			param.timeout);
+	}
+	case GENLOCK_IOC_DREADLOCK: {
+		if (copy_from_user(&param, (void __user *) arg,
+		sizeof(param)))
+			return -EFAULT;
+
+		return genlock_dreadlock(handle, param.op, param.flags,
 			param.timeout);
 	}
 	case GENLOCK_IOC_WAIT: {
