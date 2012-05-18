@@ -18,7 +18,6 @@
 #include <linux/proc_fs.h>
 #include <linux/cpu.h>
 #include <linux/io.h>
-#include <linux/uaccess.h>
 #include <mach/msm-krait-l2-accessors.h>
 #include <mach/msm_iomap.h>
 #include <asm/cputype.h>
@@ -80,50 +79,6 @@
 
 #define MODULE_NAME "msm_cache_erp"
 
-#define FABRIC_CONFIGURATION_REG	0x0008
-#define FABRIC_ERROR_STATUS_REG_0	0x3504
-#define FABRIC_ERROR_STATUS_REG_1	0x3508
-#define FABRIC_ERROR_STATUS_REG_2	0x350C
-#define FABRIC_ERROR_STATUS_REG_3	0x3510
-#define FABRIC_ERROR_UPPER_ADDR_REG	0x3514
-#define FABRIC_ERROR_LOWER_ADDR_REG	0x3518
-
-static char *cache_erp_readl(unsigned long *addr);
-
-#define ERP_FABRIC_REGS_SHOW(MODULE, name)			\
-	do {							\
-		pr_err("%s_FABRIC\n", name);			\
-		pr_err("\tCONFIGURATION_REG\t= %s\n",		\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_CONFIGURATION_REG));	\
-		pr_err("\tERROR_STATUS_REG_0\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_STATUS_REG_0));	\
-		pr_err("\tERROR_STATUS_REG_1\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_STATUS_REG_1));	\
-		pr_err("\tERROR_STATUS_REG_2\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_STATUS_REG_2));	\
-		pr_err("\tERROR_STATUS_REG_3\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_STATUS_REG_3));	\
-		pr_err("\tERROR_UPPER_ADDR_REG\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_UPPER_ADDR_REG));	\
-		pr_err("\tERROR_LOWER_ADDR_REG\t= %s\n",	\
-			cache_erp_readl(MSM_##MODULE##_BASE +	\
-				FABRIC_ERROR_LOWER_ADDR_REG));	\
-	} while (0)
-
-#define ERP_FABRIC_REGS_DUMP()					\
-	do {							\
-		ERP_FABRIC_REGS_SHOW(AFAB, "AFAB");		\
-		ERP_FABRIC_REGS_SHOW(SFAB, "SFAB");		\
-		ERP_FABRIC_REGS_SHOW(DAY_CFG, "DAY_CFG");	\
-		ERP_FABRIC_REGS_SHOW(FABRIC_MMSS, "MMSS");	\
-	} while (0)
-
 struct msm_l1_err_stats {
 	unsigned int dctpe;
 	unsigned int dcdpe;
@@ -168,17 +123,6 @@ static inline unsigned int read_cesynr(void)
 	unsigned int cesynr;
 	asm volatile ("mrc p15, 7, %0, c15, c0, 3" : "=r" (cesynr));
 	return cesynr;
-}
-
-static char *cache_erp_readl(unsigned long *addr)
-{
-	static char ret[12];
-	unsigned long data;
-	if (probe_kernel_address(addr, data))
-		snprintf(ret, sizeof(ret), "  ********");
-	else
-		snprintf(ret, sizeof(ret), "0x%08lx", data);
-	return ret;
 }
 
 static int proc_read_status(char *page, char **start, off_t off, int count,
@@ -353,7 +297,6 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 
 	if (l2esr & L2ESR_MPDCD) {
 		pr_alert("L2 master port decode error\n");
-		ERP_FABRIC_REGS_DUMP();
 		port_error++;
 		msm_l2_erp_stats.mpdcd++;
 	}
