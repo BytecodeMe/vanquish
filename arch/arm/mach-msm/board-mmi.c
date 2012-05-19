@@ -2429,6 +2429,7 @@ static struct platform_device *mmi_devices[] __initdata = {
 	&msm_8960_q6_mss_fw,
 	&msm_8960_q6_mss_sw,
 	&msm_8960_riva,
+	&msm_pil_vidc,
 	&msm_pil_tzapps,
 	&msm8960_device_otg,
 	&msm8960_device_gadget_peripheral,
