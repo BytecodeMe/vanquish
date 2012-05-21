@@ -1216,7 +1216,8 @@ int mipi_panel_power_en(int on)
 
 	if (on) {
 		gpio_set_value(disp_5v_en, 1);
-		mdelay(5);
+		if (is_smd_hd_465())
+			mdelay(5);
 
 		if ((is_smd_hd_465() && system_rev < HWREV_P1) ||
 		    is_smd_qhd_429())

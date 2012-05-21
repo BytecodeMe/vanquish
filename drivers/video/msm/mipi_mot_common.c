@@ -77,7 +77,7 @@ int mipi_mot_panel_off(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
-int32 get_panel_info(struct msm_fb_data_type *mfd,
+static int32 get_panel_info(struct msm_fb_data_type *mfd,
 				struct  mipi_mot_panel *mot_panel,
 				struct dsi_cmd_desc *cmd)
 {
