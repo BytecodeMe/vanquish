@@ -176,6 +176,19 @@ struct msm8960_privacy_light_cfg {
 	unsigned mpp;
 };
 
+enum camera_vreg_type {
+	REG_LDO,
+	REG_VS,
+};
+
+struct camera_vreg_t {
+	char *reg_name;
+	enum camera_vreg_type type;
+	int min_voltage;
+	int max_voltage;
+	int op_mode;
+};
+
 struct msm_camera_sensor_platform_info {
 	int mount_angle;
 	int use_cam_vana;

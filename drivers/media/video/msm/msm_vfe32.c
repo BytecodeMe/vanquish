@@ -2944,7 +2944,7 @@ static void vfe32_process_output_path_irq_0(void)
 
 	} else {
 		vfe32_ctrl->outpath.out0.frame_drop_cnt++;
-		CDBG("path_irq_0 - no free buffer!\n");
+		pr_err("path_irq_0 - no free buffer!\n");
 	}
 }
 
@@ -3012,7 +3012,7 @@ static void vfe32_process_output_path_irq_1(void)
 			ch1_paddr, ch2_paddr);
 	} else {
 		vfe32_ctrl->outpath.out1.frame_drop_cnt++;
-		CDBG("path_irq_1 - no free buffer!\n");
+		pr_err("path_irq_1 - no free buffer!\n");
 	}
 }
 
