@@ -534,6 +534,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 						pr_err("%s: ION create client"
 						" for AUDIO failed\n",
 						__func__);
+						mutex_unlock(&ac->cmd_lock);
 						goto fail;
 					}
 					buf[cnt].handle = ion_alloc
@@ -544,6 +545,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 						pr_err("%s: ION memory"
 					" allocation for AUDIO failed\n",
 							__func__);
+						mutex_unlock(&ac->cmd_lock);
 						goto fail;
 					}
 
@@ -556,6 +558,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 						pr_err("%s: ION Get Physical"
 						" for AUDIO failed, rc = %d\n",
 							__func__, rc);
+						mutex_unlock(&ac->cmd_lock);
 						goto fail;
 					}
 
@@ -566,6 +569,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 						buf[cnt].data)) {
 						pr_err("%s: ION memory"
 				" mapping for AUDIO failed\n", __func__);
+						mutex_unlock(&ac->cmd_lock);
 						goto fail;
 					}
 					memset((void *)buf[cnt].data, 0, bufsz);
@@ -672,6 +676,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	buf[0].client = msm_ion_client_create(UINT_MAX, "audio_client");
 	if (IS_ERR_OR_NULL((void *)buf[0].client)) {
 		pr_err("%s: ION create client for AUDIO failed\n", __func__);
+		mutex_unlock(&ac->cmd_lock);
 		goto fail;
 	}
 	buf[0].handle = ion_alloc(buf[0].client, bufsz * bufcnt, SZ_4K,
@@ -679,6 +684,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	if (IS_ERR_OR_NULL((void *) buf[0].handle)) {
 		pr_err("%s: ION memory allocation for AUDIO failed\n",
 			__func__);
+		mutex_unlock(&ac->cmd_lock);
 		goto fail;
 	}
 
@@ -687,12 +693,14 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	if (rc) {
 		pr_err("%s: ION Get Physical for AUDIO failed, rc = %d\n",
 			__func__, rc);
+		mutex_unlock(&ac->cmd_lock);
 		goto fail;
 	}
 
 	buf[0].data = ion_map_kernel(buf[0].client, buf[0].handle, 0);
 	if (IS_ERR_OR_NULL((void *) buf[0].data)) {
 		pr_err("%s: ION memory mapping for AUDIO failed\n", __func__);
+		mutex_unlock(&ac->cmd_lock);
 		goto fail;
 	}
 	memset((void *)buf[0].data, 0, (bufsz * bufcnt));
