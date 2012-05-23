@@ -339,4 +339,4 @@ uint32_t msm_rpm_get_swfi_latency(void);
 
 #define HDMI_PANEL_NAME	"hdmi_msm"
 
-extern int msm8960_headset_hw_has_gpio(void);
+extern int msm8960_headset_hw_has_gpio(int *hs_bias);

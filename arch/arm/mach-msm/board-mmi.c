@@ -2766,7 +2766,7 @@ static int mmi_dt_get_hdmi_feature(int *value)
 	return 0;
 }
 
-int msm8960_headset_hw_has_gpio(void)
+int msm8960_headset_hw_has_gpio(int *hs_bias)
 {
 	struct device_node *node;
 	const void *prop;
@@ -2780,6 +2780,11 @@ int msm8960_headset_hw_has_gpio(void)
 	if (prop && (len == sizeof(u8)) && (*(u8 *)prop))
 		 hs_hw_has_gpio = 0;
 
+	prop = of_get_property(node, "headset_bias", &len);
+	if (prop && (len == sizeof(u32)))
+		if( hs_bias ) *hs_bias = *(u32 *)prop;
+
+	of_node_put(node);
 	return hs_hw_has_gpio;
 }
 

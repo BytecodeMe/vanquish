@@ -3518,12 +3518,15 @@ void __init msm8960_add_common_devices(int (*detect_client)(const char *name))
 void __init msm8960_init_slim(void)
 {
 	struct tabla_pdata *pdata;
-	int has_gpio = msm8960_headset_hw_has_gpio();
+	int hs_bias_v = 2700;
+	int has_gpio = msm8960_headset_hw_has_gpio( &hs_bias_v );
 
 	pdata = msm_slim_devices[0].slim_slave->dev.platform_data;
 	pdata->hs_detect_gpio_enable = has_gpio;
+	pdata->micbias.cfilt2_mv = hs_bias_v;
 	pdata = msm_slim_devices[1].slim_slave->dev.platform_data;
 	pdata->hs_detect_gpio_enable = has_gpio;
+	pdata->micbias.cfilt2_mv = hs_bias_v;
 
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
