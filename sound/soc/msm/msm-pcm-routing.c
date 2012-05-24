@@ -121,7 +121,7 @@ static struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
 	{ VOICE_RECORD_TX, 0, 0, 0, 0, 0},
 	{ MI2S_RX, 0, 0, 0, 0, 0},
 	{ SECONDARY_I2S_RX, 0, 0, 0, 0, 0},
-	};
+};
 
 
 /* Track ASM playback & capture sessions of DAI */
@@ -194,7 +194,6 @@ void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id, int stream_type)
 			port_type) && msm_bedais[i].active &&
 			(test_bit(fedai_id,
 			&msm_bedais[i].fe_sessions))) {
-
 			channels = msm_bedais[i].channel;
 
 			if ((stream_type == SNDRV_PCM_STREAM_PLAYBACK) &&
