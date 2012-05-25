@@ -2883,6 +2883,9 @@ static int is_charging_finished(struct pm8921_chg_chip *chip)
 			pr_err("couldnt read vddmax rc = %d\n", rc);
 			return CHG_IN_PROGRESS;
 		}
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+		vbat_programmed = chip->max_voltage_mv;
+#endif
 		pr_debug("vddmax = %d vbat_meas_mv=%d\n",
 			 vbat_programmed, vbat_meas_mv);
 		if (vbat_meas_mv < vbat_programmed - VBAT_TOLERANCE_MV)
