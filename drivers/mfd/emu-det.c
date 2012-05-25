@@ -344,6 +344,7 @@ struct emu_det_data {
 #define SCI_OUT_DEBOUNCE_TMOUT	400	/* ms */
 #define VBUS_5V_LIMIT		3999	/* mV */
 #define VBUS_SETTLE_TIME	3000	/* ms */
+#define EMU_AUDIO_CHANGED	1
 
 #define external_5V_enable()	external_5V_setup(1)
 #define external_5V_disable()	external_5V_setup(0)
@@ -1092,7 +1093,7 @@ static int whisper_audio_check(struct emu_det_data *data)
 		if (prev_audio_state == audio)
 			return 0;
 		else
-			return 1;
+			return EMU_AUDIO_CHANGED;
 	} else
 		return -ENODEV;
 }
@@ -1294,7 +1295,7 @@ static void detection_work(void)
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->work, 0);
 		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
-			if (whisper_audio_check(data) == 0)  {
+			if (whisper_audio_check(data) != EMU_AUDIO_CHANGED) {
 				emu_det_disable_irq(EMU_SCI_OUT_IRQ);
 				pm8921_charger_unregister_vbus_sn(0);
 				external_5V_disable();
@@ -2022,6 +2023,9 @@ static long emu_det_ioctl(struct file *file,
 
 				if (data->whisper_auth == AUTH_PASSED) {
 					alternate_mode_enable();
+					/* sense mask needs an update after
+					   switching to alternate mode */
+					get_sense();
 					whisper_audio_check(data);
 				}
 			}
