@@ -546,21 +546,21 @@ static char acl_default_set[29] = { /* 70% */
 	0x07, 0x0E, 0x14, 0x1C,
 	0x24, 0x2D, 0x2D, 0x00,
 };
-static char acl_set_on[2] = {0xc0, 0x01}; /* DTYPE_DCS_WRITE1 */
+
+static char ACL_enable_disable_settings[2] = {0xc0, 0x00};
 
 static struct dsi_cmd_desc smd_qhd_429_cmds_7[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
-			sizeof(acl_default_set), acl_default_set},
+		sizeof(acl_default_set), acl_default_set},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, DEFAULT_DELAY,
-			sizeof(acl_set_on), acl_set_on},
+		sizeof(ACL_enable_disable_settings),
+			ACL_enable_disable_settings},
 };
-
-static char ACL_enable_disable_settings[2] = {0xc0, 0x00};
 
 static struct dsi_cmd_desc acl_enable_disable[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, DEFAULT_DELAY,
 		sizeof(ACL_enable_disable_settings),
-					ACL_enable_disable_settings}
+			ACL_enable_disable_settings}
 };
 
 /* default elvss set, update based on 0xD4 */
@@ -737,6 +737,8 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 			ARRAY_SIZE(smd_qhd_429_cmds_5));
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, smd_qhd_429_cmds_6,
 			ARRAY_SIZE(smd_qhd_429_cmds_6));
+	/* acl */
+	ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, smd_qhd_429_cmds_7,
 			ARRAY_SIZE(smd_qhd_429_cmds_7));
 
