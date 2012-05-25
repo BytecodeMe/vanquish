@@ -99,10 +99,9 @@
 	DEF(FLOAT_UP,	2200, 2480), \
 	DEF(FLOAT_P,	10, 60), \
 	DEF(GROUND,	60, 90), \
-	DEF(STD_100K,	650, 1250), \
-	DEF(STD_200K,	1350, 1500), \
-	DEF(ALT_100K,	1550, 1700), \
-	DEF(ALT_200K,	1850, 2100), \
+	DEF(STD_100K,   650, 1450), \
+	DEF(ALT_100K,   1350, 1699), \
+	DEF(ALT_200K,   1700, 2100), \
 	DEF(VBUS_PRESENT, 700, 7000), \
 	DEF(MAX_NUM,	-1, -1) }
 
@@ -725,10 +724,6 @@ static void sense_emu_id(unsigned long *lsense, bool sci_out_debounce)
 	} else {
 		if (in_range(id, REF_STD_100K)) {
 			set_bit(PD_100K_BIT, lsense);
-			clear_bit(GRND_BIT, lsense);
-			clear_bit(FLOAT_BIT, lsense);
-		} else if (in_range(id, REF_STD_200K)) {
-			set_bit(PD_200K_BIT, lsense);
 			clear_bit(GRND_BIT, lsense);
 			clear_bit(FLOAT_BIT, lsense);
 		}
