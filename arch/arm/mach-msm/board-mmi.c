@@ -858,6 +858,49 @@ static __init void mot_init_emu_detection(
 	}
 }
 
+static void __init config_ulpi_from_dt(void)
+{
+	struct device_node *chosen;
+	int len;
+	const void *prop;
+
+	chosen = of_find_node_by_path("/Chosen@0");
+	if (!chosen)
+		goto out;
+
+	/*
+	 * the phy init sequence read from the device tree should be a
+	 * sequence of value/register pairs
+	 */
+	prop = of_get_property(chosen, "ulpi_phy_init_seq", &len);
+	if (prop && !(len % 2)) {
+		int i;
+		u8* prop_val;
+
+		msm_otg_pdata.phy_init_seq = kzalloc(sizeof(int)*(len+1),
+							GFP_KERNEL);
+		if (!msm_otg_pdata.phy_init_seq) {
+			msm_otg_pdata.phy_init_seq = phy_settings;
+			goto put_node;
+		}
+
+		msm_otg_pdata.phy_init_seq[len] = -1;
+		prop_val = (u8 *)prop;
+
+		for (i = 0; i < len; i+=2) {
+			msm_otg_pdata.phy_init_seq[i] = prop_val[i];
+			msm_otg_pdata.phy_init_seq[i+1] = prop_val[i+1];
+		}
+	} else
+		msm_otg_pdata.phy_init_seq = phy_settings;
+
+put_node:
+	of_node_put(chosen);
+
+out:
+	return;
+}
+
 /* defaulting to qinara, atag parser will override */
 /* todo: finalize the names, move display related stuff to board-msm8960-panel.c */
 #if defined(CONFIG_FB_MSM_MIPI_MOT_CMD_HD_PT)
@@ -3731,8 +3774,6 @@ core_initcall(msm8960_get_acputype);
 
 static void __init msm8960_mmi_init(void)
 {
-	msm_otg_pdata.phy_init_seq = phy_settings;
-
 	if (mbm_protocol_version == 0)
 		pr_err("ERROR: ATAG MBM_PROTOCOL_VERSION is not present."
 			" Bootloader update is required\n");
@@ -3763,6 +3804,9 @@ static void __init msm8960_mmi_init(void)
 
 	/* needs to happen before msm_clock_init */
 	config_camera_single_mclk_from_dt();
+
+	/* check for device specific ulpi phy init sequence */
+	config_ulpi_from_dt();
 
 	pmic_reset_irq = PM8921_IRQ_BASE + PM8921_RESOUT_IRQ;
 	regulator_suppress_info_printing();
