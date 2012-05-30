@@ -310,8 +310,13 @@ void mipi_dsi_clk_init(struct platform_device *pdev);
 void mipi_dsi_clk_deinit(struct device *dev);
 void mipi_dsi_ahb_ctrl(u32 enable);
 void cont_splash_clk_ctrl(void);
-void mipi_dsi_turn_on_clks(void);
-void mipi_dsi_turn_off_clks(void);
+/* These two apis return
+ * 0: clks are turned on/off successfully
+ * 1: clks are in requested state, do nothing and return
+ * other value for fail case, but not implemented.
+ */
+int mipi_dsi_turn_on_clks(void);
+int mipi_dsi_turn_off_clks(void);
 
 #ifdef CONFIG_FB_MSM_MDP303
 void update_lane_config(struct msm_panel_info *pinfo);
