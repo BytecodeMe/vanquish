@@ -341,8 +341,10 @@ static int mdp_output_thread(void *data)
 			core, ioctl, MDP_DQ_BUFFER, (void *)&obuf_mdp);
 
 		if (rc) {
-			WFD_MSG_ERR("Either streamoff called or"
-						" MDP REPORTED ERROR\n");
+			if (rc != -ENOBUFS)
+				WFD_MSG_ERR("MDP reported err %d\n", rc);
+
+			WFD_MSG_ERR("Streamoff called\n");
 			break;
 		}
 
@@ -430,6 +432,10 @@ int wfd_vidbuf_stop_streaming(struct vb2_queue *q)
 		WFD_MSG_ERR("Failed to stop VSG\n");
 
 	kthread_stop(inst->mdp_task);
+	rc = v4l2_subdev_call(&wfd_dev->enc_sdev, core, ioctl,
+			ENCODE_FLUSH, (void *)inst->venc_inst);
+	if (rc)
+		WFD_MSG_ERR("Failed to flush encoder\n");
 	WFD_MSG_DBG("enc stop\n");
 	rc = v4l2_subdev_call(&wfd_dev->enc_sdev, core, ioctl,
 			ENCODE_STOP, (void *)inst->venc_inst);
