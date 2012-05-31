@@ -171,6 +171,7 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 	enable_irq(csid_dev->irq->start);
 #endif
 	return 0;
+	csid_dev->base = NULL;
 }
 
 static int msm_csid_release(struct v4l2_subdev *sd)
@@ -186,6 +187,7 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 		csid_dev->csid_clk, ARRAY_SIZE(csid_clk_info), 0);
 
 	iounmap(csid_dev->base);
+	csid_dev->base = NULL;
 	return 0;
 }
 
