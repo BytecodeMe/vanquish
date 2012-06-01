@@ -91,6 +91,8 @@
 /* check for USB unplug every 200 msecs */
 #define UNPLUG_CHECK_WAIT_PERIOD_MS 200
 
+#define MAX_CHARGER_MA 1300
+
 enum chg_fsm_state {
 	FSM_STATE_OFF_0 = 0,
 	FSM_STATE_BATFETDET_START_12 = 12,
@@ -1731,6 +1733,10 @@ static void __pm8921_charger_vbus_draw(unsigned int mA)
 		if (rc)
 			pr_err("fail to set suspend bit rc=%d\n", rc);
 	} else {
+		if (!usb_max_current && (mA > MAX_CHARGER_MA) &&
+		    (the_chip->emu_accessory == EMU_ACCY_CHARGER))
+			mA = MAX_CHARGER_MA;
+
 		rc = pm_chg_usb_suspend_enable(the_chip, 0);
 		if (rc)
 			pr_err("fail to reset suspend bit rc=%d\n", rc);
@@ -3754,6 +3760,11 @@ static int pm8921_chg_accy_notify(struct notifier_block *nb,
 		__pm8921_charger_vbus_draw(1500);
 	} else if (((enum emu_accy) status == EMU_ACCY_NONE) &&
 		   (the_chip->emu_accessory == EMU_ACCY_WHISPER_SMART_DOCK)) {
+		__pm8921_charger_vbus_draw(0);
+	} else if ((enum emu_accy) status == EMU_ACCY_CHARGER) {
+		__pm8921_charger_vbus_draw(MAX_CHARGER_MA);
+	} else if (((enum emu_accy) status == EMU_ACCY_NONE) &&
+		   (the_chip->emu_accessory == EMU_ACCY_CHARGER)) {
 		__pm8921_charger_vbus_draw(0);
 	}
 
