@@ -343,7 +343,6 @@ struct emu_det_data {
 #define SCI_OUT_DEBOUNCE_TMOUT	400	/* ms */
 #define VBUS_5V_LIMIT		3999	/* mV */
 #define VBUS_SETTLE_TIME	3000	/* ms */
-#define EMU_AUDIO_CHANGED	1
 
 #define external_5V_enable()	external_5V_setup(1)
 #define external_5V_disable()	external_5V_setup(0)
@@ -1065,13 +1064,15 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 
 static int whisper_audio_check(struct emu_det_data *data)
 {
+	int ret = -ENODEV;
 	int audio = NO_DEVICE;
 	int prev_audio_state = NO_DEVICE;
 
 	if (!switch_get_state(&data->dsdev))
-		return -ENODEV;
+		return ret;
 
-	if (data->whisper_auth == AUTH_PASSED) {
+	switch(data->whisper_auth) {
+	case AUTH_PASSED:
 		prev_audio_state = switch_get_state(&data->asdev);
 		pr_emu_det(PARANOIC, "HEADSET prev_state %stached\n",
 			prev_audio_state == EMU_OUT ? "at" : "de");
@@ -1088,11 +1089,17 @@ static int whisper_audio_check(struct emu_det_data *data)
 				     (void *)NULL);
 
 		if (prev_audio_state == audio)
-			return 0;
+			ret = 0;
 		else
-			return EMU_AUDIO_CHANGED;
-	} else
-		return -ENODEV;
+			ret = 1;
+		break;
+	case AUTH_FAILED:
+		ret = 0;
+		break;
+	default:
+		break;
+	}
+	return ret;
 }
 
 #define POLL_TIME		(100 * HZ/1000) /* 100 msec */
@@ -1292,7 +1299,7 @@ static void detection_work(void)
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->work, 0);
 		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
-			if (whisper_audio_check(data) != EMU_AUDIO_CHANGED) {
+			if (whisper_audio_check(data) == 0) {
 				emu_det_disable_irq(EMU_SCI_OUT_IRQ);
 				pm8921_charger_unregister_vbus_sn(0);
 				external_5V_disable();
