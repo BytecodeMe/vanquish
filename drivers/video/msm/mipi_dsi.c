@@ -193,6 +193,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	cont_splash_clk_ctrl(0);
 	mipi_dsi_prepare_clocks();
+
 	mipi_dsi_ahb_ctrl(1);
 
 	clk_rate = mfd->fbi->var.pixclock;
