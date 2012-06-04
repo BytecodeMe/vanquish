@@ -231,8 +231,9 @@ ion_phys_addr_t ion_cp_allocate(struct ion_heap *heap,
 
 	if (!offset) {
 		mutex_lock(&cp_heap->lock);
+		cp_heap->allocated_bytes -= size;
 		if ((cp_heap->total_size -
-		      cp_heap->allocated_bytes) > size)
+		     cp_heap->allocated_bytes) >= size)
 			pr_debug("%s: heap %s has enough memory (%lx) but"
 				" the allocation of size %lx still failed."
 				" Memory is probably fragmented.\n",
@@ -240,9 +241,8 @@ ion_phys_addr_t ion_cp_allocate(struct ion_heap *heap,
 				cp_heap->total_size -
 				cp_heap->allocated_bytes, size);
 
-		cp_heap->allocated_bytes -= size;
-
-		if (cp_heap->reusable && !cp_heap->allocated_bytes) {
+		if (cp_heap->reusable && !cp_heap->allocated_bytes &&
+		    cp_heap->heap_protected == HEAP_NOT_PROTECTED) {
 			if (fmem_set_state(FMEM_T_STATE) != 0)
 				pr_err("%s: unable to transition heap to T-state\n",
 					__func__);
@@ -276,7 +276,8 @@ void ion_cp_free(struct ion_heap *heap, ion_phys_addr_t addr,
 	mutex_lock(&cp_heap->lock);
 	cp_heap->allocated_bytes -= size;
 
-	if (cp_heap->reusable && !cp_heap->allocated_bytes) {
+	if (cp_heap->reusable && !cp_heap->allocated_bytes &&
+	    cp_heap->heap_protected == HEAP_NOT_PROTECTED) {
 		if (fmem_set_state(FMEM_T_STATE) != 0)
 			pr_err("%s: unable to transition heap to T-state\n",
 				__func__);
