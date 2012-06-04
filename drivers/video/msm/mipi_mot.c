@@ -134,7 +134,7 @@ static ssize_t panel_acl_show(struct device *dev,
 		data = 0;
 	mutex_unlock(&mot_panel.lock);
 err:
-	return sprintf(buf, "%d\n", ((u32) data));
+	return snprintf(buf, PAGE_SIZE, "%d\n", ((u32) data));
 }
 
 static ssize_t panel_acl_store(struct device *dev,
@@ -174,6 +174,68 @@ static struct attribute *acl_attrs[] = {
 };
 static struct attribute_group acl_attr_group = {
 	.attrs = acl_attrs,
+};
+
+static ssize_t elvss_tth_status_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	u8 data = 0xff;
+
+	if (mot_panel.elvss_tth_support_present == FALSE) {
+		pr_err("%s: panel doesn't support adjust elvss based on temp\n",
+			 __func__);
+		data = -EPERM;
+		goto err;
+	}
+
+	mutex_lock(&mot_panel.lock);
+	if (mot_panel.elvss_tth_status)
+		data = 1;
+	else
+		data = 0;
+	mutex_unlock(&mot_panel.lock);
+err:
+	return snprintf(buf, PAGE_SIZE, "%d\n", ((u32) data));
+}
+
+static ssize_t elvss_tth_status_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long elvss_tth_val = 0;
+	unsigned long r = 0;
+
+	if (mot_panel.mfd == 0) {
+		r = -ENODEV;
+		goto end;
+	}
+	if (mot_panel.elvss_tth_support_present == TRUE) {
+		r = strict_strtoul(buf, 0, &elvss_tth_val);
+		if ((r) || ((elvss_tth_val != 0) && (elvss_tth_val != 1))) {
+			pr_err("%s: Invalid elvss temp threshold value = %lu\n",
+				__func__, elvss_tth_val);
+			r = -EINVAL;
+			goto end;
+		}
+		mutex_lock(&mot_panel.lock);
+		if (mot_panel.elvss_tth_status != elvss_tth_val)
+			mot_panel.elvss_tth_status = elvss_tth_val;
+		mutex_unlock(&mot_panel.lock);
+	}
+
+end:
+	return r ? r : count;
+
+}
+
+static DEVICE_ATTR(elvss_tth_status, S_IRUGO | S_IWGRP,
+			elvss_tth_status_show,
+			elvss_tth_status_store);
+static struct attribute *elvss_tth_attrs[] = {
+	&dev_attr_elvss_tth_status.attr,
+	NULL,
+};
+static struct attribute_group elvss_tth_attr_group = {
+	.attrs = elvss_tth_attrs,
 };
 
 static int valid_mfd_info(struct msm_fb_data_type *mfd)
@@ -360,6 +422,16 @@ static int __devinit mipi_mot_lcd_probe(struct platform_device *pdev)
 		}
 		/* Set the default ACL value to the LCD */
 		mot_panel.enable_acl(mot_panel.mfd);
+	}
+
+	if (mot_panel.elvss_tth_support_present == TRUE) {
+		ret = sysfs_create_group(&mot_panel.mfd->fbi->dev->kobj,
+							&elvss_tth_attr_group);
+		if (ret < 0) {
+			pr_err("%s: elvss_tth_status file creation failed\n",
+				 __func__);
+			goto err;
+		}
 	}
 	return 0;
 err:

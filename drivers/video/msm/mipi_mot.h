@@ -84,7 +84,16 @@ struct mipi_mot_panel {
 	struct mutex lock;
 	boolean acl_support_present;
 	boolean acl_enabled;
-
+	/* Adjust elvss output to keep or remove temp margin
+	 * based on panel temperature to save panel power consumption
+	 * this is the flag to indicate panel support it or not */
+	boolean elvss_tth_support_present;
+	/* Panel temp threshold was maintained in framework configure file for
+	 * each product. Framework monitor and notify temp status via sysfs
+	 * 1: above temp threshold (remove temp margin)
+	 * 0: below temp threshold (keep temp  margin, default value to be safe)
+	 */
+	boolean elvss_tth_status;
 	atomic_t state;
 	bool esd_enabled;
 	bool esd_detection_run;

@@ -730,6 +730,11 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	/* elvss */
 	for (i = 1; i < 5; i++)
 		elvss_output_set[i] = elvss_value;
+	if (mot_panel->elvss_tth_support_present &&
+		mot_panel->elvss_tth_status)
+		for (i = 1; i < 5; i++)
+			elvss_output_set[i] = elvss_value + 0xF;
+
 	mipi_dsi_cmds_tx(mfd, dsi_tx_buf, elvss_set_cmd,
 		ARRAY_SIZE(elvss_set_cmd));
 
@@ -901,6 +906,8 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 
 	mot_panel->acl_support_present = TRUE;
 	mot_panel->acl_enabled = FALSE; /* By default the ACL is disbled. */
+
+	mot_panel->elvss_tth_support_present = TRUE;
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
