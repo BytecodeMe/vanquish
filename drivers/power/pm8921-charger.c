@@ -1775,6 +1775,19 @@ void pm8921_charger_vbus_draw(unsigned int mA)
 }
 EXPORT_SYMBOL_GPL(pm8921_charger_vbus_draw);
 
+#ifdef CONFIG_EMU_DETECTION
+/* EMU driver calls this to clear the suspend bit before reading ADC value */
+void pm8921_charger_usb_suspend_clear(void)
+{
+	int rc;
+
+	rc = pm_chg_usb_suspend_enable(the_chip, 0);
+	if (rc)
+		pr_err("fail to reset suspend bit rc=%d\n", rc);
+}
+EXPORT_SYMBOL_GPL(pm8921_charger_usb_suspend_clear);
+#endif
+
 int pm8921_charger_enable(bool enable)
 {
 	int rc;

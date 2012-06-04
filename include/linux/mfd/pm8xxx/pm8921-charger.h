@@ -253,6 +253,16 @@ enum pm8921_charger_source {
 void pm8921_charger_vbus_draw(unsigned int mA);
 int pm8921_charger_register_vbus_sn(void (*callback)(int));
 void pm8921_charger_unregister_vbus_sn(void (*callback)(int));
+
+#ifdef CONFIG_EMU_DETECTION
+/**
+ * pm8921_charger_enable -
+ *
+ * EMU driver calls this to clear the suspend bit before reading ADC value
+ */
+void  pm8921_charger_usb_suspend_clear(void);
+#endif
+
 /**
  * pm8921_charger_enable -
  *

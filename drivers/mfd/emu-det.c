@@ -536,6 +536,8 @@ static int adc_vbus_get(void)
 {
 	struct pm8xxx_adc_chan_result res;
 	int ret = 0;
+
+	pm8921_charger_usb_suspend_clear();
 	memset(&res, 0, sizeof(res));
 	if (pm8xxx_adc_read(CHANNEL_USBIN, &res))
 		pr_err("VBUS ADC read error\n");
