@@ -438,11 +438,17 @@ static int lm3532_bl_set(struct backlight_device *bl, int brightness)
 				+ (data->backlight_controller * 2),
 				I2C_CTRL);
 		}
-	} else
+	} else {
 		ret |= lm3532_write(client,
 				LM3532_CTRL_A_ZT_4
 				+ (data->backlight_controller * 5),
 				brightness);
+		if (data->pdata->pwm_disable_threshold != 0 &&
+			brightness >= data->pdata->pwm_disable_threshold) {
+			ret |= lm3532_write(data->client,
+				data->backlight_controller + LM3532_CTRL_A_PWM, 0x02);
+		}
+	}
 
 	if (data->current_brightness && brightness == 0)
 		ret |= lm3532_clr_bits(client, LM3532_CTRL_EN,

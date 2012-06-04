@@ -100,6 +100,7 @@ struct lm3532_backlight_platform_data {
 
 	int pwm_init_delay_ms;
 	int pwm_resume_delay_ms;
+	int pwm_disable_threshold;
 
 	u8 ctrl_a_pwm;
 	u8 ctrl_b_pwm;

@@ -3250,6 +3250,11 @@ static __init void register_i2c_devices_from_dt(int bus)
 				if (prop && (len == sizeof(u8)))
 					mp_lm3532_pdata.ctrl_c_fsc =
 						*(u8 *)prop;
+				prop = of_get_property(child, "pwm_disable_threshold",
+						&len);
+				if (prop && (len == sizeof(u8)))
+					mp_lm3532_pdata.pwm_disable_threshold =
+						*(u8 *)prop;
 				info.platform_data = &mp_lm3532_pdata;
 				break;
 

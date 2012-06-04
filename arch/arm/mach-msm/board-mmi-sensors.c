@@ -243,6 +243,7 @@ struct lm3532_backlight_platform_data mp_lm3532_pdata = {
 
 	.pwm_init_delay_ms = 5000,
 	.pwm_resume_delay_ms = 0,
+	.pwm_disable_threshold = 0,
 
 	.ctrl_a_usage = LM3532_BACKLIGHT_DEVICE,
 	.ctrl_a_pwm = 0xC2,
