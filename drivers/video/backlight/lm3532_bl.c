@@ -866,6 +866,55 @@ static DEVICE_ATTR(registers, 0664, lm3532_registers_show,
 static DEVICE_ATTR(registers, 0664, lm3532_registers_show, NULL);
 #endif
 
+static ssize_t lm3532_pwm_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t size)
+{
+	struct lm3532_bl *data = dev_get_drvdata(dev);
+	int ret;
+
+	if (buf == NULL || size == 0)
+		return 0;
+
+	ret = lm3532_write(data->client,
+		data->backlight_controller + LM3532_CTRL_A_PWM,
+		buf[0] == '0' ? 0x02 : 0x42);
+	if (ret)
+		pr_err("%s: failed to write to PWM reg: %d\n", __func__, ret);
+	return size;
+}
+
+static ssize_t lm3532_pwm_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct lm3532_bl *data = dev_get_drvdata(dev);
+	u8 val = 0;
+	int n = 0;
+	int ret;
+
+	ret = lm3532_read(data->client,
+		data->backlight_controller + LM3532_CTRL_A_PWM,
+		&val);
+	if (ret)
+		pr_err("%s: failed to read PWM reg: %d\n", __func__, ret);
+	else
+		n = scnprintf(buf, PAGE_SIZE, "%s\n",
+			val & 0x40 ? "enabled" : "disabled");
+	return n;
+}
+
+static DEVICE_ATTR(pwm, 0664, lm3532_pwm_show, lm3532_pwm_store);
+
+static struct attribute *lm3532_attributes[] = {
+	&dev_attr_registers.attr,
+	&dev_attr_pwm.attr,
+	NULL,
+};
+
+static struct attribute_group lm3532_attribute_group = {
+	.attrs = lm3532_attributes
+};
+
 static int __devinit lm3532_probe(struct i2c_client *client,
 					const struct i2c_device_id *id)
 {
@@ -989,10 +1038,10 @@ static int __devinit lm3532_probe(struct i2c_client *client,
 
 	lm3532_bl_init(data);
 
-	ret = device_create_file(&client->dev, &dev_attr_registers);
+	ret = sysfs_create_group(&client->dev.kobj, &lm3532_attribute_group);
 	if (ret) {
 		/* This is not a fatal error */
-		dev_err(&client->dev, "unable to create \'registers\' device file\n");
+		dev_err(&client->dev, "unable to create attribute group\n");
 	}
 
 	if (pdata->pwm_init_delay_ms)
@@ -1021,7 +1070,7 @@ static int __devinit lm3532_probe(struct i2c_client *client,
 	return 0;
 
 out:
-	device_remove_file(&client->dev, &dev_attr_registers);
+	sysfs_remove_group(&client->dev.kobj, &lm3532_attribute_group);
 	if (bl)
 		backlight_device_unregister(bl);
 	cancel_delayed_work_sync(&data->work);
@@ -1039,6 +1088,7 @@ static int __devexit lm3532_remove(struct i2c_client *client)
 	if ((data->led_a) || (data->led_b) || (data->led_c))
 		lm3532_led_remove(data);
 
+	sysfs_remove_group(&client->dev.kobj, &lm3532_attribute_group);
 	backlight_device_unregister(data->bl);
 	cancel_delayed_work_sync(&data->work);
 	i2c_set_clientdata(client, NULL);
