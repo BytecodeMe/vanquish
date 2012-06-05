@@ -1168,7 +1168,6 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 
 	fix->line_length = msm_fb_line_length(mfd->index, panel_info->xres,
 					      bpp);
-	/* calculate smem_len based on max size of two supplied modes */
 
 	fb_size  = (msm_fb_line_length(mfd->index, panel_info->xres, bpp) *
 			(panel_info->yres + msm_fb_pdata->fb_ypad) *
@@ -1177,8 +1176,19 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 			(panel_info->mode2_yres + msm_fb_pdata->fb_ypad) *
 			mfd->fb_page);
 
-	fix->smem_len = roundup(MAX(fb_size, fb_esize), PAGE_SIZE);
 	var->yoffset = (panel_info->yres + msm_fb_pdata->fb_ypad);
+
+	/*
+	 * calculate smem_len based on max size of two supplied modes.
+	 * Only fb0 has mem. fb1 and fb2 don't have mem.
+	 */
+	if (mfd->index == 0)
+		fix->smem_len = roundup(MAX(fb_size, fb_esize), PAGE_SIZE);
+	else if (mfd->index == 1 || mfd->index == 2) {
+		pr_debug("%s:%d no memory is allocated for fb%d!\n",
+			__func__, __LINE__, mfd->index);
+		fix->smem_len = 0;
+	}
 
 	mfd->var_xres = panel_info->xres;
 	mfd->var_yres = panel_info->yres;
