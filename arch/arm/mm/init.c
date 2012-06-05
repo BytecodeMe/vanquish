@@ -361,10 +361,6 @@ void __init find_membank0_hole(void)
 
 	pr_info("m0 size %lx m1 start %lx\n", membank0_size, membank1_start);
 }
-#elif defined(CONFIG_DONT_MAP_HOLE_IN_LOWMEM)
-struct vmeminfo vmeminfo;
-EXPORT_SYMBOL(meminfo);
-EXPORT_SYMBOL(vmeminfo);
 #endif
 
 void __init arm_memblock_init(struct meminfo *mi, struct machine_desc *mdesc)
