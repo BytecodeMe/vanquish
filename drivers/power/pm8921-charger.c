@@ -2737,6 +2737,7 @@ static void update_heartbeat(struct work_struct *work)
 	int64_t retval = 0;
 	int rc = 0;
 	int batt_mvolt;
+	int batt_mcurr;
 	int batt_temp;
 	int percent_soc;
 	int fcc;
@@ -2747,9 +2748,17 @@ static void update_heartbeat(struct work_struct *work)
 	wake_lock(&chip->heartbeat_wake_lock);
 
 	batt_mvolt = (get_prop_battery_uvolts(chip) / 1000);
+	batt_mcurr = (get_prop_batt_current(chip) / 1000);
 	batt_temp = (get_prop_batt_temp(chip) / 10);
 	percent_soc = pm8921_bms_get_percent_charge();
 	fcc = pm8921_bms_get_fcc() / 1000;
+
+	if (percent_soc > START_METER_OFFSET_SOC) {
+		pm8921_bms_voltage_based_capacity(batt_mvolt,
+						  batt_mcurr,
+						  batt_temp);
+		percent_soc = pm8921_bms_get_percent_charge();
+	}
 
 	if ((percent_soc <= 5) &&
 	    (alarm_state == PM_BATT_ALARM_NORMAL)) {

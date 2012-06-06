@@ -94,6 +94,8 @@ static struct pm8921_bms_battery_data  mmi_eb20_sdi_metering_data = {
 	.fcc_sf_lut		= &mmi_eb20_sdi_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_eb20_sdi_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_eb20_sdi_pc_sf,
+	.rbatt			= 194,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_eb20_sdi_charging_data = {
@@ -198,6 +200,8 @@ static struct pm8921_bms_battery_data  mmi_eg30_sdi_metering_data = {
 	.fcc_sf_lut		= &mmi_eg30_sdi_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_eg30_sdi_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_eg30_sdi_pc_sf,
+	.rbatt			= 180,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_eg30_sdi_charging_data = {
@@ -302,6 +306,8 @@ static struct pm8921_bms_battery_data  mmi_ev30_metering_data = {
 	.fcc_sf_lut		= &mmi_ev30_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_ev30_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_ev30_pc_sf,
+	.rbatt			= 170,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_ev30_charging_data = {
@@ -413,6 +419,8 @@ static struct pm8921_bms_battery_data  mmi_eb41_metering_data = {
 	.fcc_sf_lut		= &mmi_eb41_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_eb41_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_eb41_pc_sf,
+	.rbatt			= 188,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_eb41_charging_data = {
@@ -517,6 +525,8 @@ static struct pm8921_bms_battery_data  mmi_eb20_metering_data = {
 	.fcc_sf_lut		= &mmi_eb20_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_eb20_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_eb20_pc_sf,
+	.rbatt			= 218,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_eb20_charging_data = {
@@ -549,6 +559,8 @@ static struct pm8921_bms_battery_data  mmi_eb20_pre_metering_data = {
 	.fcc_sf_lut		= &mmi_eb20_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_eb20_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_eb20_pc_sf,
+	.rbatt			= 180,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_eb20_pre_charging_data = {
@@ -653,6 +665,8 @@ static struct pm8921_bms_battery_data  mmi_df_metering_data = {
 	.fcc_sf_lut		= &mmi_df_fcc_sf,
 	.pc_temp_ocv_lut	= &mmi_df_pc_temp_ocv,
 	.pc_sf_lut		= &mmi_df_pc_sf,
+	.rbatt			= 180,
+	.k_factor		= 100,
 };
 
 static struct pm8921_charger_battery_data mmi_df_charging_data = {

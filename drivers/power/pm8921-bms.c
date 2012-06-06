@@ -124,6 +124,11 @@ struct pm8921_bms_chip {
 	int			user_override;
 	int			user_override_is_chg;
 #endif
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	unsigned int		meter_offset;
+	unsigned int		init_rbatt;
+	unsigned int		k_factor;
+#endif
 };
 
 static struct pm8921_bms_chip *the_chip;
@@ -935,6 +940,9 @@ static int read_soc_params_raw(struct pm8921_bms_chip *chip,
 		convert_vbatt_raw_to_uv(chip,
 			raw->last_good_ocv_raw, &raw->last_good_ocv_uv);
 		last_ocv_uv = raw->last_good_ocv_uv;
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+		chip->meter_offset = 0;
+#endif
 	} else {
 		raw->last_good_ocv_uv = last_ocv_uv;
 	}
@@ -979,7 +987,16 @@ static int calculate_fcc_uah(struct pm8921_bms_chip *chip, int batt_temp,
 		initfcc = interpolate_fcc(chip, batt_temp);
 
 		scalefactor = interpolate_scalingfactor_fcc(chip, chargecycles);
-
+#ifdef CONFIG_PM8921_FLOAT_CHARGE
+		if (bms_aged_capacity <= 50) {
+			if(bms_aged_capacity != 0)
+				scalefactor = 50;
+		} else if (bms_aged_capacity >= 100) {
+			scalefactor = 100;
+		} else {
+			scalefactor = bms_aged_capacity;
+		}
+#endif
 		/* Multiply the initial FCC value by the scale factor. */
 		result = (initfcc * scalefactor * 1000) / 100;
 		pr_debug("fcc = %d uAh\n", result);
@@ -1178,6 +1195,36 @@ static int calculate_real_fcc_uah(struct pm8921_bms_chip *chip,
 			real_fcc_uah, remaining_charge_uah, cc_uah, fcc_uah);
 	return real_fcc_uah;
 }
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+void pm8921_bms_voltage_based_capacity(int batt_mvolt,
+				       int batt_mcurr,
+				       int batt_temp)
+{
+	int charging_src;
+	int volt_ocv_now = (batt_mvolt * 1000) +
+		((batt_mcurr * the_chip->init_rbatt * the_chip->k_factor)) /
+		100;
+	int soc_adjusted = calculate_pc(the_chip, volt_ocv_now, batt_temp,
+					last_chargecycles);
+
+	pr_debug("volt_ocv_now = %d, soc_adjusted = %d, rbatt = %d, k = %d\n",
+		 volt_ocv_now, soc_adjusted,the_chip->init_rbatt,
+		 the_chip->k_factor);
+
+	if (!pm8921_is_battery_charging(&charging_src)) {
+		if (soc_adjusted <= START_METER_OFFSET_SOC)
+			the_chip->meter_offset += 2;
+	} else {
+		if (the_chip->meter_offset >= 2)
+			the_chip->meter_offset -= 2;
+		else
+			the_chip->meter_offset = 0;
+	}
+
+	pr_debug("meter_offset = %d\n", the_chip->meter_offset);
+}
+#endif
 /*
  * Remaining Usable Charge = remaining_charge (charge at ocv instance)
  *				- coloumb counter charge
@@ -1219,6 +1266,10 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		soc = (remaining_usable_charge_uah * 100)
 			/ (fcc_uah - unusable_charge_uah);
 	}
+
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	soc = soc - chip->meter_offset;
+#endif
 
 	/* Round up soc to account for remainder */
 	if ((soc > 0) && (soc <= 99))
@@ -1844,6 +1895,8 @@ static int set_battery_data(struct pm8921_bms_chip *chip)
 		chip->fcc_sf_lut = batt_data.fcc_sf_lut;
 		chip->pc_temp_ocv_lut = batt_data.pc_temp_ocv_lut;
 		chip->pc_sf_lut = batt_data.pc_sf_lut;
+		chip->init_rbatt = batt_data.rbatt;
+		chip->k_factor = batt_data.k_factor;
 		return 0;
 	}
 #endif
@@ -2330,7 +2383,9 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 		goto free_irqs;
 	}
 #endif
-
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	chip->meter_offset = 0;
+#endif
 	platform_set_drvdata(pdev, chip);
 	the_chip = chip;
 	create_debugfs_entries(chip);

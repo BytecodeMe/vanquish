@@ -29,6 +29,8 @@
 
 #define MAX_SINGLE_LUT_COLS	20
 
+#define START_METER_OFFSET_SOC 5
+
 struct single_row_lut {
 	int x[MAX_SINGLE_LUT_COLS];
 	int y[MAX_SINGLE_LUT_COLS];
@@ -86,6 +88,10 @@ struct pm8921_bms_battery_data {
 	struct single_row_lut		*fcc_sf_lut;
 	struct pc_temp_ocv_lut		*pc_temp_ocv_lut;
 	struct pc_sf_lut		*pc_sf_lut;
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+	unsigned int			rbatt;
+	unsigned int			k_factor;
+#endif
 };
 
 struct pm8xxx_bms_core_data {
@@ -221,7 +227,14 @@ static inline void pm8921_bms_charging_full(void)
 {
 }
 #endif
-
+#ifdef CONFIG_PM8921_EXTENDED_INFO
+/**
+ * pm8921_bms_voltage_based_capacity - function toadjust meter offset
+ */
+void pm8921_bms_voltage_based_capacity(int batt_mvolt,
+				       int batt_mcurr,
+				       int batt_temp);
+#endif
 #ifdef CONFIG_PM8921_TEST_OVERRIDE
 int pm8921_override_get_charge_status(int *status);
 #endif
