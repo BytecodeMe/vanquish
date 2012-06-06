@@ -190,6 +190,7 @@ static int diagchar_open(struct inode *inode, struct file *file)
 				return -ENOMEM;
 			}
 		}
+		driver->data_ready[i] = 0x0;
 		driver->data_ready[i] |= MSG_MASKS_TYPE;
 		driver->data_ready[i] |= EVENT_MASKS_TYPE;
 		driver->data_ready[i] |= LOG_MASKS_TYPE;
@@ -1158,6 +1159,7 @@ static int __init diagchar_init(void)
 #elif defined(CONFIG_DIAG_INTERNAL)
 		driver->logging_mode = INTERNAL_MODE;
 #endif
+		driver->mask_check = 0;
 		mutex_init(&driver->diagchar_mutex);
 		init_waitqueue_head(&driver->wait_q);
 		INIT_WORK(&(driver->diag_drain_work), diag_drain_work_fn);
