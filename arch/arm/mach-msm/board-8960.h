@@ -70,21 +70,26 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #define MDP_VSYNC_DISABLED	false
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_PRIM_BUF_SIZE (1280 * 736 * 4 * 3) /* 4 bpp x 3 pages */
+#define MSM_FB_PRIM_BUF_SIZE \
+		(roundup((1280 * 736 * 4), 4096) * 3) /* 4 bpp x 3 pages */
 #else
-#define MSM_FB_PRIM_BUF_SIZE (1280 * 736 * 4 * 2) /* 4 bpp x 2 pages */
+#define MSM_FB_PRIM_BUF_SIZE \
+		(roundup((1280 * 736 * 4), 4096) * 2) /* 4 bpp x 2 pages */
 #endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-#define MSM_FB_EXT_BUF_SIZE	(1920 * 1088 * 2 * 1) /* 2 bpp x 1 page */
+#define MSM_FB_EXT_BUF_SIZE \
+		(roundup((1920 * 1088 * 2), 4096) * 1) /* 2 bpp x 1 page */
 #elif defined(CONFIG_FB_MSM_TVOUT)
-#define MSM_FB_EXT_BUF_SIZE (720 * 576 * 2 * 2) /* 2 bpp x 2 pages */
+#define MSM_FB_EXT_BUF_SIZE \
+		(roundup((720 * 576 * 2), 4096) * 2) /* 2 bpp x 2 pages */
 #else
 #define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
 #ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
-#define MSM_FB_WRITEBACK_BUF_SIZE (1280 * 720 * 2) /* 2 bpp x 1 page */
+#define MSM_FB_WRITEBACK_BUF_SIZE \
+		(roundup((1280 * 720 * 2), 4096)) /* 2 bpp x 1 page */
 #else
 #define MSM_FB_WRITEBACK_BUF_SIZE 0
 #endif
@@ -101,7 +106,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 
 #endif
 
-#define MSM_PMEM_ADSP_SIZE         0x6E00000
+#define MSM_PMEM_ADSP_SIZE         0x6E00000 /* Need to be multiple of 64K */
 #define MSM_PMEM_AUDIO_SIZE        0xB4000
 #define MSM_PMEM_SIZE 0x4600000 /* 70 Mbytes */
 #define MSM_LIQUID_PMEM_SIZE 0x4000000 /* 64 Mbytes */
@@ -110,18 +115,27 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x280000
-#define MSM_ION_SF_SIZE		MSM_PMEM_SIZE
-#define MSM_ION_MM_FW_SIZE	0x200000
+#ifdef CONFIG_MSM_IOMMU
+#define MSM_ION_MM_SIZE		0x3800000
+#define MSM_ION_SF_SIZE		0x0
+#define MSM_ION_QSECOM_SIZE	0x780000 /* (7.5MB) */ /************ TODO: Why the increase */
+#define MMI_MSM_ION_HEAP_NUM	7
+#else
 #define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
+#define MSM_ION_SF_SIZE		MSM_PMEM_SIZE
 #define MSM_ION_QSECOM_SIZE	0x200000 /* (2MB) */
-
+#define MMI_MSM_ION_HEAP_NUM	8
+#endif
+#define MSM_ION_MM_FW_SIZE	0x200000 /* (2MB) */
 #define MSM_ION_MFC_SIZE	SZ_8K
 #define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
+
 #ifdef CONFIG_KERNEL_PMEM_AUDIO_MMI
- #define MSM_ION_HEAP_NUM	7
+ #define MSM_ION_HEAP_NUM	(MMI_MSM_ION_HEAP_NUM-1)
 #else
- #define MSM_ION_HEAP_NUM	8
+ #define MSM_ION_HEAP_NUM	(MMI_MSM_ION_HEAP_NUM)
 #endif
+
 #define MSM_LIQUID_ION_MM_SIZE (MSM_ION_MM_SIZE + 0x600000)
 #define MSM_LIQUID_ION_SF_SIZE MSM_LIQUID_PMEM_SIZE
 #define MSM_HDMI_PRIM_ION_SF_SIZE MSM_HDMI_PRIM_PMEM_SIZE
