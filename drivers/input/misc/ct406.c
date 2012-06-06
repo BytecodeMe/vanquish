@@ -1035,7 +1035,7 @@ static void ct406_report_als(struct ct406_data *ct)
 	/* calculate lux using piecewise function from TAOS */
 	if (c0data == 0)
 		c0data = 1;
-	ratio = 100 * c1data / c0data;
+	ratio = ((100 * c1data) + c0data - 1) / c0data;
 	switch (ct->als_mode) {
 	case CT406_ALS_MODE_SUNLIGHT:
 		if (c0data == 0x0400 || c1data == 0x0400)
