@@ -328,6 +328,14 @@ int32_t msm_actuator_config(
 			LERROR("%s move focus failed %d\n", __func__, rc);
 		break;
 
+	case CFG_GET_CUR_LENS_POS:
+		cdata.cfg.cur_lens_pos = a_ctrl->curr_step_pos;
+		if (copy_to_user((void *)argp,
+				 &cdata,
+				 sizeof(struct msm_actuator_cfg_data)))
+			rc = -EFAULT;
+		break;
+
 	default:
 		break;
 	}
