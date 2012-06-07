@@ -117,7 +117,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 #ifdef CONFIG_MSM_IOMMU
 #define MSM_ION_MM_SIZE		0x3800000
 #define MSM_ION_SF_SIZE		0x0
-#define MSM_ION_QSECOM_SIZE	0x780000 /* (7.5MB) */ /************ TODO: Why the increase */
+#define MSM_ION_QSECOM_SIZE	0x380000 /* (3.5MB) - can't fallback to SF */
 #define MMI_MSM_ION_HEAP_NUM	7
 #else
 #define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
