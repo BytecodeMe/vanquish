@@ -121,6 +121,7 @@ struct lm3532_bl {
 	struct lm3532_backlight_platform_data *pdata;
 	unsigned long cached_daylight_max;
 	int current_brightness;
+	u8 backlight_pwm;
 	struct delayed_work work;
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
@@ -443,10 +444,14 @@ static int lm3532_bl_set(struct backlight_device *bl, int brightness)
 				LM3532_CTRL_A_ZT_4
 				+ (data->backlight_controller * 5),
 				brightness);
-		if (data->pdata->pwm_disable_threshold != 0 &&
-			brightness >= data->pdata->pwm_disable_threshold) {
-			ret |= lm3532_write(data->client,
-				data->backlight_controller + LM3532_CTRL_A_PWM, 0x02);
+		if (data->pdata->pwm_disable_threshold != 0) {
+			if (brightness >= data->pdata->pwm_disable_threshold)
+				ret |= lm3532_write(data->client,
+					data->backlight_controller + LM3532_CTRL_A_PWM, 0x02);
+			else
+				ret |= lm3532_write(data->client,
+					data->backlight_controller + LM3532_CTRL_A_PWM,
+					data->backlight_pwm);
 		}
 	}
 
@@ -904,8 +909,9 @@ static ssize_t lm3532_pwm_show(struct device *dev,
 	if (ret)
 		pr_err("%s: failed to read PWM reg: %d\n", __func__, ret);
 	else
-		n = scnprintf(buf, PAGE_SIZE, "%s\n",
-			val & 0x40 ? "enabled" : "disabled");
+		n = scnprintf(buf, PAGE_SIZE, "0x%x, %s, threshold=%d\n",
+			val, val & 0x40 ? "enabled" : "disabled",
+			data->pdata->pwm_disable_threshold);
 	return n;
 }
 
@@ -992,12 +998,15 @@ static int __devinit lm3532_probe(struct i2c_client *client,
 	if (pdata->ctrl_a_usage == LM3532_BACKLIGHT_DEVICE) {
 		backlight_name = pdata->ctrl_a_name;
 		data->backlight_controller = LM3532_CNTRL_A;
+		data->backlight_pwm = pdata->ctrl_a_pwm;
 	} else if (pdata->ctrl_b_usage == LM3532_BACKLIGHT_DEVICE) {
 		backlight_name = pdata->ctrl_b_name;
 		data->backlight_controller = LM3532_CNTRL_B;
+		data->backlight_pwm = pdata->ctrl_b_pwm;
 	} else if (pdata->ctrl_c_usage == LM3532_BACKLIGHT_DEVICE) {
 		backlight_name = pdata->ctrl_c_name;
 		data->backlight_controller = LM3532_CNTRL_C;
+		data->backlight_pwm = pdata->ctrl_c_pwm;
 	} else {
 		dev_err(&client->dev, "No backlight controller specified\n");
 		goto out;
