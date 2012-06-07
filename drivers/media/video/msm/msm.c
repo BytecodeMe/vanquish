@@ -2006,7 +2006,7 @@ static unsigned int msm_poll_config(struct file *fp,
 static int msm_close_server(struct inode *inode, struct file *fp)
 {
 	struct v4l2_event_subscription sub;
-
+	D("%s\n", __func__);
 	mutex_lock(&g_server_dev.server_lock);
 	if (g_server_dev.use_count > 0)
 		g_server_dev.use_count--;
@@ -2027,7 +2027,6 @@ static int msm_close_server(struct inode *inode, struct file *fp)
 		msm_server_v4l2_unsubscribe_event(
 				&g_server_dev.server_command_queue.eventHandle, &sub);
 
-		msm_queue_drain(&g_server_dev.ctrl_q, list_control);
 	}
 	return 0;
 }
