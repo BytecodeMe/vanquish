@@ -34,6 +34,7 @@
 #define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(10)
 #define DEF_FREQUENCY_UP_THRESHOLD		(80)
 #define DEF_SAMPLING_DOWN_FACTOR		(1)
+#define DEF_REFRESH_SPEED			(1000000)
 #define MAX_SAMPLING_DOWN_FACTOR		(100000)
 #define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(3)
 #define MICRO_FREQUENCY_UP_THRESHOLD		(95)
@@ -125,10 +126,12 @@ static struct dbs_tuners {
 	unsigned int sampling_down_factor;
 	int          powersave_bias;
 	unsigned int io_is_busy;
+	unsigned int refresh_speed;
 } dbs_tuners_ins = {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
 	.down_differential = DEF_FREQUENCY_DOWN_DIFFERENTIAL,
+	.refresh_speed = DEF_REFRESH_SPEED,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 };
@@ -290,6 +293,7 @@ show_one(up_threshold, up_threshold);
 show_one(down_differential, down_differential);
 show_one(sampling_down_factor, sampling_down_factor);
 show_one(ignore_nice_load, ignore_nice);
+show_one(refresh_speed, refresh_speed);
 
 static ssize_t show_powersave_bias
 (struct kobject *kobj, struct attribute *attr, char *buf)
@@ -482,6 +486,21 @@ static ssize_t store_powersave_bias(struct kobject *a, struct attribute *b,
 	return count;
 }
 
+static ssize_t store_refresh_speed(struct kobject *a, struct attribute *b,
+					const char *buf, size_t count)
+{
+	int ret;
+	u64 val;
+
+	ret = strict_strtoull(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	dbs_tuners_ins.refresh_speed = val;
+
+	return count;
+}
+
 define_one_global_rw(sampling_rate);
 define_one_global_rw(io_is_busy);
 define_one_global_rw(up_threshold);
@@ -489,6 +508,7 @@ define_one_global_rw(down_differential);
 define_one_global_rw(sampling_down_factor);
 define_one_global_rw(ignore_nice_load);
 define_one_global_rw(powersave_bias);
+define_one_global_rw(refresh_speed);
 
 static struct attribute *dbs_attributes[] = {
 	&sampling_rate_min.attr,
@@ -499,6 +519,7 @@ static struct attribute *dbs_attributes[] = {
 	&ignore_nice_load.attr,
 	&powersave_bias.attr,
 	&io_is_busy.attr,
+	&refresh_speed.attr,
 	NULL
 };
 
@@ -612,11 +633,19 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 	/* Check for frequency increase */
 	if (max_load_freq > dbs_tuners_ins.up_threshold * policy->cur) {
+		unsigned int scale_freq;
+
+		if (policy->cur < dbs_tuners_ins.refresh_speed)
+			scale_freq = dbs_tuners_ins.refresh_speed;
+		else
+			scale_freq = policy->max *
+					(max_load_freq / policy->cur) / 100;
 		/* If switching to max speed, apply sampling_down_factor */
-		if (policy->cur < policy->max)
+		if (scale_freq == policy->max)
 			this_dbs_info->rate_mult =
 				dbs_tuners_ins.sampling_down_factor;
-		dbs_freq_increase(policy, policy->max);
+		if (policy->cur < scale_freq)
+			dbs_freq_increase(policy, scale_freq);
 		return;
 	}
 
@@ -753,10 +782,9 @@ static void dbs_refresh_callback(struct work_struct *unused)
 		return;
 	}
 
-	if (policy->cur < policy->max) {
-		policy->cur = policy->max;
+	if (policy->cur < dbs_tuners_ins.refresh_speed) {
 
-		__cpufreq_driver_target(policy, policy->max,
+		__cpufreq_driver_target(policy, dbs_tuners_ins.refresh_speed,
 					CPUFREQ_RELATION_L);
 		this_dbs_info->prev_cpu_idle = get_cpu_idle_time(cpu,
 				&this_dbs_info->prev_cpu_wall);

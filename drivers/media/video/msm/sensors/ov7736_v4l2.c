@@ -35,12 +35,10 @@ static uint16_t sharpening_saved_5301;
 
 static struct msm_camera_i2c_reg_conf ov7736_start_settings[] = {
 	{0x3008, 0x02},
-	{0xFFFE, 200}, /* delay */
 };
 
 static struct msm_camera_i2c_reg_conf ov7736_stop_settings[] = {
 	{0x3008, 0x42},
-	{0xFFFE, 100}, /* delay */
 };
 
 static struct msm_camera_i2c_conf_array ov7736_init_conf[] = {
@@ -48,9 +46,8 @@ static struct msm_camera_i2c_conf_array ov7736_init_conf[] = {
 
 static struct msm_camera_i2c_reg_conf mode_preview_tbl[] = {
 	{0x3008, 0x82},
-	{0xFFFE, 200}, /* delay */
+	{0xFFFE, 10},   /* delay */
 	{0x3008, 0x42},
-	{0xFFFE, 100}, /* delay */
 	{0x3630, 0x11},
 	{0x3104, 0x03},
 	{0x3017, 0x7f},

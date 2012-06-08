@@ -69,6 +69,7 @@ static boolean deauth_only;
 #endif
 #endif
 
+static int hdmi_clk_count = 0;
 static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 
 /* HDMI/HDCP Registers */
@@ -4189,12 +4190,14 @@ int hdmi_msm_clk(int on)
 				rc);
 			return rc;
 		}
+		hdmi_clk_count ++;
 	} else {
 		clk_disable(hdmi_msm_state->hdmi_app_clk);
 		clk_disable(hdmi_msm_state->hdmi_m_pclk);
 		clk_disable(hdmi_msm_state->hdmi_s_pclk);
+		if (hdmi_clk_count != 0)
+			hdmi_clk_count --;
 	}
-
 	return 0;
 }
 
@@ -4473,7 +4476,8 @@ static int hdmi_msm_power_ctrl(boolean enable)
 		hdmi_msm_powerdown_phy();
 		hdmi_msm_state->pd->cec_power(0);
 		hdmi_msm_state->pd->core_power(0, 1);
-		hdmi_msm_clk(0);
+		if (hdmi_clk_count)
+			hdmi_msm_clk(0);
 	}
 #else
 	if (!external_common_state->hpd_feature_on)
