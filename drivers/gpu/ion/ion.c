@@ -14,7 +14,6 @@
  * GNU General Public License for more details.
  *
  */
-
 #include <linux/device.h>
 #include <linux/file.h>
 #include <linux/fs.h>
@@ -225,6 +224,9 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	buffer->heap = heap;
 	kref_init(&buffer->ref);
 
+	/* TODO: HACK: Motorola Special out of bounds workaround */
+	if (len >= 0x200000)
+		len += 64*1024;
 	ret = heap->ops->allocate(heap, buffer, len, align, flags);
 	if (ret) {
 		kfree(buffer);
@@ -673,7 +675,8 @@ int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 	 * If clients don't want a custom iova length, just use whatever
 	 * the buffer size is
 	 */
-	if (!iova_length)
+	/* TODO: HACK: Motorola Special out of bounds workaround */
+	if (!iova_length || iova_length >= 0x200000)
 		iova_length = buffer->size;
 
 	if (buffer->size > iova_length) {
