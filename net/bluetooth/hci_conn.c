@@ -1069,7 +1069,7 @@ void hci_conn_enter_sniff_mode(struct hci_conn *conn)
 		cp.max_interval = cpu_to_le16(hdev->sniff_max_interval);
 		cp.min_interval = cpu_to_le16(hdev->sniff_min_interval);
 		cp.attempt      = cpu_to_le16(4);
-		cp.timeout      = cpu_to_le16(1);
+		cp.timeout      = cpu_to_le16(4); //cpu_to_le16(1);
 		hci_send_cmd(hdev, HCI_OP_SNIFF_MODE, sizeof(cp), &cp);
 	}
 }
