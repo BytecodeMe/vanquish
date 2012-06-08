@@ -340,6 +340,7 @@ struct emu_det_data {
 	int reverse_mode_enable;
 };
 
+#define VBUS_ADC_READ_SETTLE_TIME 20	/* ms */
 #define SCI_OUT_DEBOUNCE_TMOUT	400	/* ms */
 #define VBUS_5V_LIMIT		3999	/* mV */
 #define VBUS_SETTLE_TIME	3000	/* ms */
@@ -1062,8 +1063,9 @@ static void notify_whisper_switch(enum emu_det_accy accy)
 	}
 }
 
-static int whisper_audio_check(struct emu_det_data *data)
+static int whisper_audio_check(void)
 {
+	struct emu_det_data *data = the_emud;
 	int ret = -ENODEV;
 	int audio = NO_DEVICE;
 	int prev_audio_state = NO_DEVICE;
@@ -1071,7 +1073,7 @@ static int whisper_audio_check(struct emu_det_data *data)
 	if (!switch_get_state(&data->dsdev))
 		return ret;
 
-	switch(data->whisper_auth) {
+	switch (data->whisper_auth) {
 	case AUTH_PASSED:
 		prev_audio_state = switch_get_state(&data->asdev);
 		pr_emu_det(PARANOIC, "HEADSET prev_state %stached\n",
@@ -1100,6 +1102,23 @@ static int whisper_audio_check(struct emu_det_data *data)
 		break;
 	}
 	return ret;
+}
+
+static void spd_check(void)
+{
+	struct emu_det_data *data = the_emud;
+
+	emu_det_disable_irq(EMU_SCI_OUT_IRQ);
+	pm8921_charger_unregister_vbus_sn(0);
+	external_5V_disable();
+	msleep(VBUS_ADC_READ_SETTLE_TIME);
+	if (adc_vbus_get() > VBUS_5V_LIMIT) {
+		notify_accy(ACCY_CHARGER);
+		data->state = CHARGER;
+	} else
+		external_5V_enable();
+	pm8921_charger_register_vbus_sn(&emu_det_vbus_state);
+	emu_det_enable_irq(EMU_SCI_OUT_IRQ);
 }
 
 #define POLL_TIME		(100 * HZ/1000) /* 100 msec */
@@ -1287,7 +1306,7 @@ static void detection_work(void)
 		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
 			/* insertion and removal of audio cable */
 			if (data->whisper_auth == AUTH_PASSED)
-				whisper_audio_check(data);
+				whisper_audio_check();
 		}
 		break;
 
@@ -1299,11 +1318,11 @@ static void detection_work(void)
 			data->state = CONFIG;
 			queue_delayed_work(data->wq, &data->work, 0);
 		} else if (last_irq == data->emu_irq[EMU_SCI_OUT_IRQ]) {
-			if (whisper_audio_check(data) == 0) {
+			if (whisper_audio_check() == 0) {
 				emu_det_disable_irq(EMU_SCI_OUT_IRQ);
 				pm8921_charger_unregister_vbus_sn(0);
 				external_5V_disable();
-				msleep(20);
+				msleep(VBUS_ADC_READ_SETTLE_TIME);
 				if (adc_vbus_get() > VBUS_5V_LIMIT) {
 					pr_emu_det(STATUS, "detection_work:" \
 						   "PPD->SPD transition\n");
@@ -2030,8 +2049,11 @@ static long emu_det_ioctl(struct file *file,
 					/* sense mask needs an update after
 					   switching to alternate mode */
 					get_sense();
-					whisper_audio_check(data);
-				}
+					whisper_audio_check();
+					if (data->state != CHARGER)
+						spd_check();
+				} else
+					external_5V_disable();
 			}
 			retval = 0;
 
