@@ -194,14 +194,114 @@ static struct platform_device mmi_gpiokeys_device = {
 		.platform_data = &mmi_gpio_keys_data,
 	},
 };
+
+static int lid_state, filtered;
+
+static int keypad_lock_connect(struct input_handler *handler,
+		struct input_dev *dev, const struct input_device_id *id)
+{
+	int ret;
+	struct input_handle *handle;
+
+	if (strncmp(dev->name , "gpio-keys", sizeof("gpio-keys")) &&
+		strncmp(dev->name , "keypad_8960", sizeof("keypad_8960")))
+		return -ENODEV;
+
+	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = "keypad_lock";
+
+	ret = input_register_handle(handle);
+	if (ret)
+		goto err_input_register_handle;
+
+	ret = input_open_device(handle);
+	if (ret)
+		goto err_input_open_device;
+
+	pr_info("added keypad filter to input dev %s\n", dev->name);
+
+	return 0;
+
+err_input_open_device:
+	input_unregister_handle(handle);
+err_input_register_handle:
+	kfree(handle);
+	return ret;
+}
+
+static void keypad_lock_disconnect(struct input_handle *handle)
+{
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static bool keypad_lock_filter(struct input_handle *handle, unsigned int type,
+						unsigned int code, int value)
+{
+	if ((type == EV_SW) && (code == SW_LID)) {
+		lid_state = value;
+		return false;
+	}
+	if ((type == EV_KEY) && lid_state) {
+		if ((code != KEY_VOLUMEUP) && (code != KEY_VOLUMEDOWN) &&
+		    (code != KEY_CAMERA) && (code != KEY_CAMERA_SNAPSHOT) &&
+		    (code != KEY_POWER) && (code != BTN_MISC)) {
+			filtered = 1;
+			return true;
+		}
+	}
+	/* Filter all scan events events if the slider is closed. */
+	if ((type == EV_MSC) && (code == MSC_SCAN) && lid_state)
+		return true;
+	/* Filter sync event following filtered keyevent */
+	if ((type == EV_SYN) && lid_state && filtered) {
+		filtered = 0;
+		return true;
+	}
+	return false;
+}
+
+
+static const struct input_device_id keypad_lock_ids[] = {
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+	},
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_SW) },
+		.absbit = { BIT_MASK(SW_LID) },
+	},
+	{ },
+};
+
+MODULE_DEVICE_TABLE(input, keypad_lock_ids);
+
+static struct input_handler keypad_lock_handler = {
+	.filter     = keypad_lock_filter,
+	.connect    = keypad_lock_connect,
+	.disconnect = keypad_lock_disconnect,
+	.name       = "keypad_lock",
+	.id_table   = keypad_lock_ids,
+};
+
 #endif
+
 int __init mmi_keypad_init(int mode)
 {
 	if (mode & MMI_KEYPAD_RESET)
 		platform_device_register(&mmi_keyreset_device);
 #ifdef CONFIG_KEYBOARD_GPIO
-	if (mode & MMI_KEYPAD_SLIDER)
+	if (mode & MMI_KEYPAD_SLIDER) {
 		platform_device_register(&mmi_gpiokeys_device);
+		if (input_register_handler(&keypad_lock_handler))
+			pr_info("input_register_handler failed\n");
+	}
 #endif
 	return 0;
 }
