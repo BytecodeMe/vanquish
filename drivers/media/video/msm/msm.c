@@ -1656,6 +1656,18 @@ static int msm_close(struct file *f)
 	}
 
 	mutex_lock(&pcam->vid_lock);
+
+	if (pcam_inst->streamon) {
+		/*something went wrong since instance
+		is closing without streamoff*/
+		if (pcam->mctl.mctl_release) {
+			rc = pcam->mctl.mctl_release(&(pcam->mctl));
+			if (rc < 0)
+				pr_err("mctl_release fails %d\n", rc);
+		}
+		pcam->mctl.mctl_release = NULL;/*so that it isn't closed again*/
+	}
+
 	pcam_inst->streamon = 0;
 	pcam->use_count--;
 	pcam->dev_inst_map[pcam_inst->image_mode] = NULL;
@@ -1994,7 +2006,7 @@ static unsigned int msm_poll_config(struct file *fp,
 static int msm_close_server(struct inode *inode, struct file *fp)
 {
 	struct v4l2_event_subscription sub;
-
+	D("%s\n", __func__);
 	mutex_lock(&g_server_dev.server_lock);
 	if (g_server_dev.use_count > 0)
 		g_server_dev.use_count--;
@@ -2015,7 +2027,6 @@ static int msm_close_server(struct inode *inode, struct file *fp)
 		msm_server_v4l2_unsubscribe_event(
 				&g_server_dev.server_command_queue.eventHandle, &sub);
 
-		msm_queue_drain(&g_server_dev.ctrl_q, list_control);
 	}
 	return 0;
 }
