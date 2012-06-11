@@ -68,8 +68,12 @@ int mdp4_overlay_dsi_state_get(void)
 
 static void dsi_clock_tout(unsigned long data)
 {
-	if (dsi_state == ST_DSI_PLAYING && !mipi_dsi_turn_off_clks())
+	if (mipi_dsi_clk_on) {
+		if (dsi_state == ST_DSI_PLAYING) {
+			mipi_dsi_turn_off_clks();
 			mdp4_overlay_dsi_state_set(ST_DSI_CLK_OFF);
+		}
+	}
 }
 
 static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
@@ -568,7 +572,11 @@ void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 			__func__, current->pid, mipi_dsi_clk_on);
 
 	/* satrt dsi clock if necessary */
-	mipi_dsi_turn_on_clks();
+	if (mipi_dsi_clk_on == 0) {
+		local_bh_disable();
+		mipi_dsi_turn_on_clks();
+		local_bh_enable();
+	}
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (mfd->dma->busy == TRUE) {
