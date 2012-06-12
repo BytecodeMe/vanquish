@@ -165,7 +165,7 @@ static void msm_pcm_routing_build_matrix(int fedai_id, int dspst_id,
 }
 
 void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
-					int stream_type)
+					int stream_type, int enable)
 {
 	int i, session_type, path_type, port_type;
 	u32 mode = 0;
@@ -196,8 +196,13 @@ void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
 			&msm_bedais[i].fe_sessions))) {
 
 			mode = afe_get_port_type(msm_bedais[i].port_id);
-			adm_connect_afe_port(mode, dspst_id,
-				msm_bedais[i].port_id);
+			if (enable)
+				adm_connect_afe_port(mode, dspst_id,
+					    msm_bedais[i].port_id);
+			else
+				adm_disconnect_afe_port(mode, dspst_id,
+						msm_bedais[i].port_id);
+
 			break;
 		}
 	}
