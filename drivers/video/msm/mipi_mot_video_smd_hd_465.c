@@ -722,11 +722,12 @@ static void enable_acl(struct msm_fb_data_type *mfd)
 	}
 }
 
+#define RETRY_MAX_CNT 15
 static int panel_enable(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *dsi_tx_buf;
 	static int bootloader_nit = 1;
-	int idx;
+	int idx, retry_cnt, ret;
 
 	if(bootloader_nit) {
 		/*
@@ -756,7 +757,33 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 
 	mdelay(20);
 
-	mipi_mot_read_byte(mfd, 0xda, &id_regs[0]);
+	/*
+	 * TODO: this is a software workaround for IKHSS7-35239.
+	 * - There might be a timing issue when host can read from
+	 * the panel, if not then panel will respond some messages that the host
+	 * can not parse it correctly. The QCOM case#00789265 was opened
+	 * but could not have all the testcases to test this mipi_dsi_cmds_rx()
+	 * correctly. The clone CR#IKHSS7-38202 was opened to investigate the
+	 * root cause of this issue
+	 * - This SW workaround is testing on 6 P3 units, and observed that
+	 * after 1-5 failure readings, the panel returns correct reading message
+	 */
+	for (retry_cnt = 0; retry_cnt < RETRY_MAX_CNT; retry_cnt++) {
+		ret = mipi_mot_read_byte(mfd, 0xda, &id_regs[0]);
+		if (ret == -1) {
+			mdelay(1);
+			continue;
+		} else
+			break;
+	}
+
+	if (retry_cnt > 0 && retry_cnt < RETRY_MAX_CNT)
+		printk(KERN_INFO "%s: retry to read 0xda %d times "
+			"and it is OK now\n", __func__, retry_cnt);
+	else
+		printk(KERN_ERR "%s: retry to read %d but still fails\n",
+			__func__, RETRY_MAX_CNT);
+
 	mipi_mot_read_byte(mfd, 0xdb, &id_regs[1]);
 	mipi_mot_read_byte(mfd, 0xdc, &id_regs[2]);
 
