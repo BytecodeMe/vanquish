@@ -34,7 +34,6 @@
 #define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(10)
 #define DEF_FREQUENCY_UP_THRESHOLD		(80)
 #define DEF_SAMPLING_DOWN_FACTOR		(1)
-#define DEF_REFRESH_SPEED			(1000000)
 #define MAX_SAMPLING_DOWN_FACTOR		(100000)
 #define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(3)
 #define MICRO_FREQUENCY_UP_THRESHOLD		(95)
@@ -131,7 +130,7 @@ static struct dbs_tuners {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
 	.down_differential = DEF_FREQUENCY_DOWN_DIFFERENTIAL,
-	.refresh_speed = DEF_REFRESH_SPEED,
+	.refresh_speed = 0,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 };
@@ -934,6 +933,10 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		}
 		if (!cpu)
 			rc = input_register_handler(&dbs_input_handler);
+
+		if (!dbs_tuners_ins.refresh_speed)
+			dbs_tuners_ins.refresh_speed = policy->max;
+
 		mutex_unlock(&dbs_mutex);
 
 		mutex_init(&this_dbs_info->timer_mutex);
