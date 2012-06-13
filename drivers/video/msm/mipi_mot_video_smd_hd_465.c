@@ -780,7 +780,7 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	if (retry_cnt > 0 && retry_cnt < RETRY_MAX_CNT)
 		printk(KERN_INFO "%s: retry to read 0xda %d times "
 			"and it is OK now\n", __func__, retry_cnt);
-	else
+	else if (retry_cnt == RETRY_MAX_CNT)
 		printk(KERN_ERR "%s: retry to read %d but still fails\n",
 			__func__, RETRY_MAX_CNT);
 
