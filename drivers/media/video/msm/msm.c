@@ -2261,6 +2261,11 @@ static int msm_open_config(struct inode *inode, struct file *fp)
 		pr_err("%s: nonseekable_open error %d\n", __func__, rc);
 		return rc;
 	}
+	if (!g_server_dev.pcam_active) {
+		pr_err("%s: pcam_active is NULL\n", __func__);
+		return -ENODEV;
+	}
+
 	config_cam->use_count++;
 
 	/*config_cam->isp_subdev = g_server_dev.pcam_active->mctl.isp_sdev;*/
