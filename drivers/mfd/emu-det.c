@@ -478,6 +478,7 @@ void switch_mux_mode(int mode, int check_valid_req)
 void set_mux_ctrl_mode_for_audio(int mode)
 {
 	struct emu_det_data *emud = the_emud;
+	int emu_audio = switch_get_state(&emud->asdev);
 
 	if (emud->driver_mode == MODE_F_AUDIO) {
 		switch_mux_mode(MUXMODE_AUDIO, 0);
@@ -501,8 +502,12 @@ void set_mux_ctrl_mode_for_audio(int mode)
 	if ((emud->whisper_auth == AUTH_PASSED) &&
 	    ((emud->state == CHARGER) ||
 	     (emud->state == WHISPER_PPD))) {
+		if ((!emu_audio) ||
+		    (mode != MUXMODE_AUDIO))
+			mode = MUXMODE_USB;
+
 		emud->requested_muxmode = mode;
-		switch_mux_mode(mode, 1);
+		switch_mux_mode(mode, 0);
 	}
 }
 
