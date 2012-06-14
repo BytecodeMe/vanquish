@@ -55,6 +55,9 @@ static int __init mapphone_touch_ic_settings_init(
 static int __init mapphone_touch_firmware_init(
 		struct touch_platform_data *tpdata,
 		struct device_node *dtnode);
+static int __init mapphone_touch_tdat_init(
+		struct touch_platform_data *tpdata,
+		struct device_node *dtnode);
 static int __init mapphone_touch_framework_settings_init(
 		struct touch_platform_data *tpdata,
 		struct device_node *dtnode);
@@ -106,6 +109,11 @@ int __init mapphone_touch_panel_init(struct i2c_board_info *i2c_info,
 					err = mapphone_touch_vkeys_init(
 							child, i2c_info);
 				break;
+
+			case 0x0000001E: /* Tdat */
+				err = mapphone_touch_tdat_init(tpdata, child);
+				break;
+
 			}
 		}
 
@@ -311,6 +319,34 @@ static int __init mapphone_touch_firmware_init(
 	}
 
 touch_firmware_init_fail:
+	return err;
+}
+
+static int __init mapphone_touch_tdat_init(
+		struct touch_platform_data *tpdata,
+		struct device_node *dtnode)
+{
+	int err = 0;
+	const void *prop;
+	int size = 0;
+
+	prop = of_get_property(dtnode, "tdat_filename", &size);
+	if (prop == NULL || size <= 0) {
+		pr_err("%s: tdat file name is missing.\n", __func__);
+		err = -ENOENT;
+		goto touch_tdat_init_fail;
+	} else {
+		tpdata->filename = kstrndup((char *)prop, size, GFP_KERNEL);
+
+		if (!tpdata->filename) {
+			pr_err("%s: unable to allocate memory for "
+					"tdat file name\n", __func__);
+			err = -ENOMEM;
+			goto touch_tdat_init_fail;
+		}
+	}
+
+touch_tdat_init_fail:
 	return err;
 }
 

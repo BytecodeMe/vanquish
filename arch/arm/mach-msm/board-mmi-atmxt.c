@@ -26,7 +26,6 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/input/touch_platform.h>
-#include <linux/input/atmxt.h>
 #include <asm/prom.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
@@ -36,6 +35,11 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include "board-mmi.h"
+
+/* make sure the right GPIOs are used */
+#define ATMXT_GPIO_INTR		46
+#define ATMXT_GPIO_RST		50
+#define ATMXT_GPIO_ENABLE	52
 
 int mot_setup_touch_atmxt(struct i2c_board_info *info, struct device_node *node)
 {

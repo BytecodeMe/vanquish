@@ -22,6 +22,8 @@
 
 #include <linux/types.h>
 
+#define ATMXT_I2C_NAME		"atmxt-i2c"
+
 struct touch_settings {
 	uint8_t		*data;
 	uint8_t		size;
@@ -59,6 +61,7 @@ struct touch_platform_data {
 	int			gpio_interrupt;
 	int			gpio_sda;
 	int			gpio_scl;
+	char			*filename;
 
 	/* as of 2/8/2012, used only by Melfas driver */
 	int			max_x;

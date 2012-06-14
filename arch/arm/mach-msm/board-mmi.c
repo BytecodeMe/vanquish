@@ -39,9 +39,6 @@
 #ifdef CONFIG_TOUCHSCREEN_MELFAS100_TS
 #include <linux/melfas100_ts.h>
 #endif
-#ifdef CONFIG_TOUCHSCREEN_ATMXT
-#include <linux/input/atmxt.h>
-#endif
 
 #include <linux/dma-mapping.h>
 #include <linux/platform_data/qcom_crypto_device.h>
