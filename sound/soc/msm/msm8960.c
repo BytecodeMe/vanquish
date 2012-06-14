@@ -303,16 +303,16 @@ static int emu_audio_accy_notify(struct notifier_block *nb,
 {
 	pr_debug("%s(), status = %d\n", __func__, (int)status);
 	emu_state = status;
+
 	return 0;
 }
 
 static int msm8960_check_for_emu_audio(void)
 {
+	pr_debug("%s(), state = %d\n", __func__, emu_state);
 	if (emu_state == EMU_OUT) {
-		pr_debug("%s(), state = %d\n", __func__, emu_state);
 		return 1;
 	} else {
-		pr_debug("%s(), state = %d\n", __func__, emu_state);
 		return 0;
 	}
 }
@@ -356,7 +356,6 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 		pr_debug("emu_on = %d\n", emu_on);
 		if ((emu_on == 2) && msm8960_check_for_emu_audio()) {
 			pr_debug("EMU dock connected, route to dock\n");
-			set_mux_ctrl_mode_for_audio(MUXMODE_AUDIO);
 		}
 	} else {
 		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18)) {
@@ -377,7 +376,6 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 
 		if ((emu_on == 0) && msm8960_check_for_emu_audio()) {
 			pr_debug("Don't route audio to EMU anymore\n");
-			set_mux_ctrl_mode_for_audio(MUXMODE_USB);
 		}
 	}
 	return 0;
