@@ -4251,6 +4251,71 @@ static DEVICE_ATTR(force_chg_usb_suspend, 0664,
 		force_chg_usb_suspend_show,
 		force_chg_usb_suspend_store);
 
+static ssize_t force_chg_fail_clear_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long mode;
+
+	r = strict_strtoul(buf, 0, &mode);
+	if (r) {
+		pr_err("Invalid chg/atc fail mode value = %lu\n", mode);
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+
+	if (!the_chip->factory_mode) {
+		pr_err("Only allowed in factory mode\n");
+		r = -EPERM;
+		return r;
+	}
+
+	r = pm_chg_masked_write(the_chip, CHG_CNTRL_3,
+				(ATC_FAILED_CLEAR | CHG_FAILED_CLEAR),
+				mode ?
+				(ATC_FAILED_CLEAR | CHG_FAILED_CLEAR) : 0);
+
+	return r ? r : count;
+}
+
+static ssize_t force_chg_fail_clear_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	int state;
+	int ret;
+	u8 value;
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		state = -ENODEV;
+		goto end;
+	}
+
+	ret = pm8xxx_readb(the_chip->dev->parent, CHG_CNTRL_3, &value);
+	if (ret) {
+		pr_err("pm8xxx_readb CHG_CNTRL_3 failed ret = %d\n", ret);
+		state = -EFAULT;
+		goto end;
+	}
+
+	state = ((CHG_FAILED_CLEAR | ATC_FAILED_CLEAR) & value);
+
+end:
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", state);
+}
+
+static DEVICE_ATTR(force_chg_fail_clear, 0664,
+		force_chg_fail_clear_show,
+		force_chg_fail_clear_store);
+
 static ssize_t fsm_state_show(struct device *dev,
 				struct device_attribute *attr,
 				char *buf)
@@ -4674,6 +4739,13 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	}
 
 	rc = device_create_file(&pdev->dev,
+				&dev_attr_force_chg_fail_clear);
+	if (rc) {
+		pr_err("couldn't create force_chg_fail_clear\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
 				&dev_attr_fsm_state);
 	if (rc) {
 		pr_err("couldn't create fsm_state\n");
@@ -4907,6 +4979,7 @@ static int __devexit pm8921_charger_remove(struct platform_device *pdev)
 	struct pm8921_chg_chip *chip = platform_get_drvdata(pdev);
 
 	device_remove_file(&pdev->dev, &dev_attr_force_chg_usb_suspend);
+	device_remove_file(&pdev->dev, &dev_attr_force_chg_fail_clear);
 	device_remove_file(&pdev->dev, &dev_attr_fsm_state);
 	device_remove_file(&pdev->dev, &dev_attr_charge_rate);
 	unregister_reboot_notifier(&pm8921_charging_reboot_notifier);
