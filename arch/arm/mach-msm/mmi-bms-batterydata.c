@@ -311,7 +311,7 @@ static struct pm8921_bms_battery_data  mmi_eg30_sdi_metering_data = {
 };
 
 static struct pm8921_charger_battery_data mmi_eg30_sdi_charging_data = {
-	.max_voltage			= 3841,
+	.max_voltage			= 4350,
 	.min_voltage			= 3200,
 	.resume_voltage_delta		= 100,
 	.term_current			= 86,
@@ -320,8 +320,8 @@ static struct pm8921_charger_battery_data mmi_eg30_sdi_charging_data = {
 	.max_bat_chg_current		= 1843,
 	.cool_bat_chg_current		= 0,
 	.warm_bat_chg_current		= 0,
-	.cool_bat_voltage		= 3841,
-	.warm_bat_voltage		= 3841,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
 	.step_charge_current		= 1120,
 	.step_charge_voltage		= 4200,
 };
@@ -776,7 +776,7 @@ static struct pm8921_bms_battery_data  mmi_df_metering_data = {
 };
 
 static struct pm8921_charger_battery_data mmi_df_charging_data = {
-	.max_voltage			= 3800,
+	.max_voltage			= 4200,
 	.min_voltage			= 3200,
 	.resume_voltage_delta		= 100,
 	.term_current			= 80,
