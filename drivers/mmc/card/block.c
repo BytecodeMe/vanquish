@@ -569,16 +569,9 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 		pr_err("%s: %s sending %s command, card status %#x\n",
 			req->rq_disk->disk_name, "timed out", name, status);
 
-		if (R1_CURRENT_STATE(status) == R1_STATE_PRG) {
-			pr_err("%s: stuck in programming state, retrying "
-				"timeout\n", req->rq_disk->disk_name);
-			return ERR_RETRY;
-		}
-
 		/* If the status cmd initially failed, retry the r/w cmd */
 		if (!status_valid) {
-			pr_err("%s: status not valid, retrying timeout\n",
-				req->rq_disk->disk_name);
+			pr_err("%s: status not valid, retrying timeout\n", req->rq_disk->disk_name);
 			return ERR_RETRY;
 		}
 		/*
@@ -587,8 +580,7 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 		 * have corrected the state problem above.
 		 */
 		if (status & (R1_COM_CRC_ERROR | R1_ILLEGAL_COMMAND)) {
-			pr_err("%s: command error, retrying timeout\n",
-				req->rq_disk->disk_name);
+			pr_err("%s: command error, retrying timeout\n", req->rq_disk->disk_name);
 			return ERR_RETRY;
 		}
 
@@ -598,8 +590,8 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 
 	default:
 		/* We don't understand the error code the driver gave us */
-		pr_err("%s: unknown error %d sending read/write command, card "
-			"status %#x\n", req->rq_disk->disk_name, error, status);
+		pr_err("%s: unknown error %d sending read/write command, card status %#x\n",
+		       req->rq_disk->disk_name, error, status);
 		return ERR_ABORT;
 	}
 }
@@ -660,8 +652,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 	 * mode, tell it to stop (and hopefully transition back to TRAN.)
 	 */
 	if (R1_CURRENT_STATE(status) == R1_STATE_DATA ||
-	    R1_CURRENT_STATE(status) == R1_STATE_RCV ||
-	    R1_CURRENT_STATE(status) == R1_STATE_PRG) {
+	    R1_CURRENT_STATE(status) == R1_STATE_RCV) {
 		err = send_stop(card, &stop_status);
 		if (err)
 			pr_err("%s: error %d sending stop command\n",
@@ -671,7 +662,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 		 * If the stop cmd also timed out, the card is probably
 		 * not present, so abort.  Other errors are bad news too.
 		 */
-		if (err && !(R1_CURRENT_STATE(status) == R1_STATE_PRG))
+		if (err)
 			return ERR_ABORT;
 	}
 
