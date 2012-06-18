@@ -2465,6 +2465,7 @@ static int ep_disable(struct usb_ep *ep)
 	} while (mEp->dir != direction);
 
 	mEp->desc = NULL;
+	mEp->ep.maxpacket = CTRL_PAYLOAD_MAX;
 
 	spin_unlock_irqrestore(mEp->lock, flags);
 	return retval;
