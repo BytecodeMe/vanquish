@@ -15,6 +15,112 @@
 #include <linux/power/mmi-battery.h>
 #include "board-mmi.h"
 
+/* EG30 LG Temporary Tables and Charging Parameters */
+static struct single_row_lut mmi_eg30_lg_fcc_temp = {
+	.x	= {-10, 0, 23, 60},
+	.y	= {1732, 1910, 1989, 1972},
+	.cols	= 4,
+};
+
+static struct single_row_lut mmi_eg30_lg_fcc_sf = {
+	.x	= {1, 100, 200, 300, 400, 500},
+	.y	= {100, 97, 95, 93, 92, 90},
+	.cols	= 6,
+};
+
+static struct pc_sf_lut mmi_eg30_lg_pc_sf = {
+	.rows		= 10,
+	.cols		= 5,
+	.cycles		= {100, 200, 300, 400, 500},
+	.percent	= {100, 90, 80, 70, 60, 50, 40, 30, 20, 10},
+	.sf		= {
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100},
+			{100, 100, 100, 100, 100}
+	},
+};
+
+static struct pc_temp_ocv_lut mmi_eg30_lg_pc_temp_ocv = {
+	.rows		= 29,
+	.cols		= 3,
+	.temp		= {-10, 23, 60},
+	.percent	= {100, 95, 90, 85, 80, 75, 70, 65, 60, 55,
+				50, 45, 40, 35, 30, 25, 20, 15, 10,
+				9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+	},
+	.ocv		= {
+		 {4300, 4300, 4300},
+		 {4268, 4263, 4249},
+		 {4222, 4218, 4205},
+		 {4169, 4163, 4152},
+		 {4118, 4112, 4101},
+		 {4068, 4065, 4053},
+		 {4010, 4014, 4009},
+		 {3958, 3973, 3968},
+		 {3917, 3937, 3931},
+		 {3881, 3888, 3883},
+		 {3851, 3850, 3848},
+		 {3827, 3827, 3824},
+		 {3808, 3808, 3804},
+		 {3794, 3793, 3787},
+		 {3784, 3781, 3763},
+		 {3771, 3769, 3740},
+		 {3748, 3742, 3715},
+		 {3717, 3702, 3679},
+		 {3701, 3688, 3666},
+		 {3699, 3686, 3664},
+		 {3696, 3685, 3662},
+		 {3692, 3681, 3656},
+		 {3683, 3671, 3640},
+		 {3661, 3643, 3610},
+		 {3621, 3602, 3567},
+		 {3567, 3548, 3513},
+		 {3496, 3475, 3444},
+		 {3393, 3375, 3348},
+		 {3200, 3200, 3200},
+	},
+};
+
+static struct pm8921_bms_battery_data  mmi_eg30_lg_metering_data = {
+	.fcc			= 1940,
+	.fcc_temp_lut		= &mmi_eg30_lg_fcc_temp,
+	.fcc_sf_lut		= &mmi_eg30_lg_fcc_sf,
+	.pc_temp_ocv_lut	= &mmi_eg30_lg_pc_temp_ocv,
+	.pc_sf_lut		= &mmi_eg30_lg_pc_sf,
+	.rbatt			= 171,
+	.k_factor		= 100,
+};
+
+static struct pm8921_charger_battery_data mmi_eg30_lg_charging_data = {
+	.max_voltage			= 4350,
+	.min_voltage			= 3200,
+	.resume_voltage_delta		= 100,
+	.term_current			= 248,
+	.cool_temp			= 0,
+	.warm_temp			= 45,
+	.max_bat_chg_current		= 1843,
+	.cool_bat_chg_current		= 0,
+	.warm_bat_chg_current		= 0,
+	.cool_bat_voltage		= 4000,
+	.warm_bat_voltage		= 4000,
+	.step_charge_current		= 1130,
+	.step_charge_voltage		= 4200,
+};
+
+static struct mmi_battery_cell mmi_eg30_lg_cell_data = {
+	.capacity = 0xC2,
+	.peak_voltage = 0xB9,
+	.dc_impedance = 0x56,
+	.cell_id = 0x424C, /* Cell code BL */
+};
+
 /* EB40 SDI Tables and Charging Parameters */
 static struct single_row_lut mmi_eb40_lg_fcc_temp = {
 	.x	= {-10, 0, 23, 60},
@@ -810,6 +916,7 @@ struct mmi_battery_list mmi_batts = {
 		&mmi_eg30_sdi_cell_data,
 		&mmi_eb20_sdi_cell_data,
 		&mmi_eb40_lg_cell_data,
+		&mmi_eg30_lg_cell_data,
 	},
 	.bms_list = {
 		 &mmi_df_metering_data,
@@ -821,6 +928,7 @@ struct mmi_battery_list mmi_batts = {
 		 &mmi_eg30_sdi_metering_data,
 		 &mmi_eb20_sdi_metering_data,
 		 &mmi_eb40_lg_metering_data,
+		 &mmi_eg30_lg_metering_data,
 	 },
 	.chrg_list = {
 		 &mmi_df_charging_data,
@@ -832,5 +940,6 @@ struct mmi_battery_list mmi_batts = {
 		 &mmi_eg30_sdi_charging_data,
 		 &mmi_eb20_sdi_charging_data,
 		 &mmi_eb40_lg_charging_data,
+		 &mmi_eg30_lg_charging_data,
 	 },
 };
