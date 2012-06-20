@@ -29,8 +29,8 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#define ATMXT_DRIVER_VERSION        "YN-02-01"
-#define ATMXT_DRIVER_DATE           "2012-06-12"
+#define ATMXT_DRIVER_VERSION        "YN-03-00"
+#define ATMXT_DRIVER_DATE           "2012-06-18"
 
 #ifdef CONFIG_TOUCHSCREEN_DEBUG
 #define atmxt_dbg(dd, level, format, args...) \
@@ -55,6 +55,7 @@
 #define ATMXT_FIXING_CALIBRATION    5
 #define ATMXT_RECEIVED_CALIBRATION  6
 #define ATMXT_RESTART_REQUIRED      7
+#define ATMXT_SET_MESSAGE_POINTER   8
 
 #define ATMXT_I2C_ATTEMPTS          10
 #define ATMXT_I2C_WAIT_TIME         50

@@ -1701,6 +1701,8 @@ static int atmxt_check_settings(struct atmxt_driver_data *dd, bool *reset)
 		goto atmxt_check_settings_fail;
 	}
 
+	dd->status = dd->status | (1 << ATMXT_SET_MESSAGE_POINTER);
+
 	err = atmxt_i2c_read(dd, msg_buf, dd->data->max_msg_size);
 	if (err < 0) {
 		printk(KERN_ERR "%s: Failed to read message.\n", __func__);
@@ -1874,10 +1876,12 @@ static int atmxt_i2c_write(struct atmxt_driver_data *dd,
 		uint8_t addr_lo, uint8_t addr_hi, uint8_t *buf, int size)
 {
 	int err = 0;
-	uint8_t *data_out;
-	int size_out;
+	uint8_t *data_out = NULL;
+	int size_out = 0;
 	int i = 0;
 	char *str = NULL;
+
+	dd->status = dd->status & ~(1 << ATMXT_SET_MESSAGE_POINTER);
 
 	size_out = size + 2;
 	data_out = kzalloc(sizeof(uint8_t) * size_out, GFP_KERNEL);
@@ -1916,7 +1920,8 @@ static int atmxt_i2c_write(struct atmxt_driver_data *dd,
 		printk(KERN_ERR "%s: I2C write failed.\n", __func__);
 
 #ifdef CONFIG_TOUCHSCREEN_DEBUG
-	str = atmxt_msg2str(data_out, size_out);
+	if ((dd->dbg->dbg_lvl) >= ATMXT_DBG2)
+		str = atmxt_msg2str(data_out, size_out);
 #endif
 	atmxt_dbg(dd, ATMXT_DBG2, "%s: %s\n", __func__, str);
 	kfree(str);
@@ -1955,7 +1960,8 @@ static int atmxt_i2c_read(struct atmxt_driver_data *dd, uint8_t *buf, int size)
 		printk(KERN_ERR "%s: I2C read failed.\n", __func__);
 
 #ifdef CONFIG_TOUCHSCREEN_DEBUG
-	str = atmxt_msg2str(buf, size);
+	if ((dd->dbg->dbg_lvl) >= ATMXT_DBG1)
+		str = atmxt_msg2str(buf, size);
 #endif
 	atmxt_dbg(dd, ATMXT_DBG1, "%s: %s\n", __func__, str);
 	kfree(str);
@@ -2263,6 +2269,9 @@ static void atmxt_active_handler(struct atmxt_driver_data *dd)
 
 	msg_size = dd->data->max_msg_size;
 	size = (dd->rdat->active_touches + 1) * msg_size;
+	if (size == msg_size)
+		size = msg_size * 2;
+
 	msg_buf = kzalloc(sizeof(uint8_t) * size, GFP_KERNEL);
 	if (msg_buf == NULL) {
 		printk(KERN_ERR
@@ -2272,11 +2281,17 @@ static void atmxt_active_handler(struct atmxt_driver_data *dd)
 		goto atmxt_active_handler_fail;
 	}
 
-	err = atmxt_i2c_write(dd, dd->addr->msg[0], dd->addr->msg[1], NULL, 0);
-	if (err < 0) {
-		printk(KERN_ERR "%s: Failed to set message buffer pointer.\n",
-			__func__);
-		goto atmxt_active_handler_fail;
+	if (!(dd->status & (1 << ATMXT_SET_MESSAGE_POINTER))) {
+		err = atmxt_i2c_write(dd, dd->addr->msg[0], dd->addr->msg[1],
+			NULL, 0);
+		if (err < 0) {
+			printk(KERN_ERR
+				"%s: Failed to set message buffer pointer.\n",
+				__func__);
+			goto atmxt_active_handler_fail;
+		}
+
+		dd->status = dd->status | (1 << ATMXT_SET_MESSAGE_POINTER);
 	}
 
 	err = atmxt_i2c_read(dd, msg_buf, size);
@@ -2386,6 +2401,7 @@ static int atmxt_process_message(struct atmxt_driver_data *dd,
 			break;
 		case 42:
 			err = atmxt_message_handler42(dd, msg, size);
+			break;
 		default:
 			contents = atmxt_msg2str(msg, size);
 			printk(KERN_ERR "%s: Object %u sent this:  %s.\n",
