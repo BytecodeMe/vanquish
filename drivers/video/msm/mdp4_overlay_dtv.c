@@ -529,10 +529,8 @@ static void mdp4_overlay_dtv_wait4_ov_done(struct msm_fb_data_type *mfd,
 		return;
 	}
 
-	if (wait_for_completion_timeout(&dtv_pipe->comp,
-			msecs_to_jiffies(VSYNC_PERIOD*2)) == 0)
-		pr_err("failed to wait for OV1 done\n");
-
+	wait_for_completion_timeout(&dtv_pipe->comp,
+			msecs_to_jiffies(VSYNC_PERIOD * 3));
 	mdp_disable_irq(MDP_OVERLAY1_TERM);
 
 	if (dtv_pipe->blt_addr)
