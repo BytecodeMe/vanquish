@@ -1277,7 +1277,8 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 
 	if (soc > 100) {
 		soc = 100;
-		pm8921_bms_charging_full();
+		if (chip->start_percent == -EINVAL)
+			pm8921_bms_charging_full();
 	}
 	pr_debug("SOC = %u%%\n", soc);
 
