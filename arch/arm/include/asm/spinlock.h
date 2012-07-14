@@ -74,19 +74,19 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	unsigned long tmp;
 
 	__asm__ __volatile__(
-"1:	ldrex	%0, [%1]\n"
-"	teq	%0, #0\n"
+"1:	ldrex	%[tmp], [%[lock]]\n"
+"	teq	%[tmp], #0\n"
 "	beq	2f\n"
 	WFE()
 "2:\n"
-"	strexeq	%0, %2, [%1]\n"
-"	teqeq	%0, #0\n"
+"	strexeq	%[tmp], %[bit0], [%[lock]]\n"
+"	teqeq	%[tmp], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bne	1b"
-	: "=&r" (tmp)
-	: "r" (&lock->lock), "r" (1)
+	: [tmp] "=&r" (tmp)
+	: [lock] "r" (&lock->lock), [bit0] "r" (1)
 	: "cc");
 
 	smp_mb();
@@ -268,19 +268,19 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	unsigned long tmp;
 
 	__asm__ __volatile__(
-"1:	ldrex	%0, [%1]\n"
-"	teq	%0, #0\n"
+"1:	ldrex	%[tmp], [%[lock]]\n"
+"	teq	%[tmp], #0\n"
 "	beq	2f\n"
 	WFE()
 "2:\n"
-"	strexeq	%0, %2, [%1]\n"
-"	teq	%0, #0\n"
+"	strexeq	%[tmp], %[bit31], [%[lock]]\n"
+"	teq	%[tmp], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bne	1b"
-	: "=&r" (tmp)
-	: "r" (&rw->lock), "r" (0x80000000)
+	: [tmp] "=&r" (tmp)
+	: [lock] "r" (&rw->lock), [bit31] "r" (0x80000000)
 	: "cc");
 
 	smp_mb();
@@ -339,19 +339,19 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 	unsigned long tmp, tmp2;
 
 	__asm__ __volatile__(
-"1:	ldrex	%0, [%2]\n"
-"	adds	%0, %0, #1\n"
-"	strexpl	%1, %0, [%2]\n"
+"1:	ldrex	%[tmp], [%[lock]]\n"
+"	adds	%[tmp], %[tmp], #1\n"
+"	strexpl	%[tmp2], %[tmp], [%[lock]]\n"
 "	bpl	2f\n"
 	WFE()
 "2:\n"
-"	rsbpls	%0, %1, #0\n"
+"	rsbpls	%[tmp], %[tmp2], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bmi	1b"
-	: "=&r" (tmp), "=&r" (tmp2)
-	: "r" (&rw->lock)
+	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2)
+	: [lock] "r" (&rw->lock)
 	: "cc");
 
 	smp_mb();
