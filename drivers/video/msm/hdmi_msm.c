@@ -844,14 +844,6 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		DEV_INFO("HDMI HPD: QDSP OFF\n");
 		kobject_uevent_env(external_common_state->uevent_kobj,
 				   KOBJ_CHANGE, envp);
-
-		/* Call even in the case of hpd_state == 1 since sometimes
-		 * the HPD low transition is lost and we need to be sure
-		 * user space sees the transition.
-		 */
-		switch_set_state(&external_common_state->sdev, 0);
-		DEV_INFO("Hdmi state switch to %d: %s\n",
-			external_common_state->sdev.state,  __func__);
 #ifdef SUPPORT_HDCP_ENABLE_VIA_SYSFS
 		/* By default disable the HDCP enable SYS FS flag when
 		 * a cable is removed so that a fast re-insertion does
@@ -866,7 +858,11 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 			hdmi_msm_state->reauth = FALSE ;
 #endif
-			DEV_INFO("HDMI HPD: sense CONNECTED: send ONLINE\n");
+			switch_set_state(&external_common_state->sdev, 1);
+			DEV_INFO("Hdmi state switched to %d: %s\n",
+				external_common_state->sdev.state,  __func__);
+
+			DEV_INFO("HDMI HPD: CONNECTED: send ONLINE\n");
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_ONLINE);
 #ifndef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
@@ -876,9 +872,6 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 				KOBJ_CHANGE, envp);
-			switch_set_state(&external_common_state->sdev, 1);
-			DEV_INFO("Hdmi state switch to %d: %s\n",
-				external_common_state->sdev.state, __func__);
 #endif
 #ifdef SUPPORT_NON_HDCP_DEVICES
 			/* Announce HPD regardless of HDCP */
@@ -887,16 +880,16 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 				external_common_state->sdev.state,  __func__);
 #endif
 		} else {
-			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n"
-				);
-			kobject_uevent(external_common_state->uevent_kobj,
-				KOBJ_OFFLINE);
 #ifndef SUPPORT_NON_HDCP_DEVICES
 			/* Don't understand why this is called twice */
 			switch_set_state(&external_common_state->sdev, 0);
-			DEV_INFO("Hdmi state switch to %d: %s\n",
+			DEV_INFO("Hdmi state switched to %d: %s\n",
 				external_common_state->sdev.state,  __func__);
 #endif
+
+			DEV_INFO("HDMI HPD: DISCONNECTED: send OFFLINE\n");
+			kobject_uevent(external_common_state->uevent_kobj,
+				KOBJ_OFFLINE);
 		}
 	}
 
@@ -1165,17 +1158,15 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		DEV_INFO("HDCP: AUTH_FAIL_INT received, LINK0_STATUS=0x%08x\n",
 			HDMI_INP_ND(0x011C));
 		if (hdmi_msm_state->full_auth_done) {
+			switch_set_state(&external_common_state->sdev, 0);
+			DEV_INFO("Hdmi state switched to %d: %s\n",
+				external_common_state->sdev.state,  __func__);
+
 			envp[0] = "HDCP_STATE=FAIL";
 			envp[1] = NULL;
 			DEV_INFO("HDMI HPD:QDSP OFF\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 			KOBJ_CHANGE, envp);
-#ifndef SUPPORT_NON_HDCP_DEVICES
-			/* The HPD switch should not be connected to HDCP */
-			switch_set_state(&external_common_state->sdev, 0);
-			DEV_INFO("Hdmi state switch to %d: %s\n",
-				external_common_state->sdev.state,  __func__);
-#endif
 			mutex_lock(&hdcp_auth_state_mutex);
 			hdmi_msm_state->full_auth_done = FALSE;
 			mutex_unlock(&hdcp_auth_state_mutex);
@@ -3153,9 +3144,7 @@ static void hdmi_msm_hdcp_enable(void)
 	char *envp[2];
 
 	if (!hdmi_msm_has_hdcp()) {
-		switch_set_state(&external_common_state->sdev, 1);
-		DEV_INFO("Hdmi state switch to %d: %s\n",
-			external_common_state->sdev.state, __func__);
+		DEV_INFO("%s: HDCP NOT ENABLED\n", __func__);
 		return;
 	}
 
@@ -3242,7 +3231,7 @@ static void hdmi_msm_hdcp_enable(void)
 #ifndef SUPPORT_NON_HDCP_DEVICES
 	/* The HPD switch should not be connected to HDCP */
 	switch_set_state(&external_common_state->sdev, 1);
-	DEV_INFO("Hdmi state switch to %d: %s\n",
+	DEV_INFO("Hdmi state switched to %d: %s\n",
 		external_common_state->sdev.state, __func__);
 #endif
 	return;
@@ -3267,7 +3256,7 @@ error:
 #ifndef SUPPORT_NON_HDCP_DEVICES
 	/* The HPD switch should not be connected to HDCP */
 	switch_set_state(&external_common_state->sdev, 0);
-	DEV_INFO("Hdmi state switch to %d: %s\n",
+	DEV_INFO("Hdmi state switched to %d: %s\n",
 		external_common_state->sdev.state, __func__);
 #endif
 }
