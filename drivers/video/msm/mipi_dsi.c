@@ -75,8 +75,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	struct msm_panel_info *pinfo;
 
-	pr_debug("%s+:\n", __func__);
-
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
