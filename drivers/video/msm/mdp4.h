@@ -952,9 +952,6 @@ int mdp4_overlay_borderfill_supported(void);
 int mdp4_overlay_writeback_on(struct platform_device *pdev);
 int mdp4_overlay_writeback_off(struct platform_device *pdev);
 void mdp4_writeback_overlay(struct msm_fb_data_type *mfd);
-void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
-		struct mdp4_overlay_pipe *pipe);
-void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd);
 void mdp4_overlay1_done_writeback(struct mdp_dma_data *dma);
 void mdp4_dma_e_done_dtv(void);
 
@@ -1004,4 +1001,20 @@ int mdp4_calc_blt_mdp_bw(struct msm_fb_data_type *mfd,
 int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 			      struct mdp4_overlay_pipe *plist);
 void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd, int flag);
+#ifndef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+static inline void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd)
+{
+	/* empty */
+}
+static inline void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
+		struct mdp4_overlay_pipe *pipe)
+{
+	/* empty */
+}
+#else
+void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd);
+void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
+		struct mdp4_overlay_pipe *pipe);
+#endif
+
 #endif /* MDP_H */
