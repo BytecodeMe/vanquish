@@ -237,6 +237,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 	struct asm_aac_cfg aac_cfg;
 	struct asm_wma_cfg wma_cfg;
 	struct asm_wmapro_cfg wma_pro_cfg;
+	struct asm_amrwbplus_cfg amrwb_cfg;
 	int ret;
 
 	pr_debug("compressed stream prepare\n");
@@ -321,6 +322,27 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 		if (ret < 0)
 			pr_err("%s: CMD Format block failed\n", __func__);
 		break;
+	case SND_AUDIOCODEC_AMRWB:
+		pr_debug("SND_AUDIOCODEC_AMRWB\n");
+		ret = q6asm_media_format_block(prtd->audio_client,
+					compr->codec);
+		if (ret < 0) {
+			pr_err("%s: CMD Format block failed\n", __func__);
+			return ret;
+		}
+		break;
+	case SND_AUDIOCODEC_AMRWBPLUS:
+		pr_debug("SND_AUDIOCODEC_AMRWBPLUS\n");
+		memset(&amrwb_cfg, 0x0, sizeof(struct asm_amrwbplus_cfg));
+		amrwb_cfg.size_bytes = sizeof(struct asm_amrwbplus_cfg);
+		pr_debug("calling q6asm_media_format_block_amrwbplus");
+		ret = q6asm_media_format_block_amrwbplus(prtd->audio_client,
+						&amrwb_cfg);
+		if (ret < 0) {
+			pr_err("%s: CMD Format block failed\n", __func__);
+			return ret;
+		}
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -385,7 +407,7 @@ static void populate_codec_list(struct compr_audio *compr,
 {
 	pr_debug("%s\n", __func__);
 	/* MP3 Block */
-	compr->info.compr_cap.num_codecs = 1;
+	compr->info.compr_cap.num_codecs = 7;
 	compr->info.compr_cap.min_fragment_size = runtime->hw.period_bytes_min;
 	compr->info.compr_cap.max_fragment_size = runtime->hw.period_bytes_max;
 	compr->info.compr_cap.min_fragments = runtime->hw.periods_min;
@@ -395,7 +417,9 @@ static void populate_codec_list(struct compr_audio *compr,
 	compr->info.compr_cap.codecs[2] = SND_AUDIOCODEC_AC3_PASS_THROUGH;
 	compr->info.compr_cap.codecs[3] = SND_AUDIOCODEC_WMA;
 	compr->info.compr_cap.codecs[4] = SND_AUDIOCODEC_WMA_PRO;
-	/* Add new codecs here */
+	compr->info.compr_cap.codecs[8] = SND_AUDIOCODEC_AMRWB;
+	compr->info.compr_cap.codecs[9] = SND_AUDIOCODEC_AMRWBPLUS;
+	/* Add new codecs here and update num_codecs*/
 }
 
 static int msm_compr_open(struct snd_pcm_substream *substream)
@@ -735,6 +759,14 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		case SND_AUDIOCODEC_WMA_PRO:
 			pr_debug("SND_AUDIOCODEC_WMA_PRO\n");
 			compr->codec = FORMAT_WMA_V10PRO;
+			break;
+		case SND_AUDIOCODEC_AMRWB:
+			pr_debug("msm_compr_ioctl SND_AUDIOCODEC_AMRWB\n");
+			compr->codec = FORMAT_AMRWB;
+			break;
+		case SND_AUDIOCODEC_AMRWBPLUS:
+			pr_debug("msm_compr_ioctl SND_AUDIOCODEC_AMRWBPLUS\n");
+			compr->codec = FORMAT_AMR_WB_PLUS;
 			break;
 		default:
 			pr_debug("FORMAT_LINEAR_PCM\n");
