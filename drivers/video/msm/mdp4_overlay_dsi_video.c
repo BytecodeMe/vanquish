@@ -679,21 +679,7 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	mdp_histogram_ctrl_all(TRUE);
-
-	if (!vctrl->sysfs_created) {
-		ret = sysfs_create_group(&vctrl->dev->kobj,
-			&vsync_fs_attr_group);
-		if (ret) {
-			pr_err("%s: sysfs group creation failed, ret=%d\n",
-				__func__, ret);
-			return ret;
-		}
-
-		kobject_uevent(&vctrl->dev->kobj, KOBJ_ADD);
-		pr_debug("%s: kobject_uevent(KOBJ_ADD)\n", __func__);
-		vctrl->sysfs_created = 1;
-	}
-
+	mdp4_overlay_dsi_video_start();
 	return ret;
 }
 
