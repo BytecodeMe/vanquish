@@ -720,11 +720,11 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 	mot_panel->panel_disable(mfd);
 #endif
 
+	mdp_histogram_ctrl_all(FALSE);
+
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
 
 	dsi_video_enabled = 0;
-
-	mdp_histogram_ctrl_all(FALSE);
 
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
