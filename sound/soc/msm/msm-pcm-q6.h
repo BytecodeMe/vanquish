@@ -82,4 +82,12 @@ struct msm_audio {
 	bool meta_data_mode;
 };
 
+struct output_meta_data_st {
+	uint32_t meta_data_length;
+	uint32_t frame_size;
+	uint32_t timestamp_lsw;
+	uint32_t timestamp_msw;
+	uint32_t reserved[12];
+};
+
 #endif /*_MSM_PCM_H*/
