@@ -132,6 +132,10 @@ static void compr_event_handler(uint32_t opcode,
 		pr_debug("timestamp_msw: %d, timestamp_lsw: %d\n",
 			 output_meta_data.timestamp_msw,
 			 output_meta_data.timestamp_lsw);
+		if (buffer_length == 0) {
+			pr_debug("Recieved a zero length buffer-break out");
+			break;
+		}
 		param.paddr = (unsigned long)buf[0].phys
 				+ (prtd->out_head * prtd->pcm_count)
 				+ output_meta_data.meta_data_length;
@@ -156,8 +160,12 @@ static void compr_event_handler(uint32_t opcode,
 	}
 	case ASM_DATA_CMDRSP_EOS:
 		pr_debug("ASM_DATA_CMDRSP_EOS\n");
-		prtd->cmd_ack = 1;
-		wake_up(&the_locks.eos_wait);
+		if (atomic_read(&prtd->eos)) {
+			pr_debug("ASM_DATA_CMDRSP_EOS wake up\n");
+			prtd->cmd_ack = 1;
+			wake_up(&the_locks.eos_wait);
+			atomic_set(&prtd->eos, 0);
+		}
 		break;
 	case APR_BASIC_RSP_RESULT: {
 		switch (payload[0]) {
@@ -208,7 +216,7 @@ static void compr_event_handler(uint32_t opcode,
 		case ASM_STREAM_CMD_FLUSH:
 			pr_debug("ASM_STREAM_CMD_FLUSH\n");
 			prtd->cmd_ack = 1;
-			wake_up(&the_locks.eos_wait);
+			wake_up(&the_locks.flush_wait);
 			break;
 		default:
 			break;
@@ -441,6 +449,7 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 	compr->codec = FORMAT_MP3;
 	populate_codec_list(compr, runtime);
 	runtime->private_data = compr;
+	atomic_set(&prtd->eos, 0);
 	compressed_audio.prtd =  &compr->prtd;
 	return 0;
 }
@@ -473,6 +482,7 @@ static int msm_compr_playback_close(struct snd_pcm_substream *substream)
 
 	dir = IN;
 	atomic_set(&prtd->pending_buffer, 0);
+	prtd->pcm_irq_pos = 0;
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
 	compressed_audio.prtd = NULL;
 	q6asm_audio_client_buf_free_contiguous(dir,
@@ -733,16 +743,34 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		}
 		return 0;
 	case SNDRV_PCM_IOCTL1_RESET:
+		/* A unlikely race condition possible with FLUSH
+		   DRAIN if ack is set by flush and reset by drain */
 		prtd->cmd_ack = 0;
 		rc = q6asm_cmd(prtd->audio_client, CMD_FLUSH);
-		if (rc < 0)
-			pr_err("%s: flush cmd failed rc=%d\n", __func__, rc);
-		rc = wait_event_timeout(the_locks.eos_wait,
+		if (rc < 0) {
+			pr_err("%s: flush cmd failed rc=%d\n",
+				__func__, rc);
+			return rc;
+		}
+		rc = wait_event_timeout(the_locks.flush_wait,
 			prtd->cmd_ack, 5 * HZ);
 		if (rc < 0)
 			pr_err("Flush cmd timeout\n");
 		prtd->pcm_irq_pos = 0;
 		break;
+	case SNDRV_COMPRESS_DRAIN:
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN\n", __func__);
+		atomic_set(&prtd->eos, 1);
+		atomic_set(&prtd->pending_buffer, 0);
+		prtd->cmd_ack = 0;
+		q6asm_cmd_nowait(prtd->audio_client, CMD_EOS);
+		/* Wait indefinitely for  DRAIN. Flush can also signal this*/
+		rc = wait_event_interruptible(the_locks.eos_wait,
+			prtd->cmd_ack);
+		if (rc < 0)
+			pr_err("EOS cmd interrupted\n");
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN  out of wait\n", __func__);
+		return 0;
 	default:
 		break;
 	}
@@ -803,6 +831,7 @@ static int __init msm_soc_platform_init(void)
 	init_waitqueue_head(&the_locks.eos_wait);
 	init_waitqueue_head(&the_locks.write_wait);
 	init_waitqueue_head(&the_locks.read_wait);
+	init_waitqueue_head(&the_locks.flush_wait);
 
 	return platform_driver_register(&msm_compr_driver);
 }
