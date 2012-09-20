@@ -185,7 +185,7 @@ uint32_t mdp_block2base(uint32_t block)
 		base = 0x18000;
 		break;
 	case MDP_BLOCK_OVERLAY_2:
-		base = (mdp_rev >= MDP_REV_44) ? 0x88000 : 0;
+		base = (mdp_rev >= MDP_REV_43) ? 0x88000 : 0;
 		break;
 	default:
 		break;
@@ -2564,6 +2564,7 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 
 		mdp_rev = mdp_pdata->mdp_rev;
+
 		mdp_iommu_split_domain = mdp_pdata->mdp_iommu_split_domain;
 
 		rc = mdp_irq_clk_setup(pdev, mdp_pdata->cont_splash_enabled);
