@@ -165,6 +165,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	pr_debug("Start of %s:....\n", __func__);
 
+	pr_debug("%s+:\n", __func__);
+
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
 	var = &fbi->var;
