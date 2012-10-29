@@ -1272,7 +1272,6 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	/* transmit read comamnd to client */
 	mipi_dsi_cmd_dma_tx(tp);
 
-	mipi_dsi_disable_irq(DSI_CMD_TERM);
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
@@ -1382,7 +1381,6 @@ int mipi_dsi_cmds_rx_new(struct dsi_buf *tp, struct dsi_buf *rp,
 	/* transmit read comamnd to client */
 	mipi_dsi_cmd_dma_tx(tp);
 
-	mipi_dsi_disable_irq(DSI_CMD_TERM);
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
