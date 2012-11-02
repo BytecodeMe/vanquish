@@ -3172,10 +3172,6 @@ static void hdmi_msm_hdcp_enable(void)
 	hdmi_msm_state->hdcp_activating = TRUE;
 	mutex_unlock(&hdmi_msm_state_mutex);
 
-#ifndef SUPPORT_NON_HDCP_DEVICES
-	fill_black_screen();
-#endif
-
 	mutex_lock(&hdcp_auth_state_mutex);
 	/*
 	 * Initialize this to zero here to make
@@ -3216,10 +3212,6 @@ static void hdmi_msm_hdcp_enable(void)
 	ret = hdcp_authentication_part3(found_repeater);
 	if (ret)
 		goto error;
-
-#ifndef SUPPORT_NON_HDCP_DEVICES
-	unfill_black_screen();
-#endif
 
 	external_common_state->hdcp_active = TRUE;
 	mutex_lock(&hdmi_msm_state_mutex);
