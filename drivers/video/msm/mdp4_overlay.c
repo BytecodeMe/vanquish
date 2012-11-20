@@ -2163,7 +2163,7 @@ void mdp4_mixer_blend_setup(int mixer)
 	struct mdp4_overlay_pipe *d_pipe;
 	struct mdp4_overlay_pipe *s_pipe;
 	struct blend_cfg *blend;
-	int i, off, alpha_drop = 0;
+	int i, off, alpha_drop;
 	unsigned char *overlay_base;
 	uint32 c0, c1, c2, base_premulti;
 
@@ -2187,6 +2187,7 @@ void mdp4_mixer_blend_setup(int mixer)
 			d_pipe = NULL;
 			continue;
 		}
+		alpha_drop = 0;	/* per stage */
 		/* alpha channel is lost on VG pipe when using QSEED or M/N */
 		if (s_pipe->pipe_type == OVERLAY_TYPE_VIDEO &&
 			s_pipe->alpha_enable &&
