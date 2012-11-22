@@ -1391,6 +1391,7 @@ config MSM_CPU_FREQ_MIN
 
 endif # CPU_FREQ_MSM
 
+<<<<<<< HEAD
 config INTELLI_PLUG
 	bool "Enable intelli-plug cpu hotplug driver"
 	default n
