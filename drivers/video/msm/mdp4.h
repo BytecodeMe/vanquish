@@ -240,6 +240,7 @@ enum {
 
 #define MDP4_MAX_PLANE		4
 #define VSYNC_PERIOD		16
+#define WAIT_FOR_COMPLETION_TIMEOUT	800
 
 #ifdef BLT_RGB565
 #define BLT_BPP 2
