@@ -1046,14 +1046,7 @@ void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		if (wait_for_completion_timeout(&dsi_mdp_comp,
-					msecs_to_jiffies(100)) == 0) {
-			pr_err("failed to wait for MDP complete\n");
-			spin_lock_irqsave(&dsi_mdp_lock, flag);
-			dsi_mdp_busy = false;
-			mipi_dsi_disable_irq_nosync();
-			spin_unlock_irqrestore(&dsi_mdp_lock, flag);
-		}
+		wait_for_completion_timeout(&dsi_mdp_comp, msecs_to_jiffies(100));
 	}
 	pr_debug("%s: done pid=%d\n",
 			__func__, current->pid);
@@ -1315,7 +1308,6 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	/* transmit read comamnd to client */
 	ret = mipi_dsi_cmd_dma_tx(tp);
 
-	mipi_dsi_disable_irq();
 	mipi_dsi_disable_irq(DSI_CMD_TERM);
 	if (ret < 0) {
 		rp->len = 0;
@@ -1553,8 +1545,7 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 	wmb();
 	spin_unlock_irqrestore(&dsi_mdp_lock, flags);
 
-	if (wait_for_completion_timeout(&dsi_dma_comp,
-						msecs_to_jiffies(100)) == 0) {
+	if (wait_for_completion_timeout(&dsi_dma_comp, msecs_to_jiffies(100))) {
 		dsi_status2 = MIPI_INP(MIPI_DSI_BASE + 0x04);
 		pr_err("%s: timeout waiting for dsi dma completion "
 			" dsi_status2=0x%x dsi_status2=0x%x\n",
