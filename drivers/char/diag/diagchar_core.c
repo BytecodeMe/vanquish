@@ -389,7 +389,7 @@ void diag_switch_logging_mode(unsigned long logging_mode)
 long diagchar_ioctl(struct file *filp,
 			   unsigned int iocmd, unsigned long ioarg)
 {
-	int i, j, temp, success = -1;
+	int i, j, success = -1;
 	unsigned int count_entries = 0, interim_count = 0;
 	void *temp_buf;
 
