@@ -1102,13 +1102,15 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 		buf = (uint8 *) fbi->fix.smem_start;
 		buf_offset = calc_fb_offset(mfd, fbi, bpp);
 
-	if (mfd->display_iova)
-		pipe->srcp0_addr = mfd->display_iova + buf_offset;
-	else
-		pipe->srcp0_addr = (uint32)(buf + buf_offset);
+		if (mfd->display_iova)
+			pipe->srcp0_addr = mfd->display_iova + buf_offset;
+		else
+			pipe->srcp0_addr = (uint32)(buf + buf_offset);
+
+		mdp4_dsi_video_pipe_queue(0, pipe);
+	}
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
-	mdp4_dsi_video_pipe_commit(0, 0);
 
 	if (pipe->ov_blt_addr)
 		mdp4_dsi_video_wait4ov(0);
@@ -1116,6 +1118,7 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 		mdp4_dsi_video_wait4dmap(0);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
+	mutex_unlock(&mfd->dma->ov_mutex);
 }
 
 void mdp4_dsi_panel_off(struct msm_fb_data_type *mfd)

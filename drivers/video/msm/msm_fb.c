@@ -1211,7 +1211,6 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	struct fb_var_screeninfo *var;
 	int *id;
 	int fbram_offset;
-	int remainder, remainder_mode2;
 
 	/*
 	 * fb info initialization

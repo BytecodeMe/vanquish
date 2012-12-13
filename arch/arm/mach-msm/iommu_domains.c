@@ -41,7 +41,7 @@ static atomic_t domain_nums = ATOMIC_INIT(-1);
 
 int msm_use_iommu()
 {
-	return iommu_present(&platform_bus_type);
+	return iommu_found();
 }
 
 int msm_iommu_map_extra(struct iommu_domain *domain,
