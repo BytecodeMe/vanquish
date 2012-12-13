@@ -49,6 +49,7 @@ int msm_iommu_map_extra(struct iommu_domain *domain,
 	int i = 0;
 	unsigned long phy_addr = ALIGN(virt_to_phys(iommu_dummy), page_size);
 	unsigned long temp_iova = start_iova;
+	unsigned long order = get_order(page_size);
 	if (page_size == SZ_4K) {
 		struct scatterlist *sglist;
 		unsigned int nrpages = PFN_ALIGN(size) >> PAGE_SHIFT;
