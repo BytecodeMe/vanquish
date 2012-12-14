@@ -1549,7 +1549,7 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 	spin_unlock_irqrestore(&dsi_mdp_lock, flags);
 
 	if (!wait_for_completion_timeout(&dsi_dma_comp,
-					msecs_to_jiffies(200))) {
+					msecs_to_jiffies(200)) == 0) {
 		pr_err("%s: dma timeout error\n", __func__);
 	}
 
