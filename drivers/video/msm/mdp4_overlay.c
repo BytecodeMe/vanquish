@@ -193,7 +193,6 @@ void mdp4_overlay_iommu_pipe_free(int ndx, int all)
 
 	if (pipe->flags & MDP_MEMORY_ID_TYPE_FB) {
 		pipe->flags &= ~MDP_MEMORY_ID_TYPE_FB;
-
 		if (pipe->put0_need) {
 			fput_light(pipe->srcp0_file, pipe->put0_need);
 			pipe->put0_need = 0;
@@ -246,8 +245,7 @@ int mdp4_overlay_iommu_map_buf(int mem_id,
 		pr_err("ion_import_dma_buf() failed\n");
 		return PTR_ERR(*srcp_ihdl);
 	}
-	pr_debug("%s(): ion_hdl %p, ion_buf %p\n", __func__, *srcp_ihdl,
-		ion_share(display_iclient, *srcp_ihdl));
+	pr_debug("%s(): ion_hdl %p, ion_buf %d\n", __func__, *srcp_ihdl, mem_id);
 	pr_debug("mixer %u, pipe %u, plane %u\n", pipe->mixer_num,
 		pipe->pipe_ndx, plane);
 	if (ion_map_iommu(display_iclient, *srcp_ihdl,
@@ -1674,7 +1672,6 @@ void mdp4_mixer_stage_commit(int mixer)
 	mdp_clk_ctrl(0);
 }
 
-
 void mdp4_mixer_stage_up(struct mdp4_overlay_pipe *pipe, int commit)
 {
 	struct mdp4_overlay_pipe *pp;
@@ -2011,7 +2008,6 @@ void mdp4_mixer_blend_setup(int mixer)
 						MDP4_BLEND_FG_ALPHA_FG_PIXEL;
 			} else
 				blend->op = MDP4_BLEND_BG_ALPHA_FG_CONST;
-
 			blend->op |= MDP4_BLEND_BG_INV_ALPHA;
 		} else if (d_alpha) {
 			ptype = mdp4_overlay_format2type(s_pipe->src_format);
@@ -2431,6 +2427,19 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	 */
 	if (req->id == MSMFB_NEW_REQUEST) {  /* new request */
 		pipe->pipe_used++;
+		if (pipe->mixer_num != mixer) { /* mixer changed */
+			/*
+			 * since stage_down does not do stage_commit,
+			 * stage_commit is need to unstage pipe from
+			 * previous mixer to avoid this pipe be
+			 * staged up into two mixers at same time
+			 */
+			msleep(20);
+			mdp4_mixer_stage_commit(pipe->mixer_num);
+			pr_err("%s: unstaged pipe=%d from mixer=%d\n",
+				__func__, pipe->pipe_ndx, pipe->mixer_num);
+			msleep(20);			
+		}
 		pipe->mixer_num = mixer;
 		pr_debug("%s: zorder=%d pipe ndx=%d num=%d\n", __func__,
 			req->z_order, pipe->pipe_ndx, pipe->pipe_num);
@@ -3693,7 +3702,6 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 
 	mdp4_mixer_stage_up(pipe, 0); /* mixer stage commit commits this */
 	mdp4_mixer_stage_commit(pipe->mixer_num);
-
 #ifdef V4L2_VSYNC
 	/*
 	 * TODO: incorporate v4l2 into vsycn driven mechanism

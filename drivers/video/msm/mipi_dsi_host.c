@@ -1165,6 +1165,7 @@ int mipi_dsi_cmds_tx(struct dsi_buf *tp, struct dsi_cmd_desc *cmds, int cnt)
 
 	cm = cmds;
 	mipi_dsi_buf_init(tp);
+
 	for (i = 0; i < cnt; i++) {
 		mipi_dsi_enable_irq(DSI_CMD_TERM);
 		mipi_dsi_buf_init(tp);
@@ -1210,41 +1211,9 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 			struct dsi_buf *tp, struct dsi_buf *rp,
 			struct dsi_cmd_desc *cmds, int rlen)
 {
-	int cnt, len, diff, pkt_size, video_mode, ret = 0;
+	int cnt, len, diff, pkt_size;
 	char cmd;
-	u32 dsi_ctrl, ctrl;
-	static int cur_pkt_size;
-	bool send_max_pkt_size = false;
 	unsigned long flag;
-
-	/*
-	 * turn on cmd mode
-	 * for video mode, do not send cmds more than
-	 * one pixel line, since it only transmit it
-	 * during BLLP.
-	 */
-	dsi_ctrl = MIPI_INP(MIPI_DSI_BASE + 0x0000);
-	video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
-	if (video_mode) {
-		ctrl = dsi_ctrl | 0x04; /* CMD_MODE_EN */
-		MIPI_OUTP(MIPI_DSI_BASE + 0x0000, ctrl);
-	} else { /* cmd mode */
-		/*
-		 * during boot up, cmd mode is configured
-		 * even it is video mode panel.
-		 */
-		/* make sure mdp dma is not txing pixel data */
-		if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-#ifdef CONFIG_FB_MSM_MDP303
-			mdp3_dsi_cmd_dma_busy_wait(mfd);
-#endif
-		}
-	}
-
-	if (rlen != cur_pkt_size) {
-		cur_pkt_size = rlen;
-		send_max_pkt_size = true;
-	}
 
 	if (mfd->panel_info.mipi.no_max_pkt_size) {
 		/* Only support rlen = 4*n */
@@ -1274,49 +1243,35 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 		cnt = len + 6; /* 4 bytes header + 2 bytes crc */
 	}
 
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		/* make sure mdp dma is not txing pixel data */
+#ifdef CONFIG_FB_MSM_MDP303
+			mdp3_dsi_cmd_dma_busy_wait(mfd);
+#endif
+	}
+
 	spin_lock_irqsave(&dsi_mdp_lock, flag);
 	dsi_mdp_busy = TRUE;
 	spin_unlock_irqrestore(&dsi_mdp_lock, flag);
 
-	if (!mfd->panel_info.mipi.no_max_pkt_size && send_max_pkt_size) {
+	if (!mfd->panel_info.mipi.no_max_pkt_size) {
 		/* packet size need to be set at every read */
 		pkt_size = len;
 		max_pktsize[0] = pkt_size;
 		mipi_dsi_enable_irq(DSI_CMD_TERM);
 		mipi_dsi_buf_init(tp);
-		ret = mipi_dsi_cmd_dma_add(tp, pkt_size_cmd);
-		if (!ret) {
-			rp->len = ret;
-			pr_err("%s: failed to call cmd_dma_add for "
-						"max_pktsize\n", __func__);
-			return rp->len;
-		}
-		ret = mipi_dsi_cmd_dma_tx(tp);
-		if (ret < 0) {
-			rp->len = 0;
-			pr_err("%s: failed to call cmd_dma_tx for "
-						"max_pktsize\n", __func__);
-			return rp->len;
-		}
+		mipi_dsi_cmd_dma_add(tp, pkt_size_cmd);
+		mipi_dsi_cmd_dma_tx(tp);
 	}
 
 	mipi_dsi_enable_irq(DSI_CMD_TERM);
 	mipi_dsi_buf_init(tp);
-	ret = mipi_dsi_cmd_dma_add(tp, cmds);
-	if (!ret) {
-		rp->len = ret;
-		pr_err("%s: failed to call cmd_dma_add\n", __func__);
-		return rp->len;
-	}
+	mipi_dsi_cmd_dma_add(tp, cmds);
+
 	/* transmit read comamnd to client */
-	ret = mipi_dsi_cmd_dma_tx(tp);
+	mipi_dsi_cmd_dma_tx(tp);
 
 	mipi_dsi_disable_irq(DSI_CMD_TERM);
-	if (ret < 0) {
-		rp->len = 0;
-		pr_err("%s: failed to call cmd_dma_tx\n", __func__);
-		return rp->len;
-	}
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
@@ -1338,9 +1293,6 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	complete(&dsi_mdp_comp);
 	spin_unlock_irqrestore(&dsi_mdp_lock, flag);
 
-	if (video_mode)
-		MIPI_OUTP(MIPI_DSI_BASE + 0x0000, dsi_ctrl); /* restore */
-
 	if (mfd->panel_info.mipi.no_max_pkt_size) {
 		/*
 		 * remove extra 2 bytes from previous
@@ -1355,8 +1307,7 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	cmd = rp->data[0];
 	switch (cmd) {
 	case DTYPE_ACK_ERR_RESP:
-		pr_info("%s: rx ACK_ERR_PACLAGE\n", __func__);
-		rp->len = 0;
+		pr_debug("%s: rx ACK_ERR_PACLAGE\n", __func__);
 		break;
 	case DTYPE_GEN_READ1_RESP:
 	case DTYPE_DCS_READ1_RESP:
@@ -1373,10 +1324,6 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 		rp->len -= diff; /* align bytes */
 		break;
 	default:
-		pr_warning("%s: Received Invalid cmd 0x%x 0x%x 0x%x 0x%x\n",
-					__func__, rp->data[0], rp->data[1],
-					rp->data[2], rp->data[3]);
-		rp->len = 0;
 		break;
 	}
 
@@ -1733,7 +1680,7 @@ void mipi_dsi_ack_err_status(void)
 
 	if (status) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0064, status);
-		pr_warning("%s: status=%x\n", __func__, status);
+		pr_debug("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1744,7 +1691,7 @@ void mipi_dsi_timeout_status(void)
 	status = MIPI_INP(MIPI_DSI_BASE + 0x00bc);/* DSI_TIMEOUT_STATUS */
 	if (status & 0x0111) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00bc, status);
-		pr_warning("%s: status=%x\n", __func__, status);
+		pr_debug("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1756,7 +1703,7 @@ void mipi_dsi_dln0_phy_err(void)
 
 	if (status & 0x011111) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00b0, status);
-		pr_warning("%s: status=%x\n", __func__, status);
+		pr_debug("%s: status=%x\n", __func__, status);
 	}
 }
 
@@ -1780,7 +1727,7 @@ void mipi_dsi_status(void)
 
 	if (status & 0x80000000) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0004, status);
-		pr_warning("%s: status=%x\n", __func__, status);
+		pr_debug("%s: status=%x\n", __func__, status);
 	}
 }
 

@@ -146,7 +146,7 @@ struct timeval mdp_ppp_timeval;
 static struct early_suspend early_suspend;
 #endif
 
-static u32 mdp_irq;
+static int mdp_irq;
 
 static uint32 mdp_prim_panel_type = NO_PANEL;
 #ifndef CONFIG_FB_MSM_MDP22
@@ -480,7 +480,8 @@ error:
 }
 
 DEFINE_MUTEX(mdp_lut_push_sem);
-static int mdp_lut_i;
+
+int mdp_lut_i;
 static int mdp_lut_hw_update(struct fb_cmap *cmap)
 {
 	int i;
@@ -511,8 +512,8 @@ static int mdp_lut_hw_update(struct fb_cmap *cmap)
 	return 0;
 }
 
-static int mdp_lut_push;
-static int mdp_lut_push_i;
+int mdp_lut_push;
+int mdp_lut_push_i;
 static int mdp_lut_update_nonlcdc(struct fb_info *info, struct fb_cmap *cmap)
 {
 	int ret;
@@ -1517,6 +1518,7 @@ static int mdp_clk_rate;
  */
 static void mdp_clk_disable_unprepare(void)
 {
+	msleep(1);
 	mb();
 	vsync_clk_disable_unprepare();
 
@@ -1885,12 +1887,13 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 				    now.tv_usec - mdp_dma2_timeval.tv_usec;
 			}
 #ifndef CONFIG_FB_MSM_MDP303
-		dma = &dma2_data;
-		spin_lock_irqsave(&mdp_spin_lock, flag);
-		dma->busy = FALSE;
-		spin_unlock_irqrestore(&mdp_spin_lock, flag);
-		mdp_pipe_ctrl(MDP_DMA2_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
-		complete(&dma->comp);
+			dma = &dma2_data;
+			spin_lock_irqsave(&mdp_spin_lock, flag);
+			dma->busy = FALSE;
+			spin_unlock_irqrestore(&mdp_spin_lock, flag);
+			mdp_pipe_ctrl(MDP_DMA2_BLOCK, MDP_BLOCK_POWER_OFF,
+				TRUE);
+			complete(&dma->comp);
 #else
 			if (mdp_prim_panel_type == MIPI_CMD_PANEL) {
 				dma = &dma2_data;
@@ -1973,9 +1976,8 @@ static void mdp_drv_init(void)
 #endif
 
 	/* initializing mdp power block counter to 0 */
-	for (i = 0; i < MDP_MAX_BLOCK; i++) {
+	for (i = 0; i < MDP_MAX_BLOCK; i++)
 		atomic_set(&mdp_block_power_cnt[i], 0);
-	}
 	INIT_WORK(&(vsync_cntrl.vsync_work), send_vsync_work);
 #ifdef MSM_FB_ENABLE_DBGFS
 	{
@@ -2762,9 +2764,8 @@ static int mdp_probe(struct platform_device *pdev)
 	platform_set_drvdata(msm_fb_dev, mfd);
 
 	rc = platform_device_add(msm_fb_dev);
-	if (rc) {
+	if (rc)
 		goto mdp_probe_err;
-	}
 
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);

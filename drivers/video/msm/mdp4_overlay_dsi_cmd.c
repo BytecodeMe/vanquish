@@ -1007,7 +1007,6 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev)
 	mdp4_iommu_attach();
 
 	atomic_set(&vctrl->suspend, 0);
-
 	pr_debug("%s-:\n", __func__);
 
 	return ret;
@@ -1116,19 +1115,18 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	struct mdp4_overlay_pipe *pipe;
 	unsigned long flags;
 
-	if (mfd == NULL) {
-		pr_err("%s:invalid mfd\n", __func__);
-		return;
-	}
-
+	mutex_lock(&mfd->dma->ov_mutex);
 	vctrl = &vsync_ctrl_db[cndx];
 
-	if (!mfd->panel_power_on)
+	if (!mfd->panel_power_on) {
+		mutex_unlock(&mfd->dma->ov_mutex);
 		return;
+	}
 
 	pipe = vctrl->base_pipe;
 	if (pipe == NULL) {
 		pr_err("%s: NO base pipe\n", __func__);
+		mutex_unlock(&mfd->dma->ov_mutex);
 		return;
 	}
 
@@ -1136,6 +1134,7 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	if (!vctrl->clk_enabled) {
 		pr_err("%s: mdp clocks disabled\n", __func__);
 		mutex_unlock(&vctrl->update_lock);
+		mutex_unlock(&mfd->dma->ov_mutex);
 		return;
 
 	}

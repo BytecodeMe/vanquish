@@ -370,7 +370,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	return ret;
 }
 
-
 static int mipi_dsi_resource_initialized;
 
 static int mipi_dsi_probe(struct platform_device *pdev)
@@ -630,7 +629,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-	return 0;
+return 0;
 
 mipi_dsi_probe_err:
 	platform_device_put(mdp_dev);

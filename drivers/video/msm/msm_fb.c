@@ -456,14 +456,14 @@ static int msm_fb_remove(struct platform_device *pdev)
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
+	if (!mfd)
+		return -ENODEV;
+
 	msm_fb_pan_idle(mfd);
 
 	msm_fb_remove_sysfs(pdev);
 
 	pm_runtime_disable(mfd->fbi->dev);
-
-	if (!mfd)
-		return -ENODEV;
 
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
@@ -790,6 +790,7 @@ static void msmfb_early_suspend(struct early_suspend *h)
 						early_suspend);
 
 	msm_fb_pan_idle(mfd);
+
 #if defined(CONFIG_FB_MSM_MDP303)
 	/*
 	* For MDP with overlay, set framebuffer with black pixels
@@ -1439,6 +1440,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fbi->fbops = &msm_fb_ops;
 	fbi->flags = FBINFO_FLAG_DEFAULT;
 	fbi->pseudo_palette = msm_fb_pseudo_palette;
+
 	mfd->ref_cnt = 0;
 	mfd->sw_currently_refreshing = FALSE;
 	mfd->sw_refreshing_enable = TRUE;
@@ -1833,7 +1835,7 @@ static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
 		mutex_unlock(&mfd->sync_mutex);
 		ret = wait_for_completion_interruptible_timeout(
 				&mfd->commit_comp,
-			msecs_to_jiffies(WAIT_FENCE_TIMEOUT));
+			msecs_to_jiffies(WAIT_DISP_OP_TIMEOUT));
 		if (ret < 0)
 			ret = -ERESTARTSYS;
 		else if (!ret)
@@ -3544,6 +3546,7 @@ static int msmfb_handle_pp_ioctl(struct msm_fb_data_type *mfd,
 
 	return ret;
 }
+
 static int msmfb_handle_buf_sync_ioctl(struct msm_fb_data_type *mfd,
 						struct mdp_buf_sync *buf_sync)
 {
@@ -3713,7 +3716,6 @@ static int msmfb_display_commit(struct fb_info *info,
 	}
 	return ret;
 }
-
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
@@ -4083,7 +4085,6 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 
 	default:
-
 		MSM_FB_INFO("MDP: unknown ioctl (cmd=%x) received!\n", cmd);
 		ret = -EINVAL;
 		break;

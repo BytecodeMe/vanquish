@@ -89,7 +89,8 @@ int mdp4_overlay_writeback_on(struct platform_device *pdev)
 		pipe->mixer_stage  = MDP4_MIXER_STAGE_BASE;
 		pipe->mixer_num  = MDP4_MIXER2;
 		pipe->src_format = MDP_ARGB_8888;
-		mdp4_overlay_panel_mode(pipe->mixer_num, MDP4_PANEL_WRITEBACK);
+			mdp4_overlay_panel_mode(pipe->mixer_num,
+				MDP4_PANEL_WRITEBACK);
 		ret = mdp4_overlay_format2pipe(pipe);
 		if (ret < 0)
 			pr_info("%s: format2type failed\n", __func__);
@@ -127,6 +128,7 @@ int mdp4_overlay_writeback_off(struct platform_device *pdev)
 	if (mfd && writeback_pipe) {
 		mdp4_writeback_dma_busy_wait(mfd);
 		mdp4_overlay_pipe_free(writeback_pipe);
+		mdp4_overlay_iommu_unmap_freelist(writeback_pipe->mixer_num);
 		mdp4_overlay_panel_mode_unset(writeback_pipe->mixer_num,
 						MDP4_PANEL_WRITEBACK);
 		writeback_pipe = NULL;
@@ -210,8 +212,7 @@ void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		if (!wait_for_completion_timeout(&mfd->dma->comp, HZ))
-			mdp_hang_panic();
+		wait_for_completion(&mfd->dma->comp);
 	}
 }
 
@@ -296,6 +297,7 @@ void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
 	mdp4_mixer_stage_commit(pipe->mixer_num);
 
 	mdp4_writeback_overlay_kickoff(mfd, pipe);
+	mdp4_writeback_dma_busy_wait(mfd);
 
 	/* move current committed iommu to freelist */
 	mdp4_overlay_iommu_pipe_free(pipe->pipe_ndx, 0);
@@ -321,6 +323,9 @@ void mdp4_writeback_overlay(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
 	struct msmfb_writeback_data_list *node = NULL;
+
+	if (!mfd)
+		return;
 
 	mutex_lock(&mfd->unregister_mutex);
 	mutex_lock(&mfd->writeback_mutex);
