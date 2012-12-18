@@ -3961,8 +3961,9 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		if (!mfd->panel_power_on)
 			return -EPERM;
 
-		if (!mfd->do_histogram)
-			return -ENODEV;
+		if (!mfd->start_histogram) {
+			ret = -ENODEV;
+		}
 
 		ret = copy_from_user(&hist, argp, sizeof(hist));
 		if (ret)
@@ -3982,18 +3983,19 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		if (ret)
 			return ret;
 
-		ret = mdp_histogram_start(&hist_req);
+		ret = mfd->start_histogram(&hist_req);
 		break;
 
 	case MSMFB_HISTOGRAM_STOP:
-		if (!mfd->do_histogram)
-			return -ENODEV;
+		if (!mfd->stop_histogram) {
+			ret = -ENODEV;
+		}
 
 		ret = copy_from_user(&block, argp, sizeof(int));
 		if (ret)
 			return ret;
 
-		ret = mdp_histogram_stop(info, block);
+		ret = mfd->stop_histogram(info, block);
 		break;
 
 
