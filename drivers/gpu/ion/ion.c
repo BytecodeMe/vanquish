@@ -1560,6 +1560,9 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case ION_IOC_CLEAN_CACHES:
 	case ION_IOC_INV_CACHES:
 	case ION_IOC_CLEAN_INV_CACHES:
+	case ION_IOC_CLEAN_CACHES_OLD:
+	case ION_IOC_INV_CACHES_OLD:
+	case ION_IOC_CLEAN_INV_CACHES_OLD:
 	{
 		struct ion_flush_data data;
 		unsigned long start, end;
