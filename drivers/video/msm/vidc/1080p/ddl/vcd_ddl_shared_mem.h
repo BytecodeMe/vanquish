@@ -199,5 +199,7 @@ void vidc_sm_set_mp2datadump_enable(struct ddl_buf_addr *shared_mem,
 	struct ddl_mp2_datadumpenabletype *ddl_mp2_datadump_enable);
 void vidc_sm_set_mp2datadumpbuffer(struct ddl_buf_addr *shared_mem,
 	u32 mp2datadumpaddr, u32 mp2datadumpsize);
+void vidc_sm_get_mp2common_status(struct ddl_buf_addr *shared_mem,
+	u32 *seq_end_code_present);
 
 #endif
