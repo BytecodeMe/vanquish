@@ -1450,7 +1450,7 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 
 	if (frame_rate == 0) {
 		frame_rate = DEFAULT_FRAME_RATE;
-		pr_warn("%s frame rate=%d is default\n", __func__, frame_rate);
+		pr_debug("%s frame rate=%d is default\n", __func__, frame_rate);
 	}
 	pr_debug("%s frame rate=%d total_pixel=%d, pixel_rate=%d\n", __func__,
 		frame_rate, total_pixel, pixel_rate);
