@@ -33,6 +33,7 @@ int res_trk_get_mem_type(void);
 u32 res_trk_get_enable_ion(void);
 u32 res_trk_is_cp_enabled(void);
 u32 res_trk_get_disable_fullhd(void);
+u32 res_trk_get_enable_sec_metadata(void);
 struct ion_client *res_trk_get_ion_client(void);
 u32 res_trk_get_disable_dmx(void);
 void res_trk_set_mem_type(enum ddl_mem_area mem_type);
