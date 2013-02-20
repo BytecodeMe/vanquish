@@ -49,6 +49,7 @@ static struct mutex routing_lock;
 static int fm_switch_enable;
 #define INT_RX_VOL_MAX_STEPS 0x2000
 #define INT_RX_VOL_GAIN 0x2000
+#define INT_RX_LR_VOL_MAX_STEPS 0x20002000
 
 static int msm_route_fm_vol_control;
 static const DECLARE_TLV_DB_LINEAR(fm_rx_vol_gain, 0,
@@ -56,7 +57,7 @@ static const DECLARE_TLV_DB_LINEAR(fm_rx_vol_gain, 0,
 
 static int msm_route_lpa_vol_control;
 static const DECLARE_TLV_DB_LINEAR(lpa_rx_vol_gain, 0,
-			INT_RX_VOL_MAX_STEPS);
+			INT_RX_LR_VOL_MAX_STEPS);
 
 static int msm_route_multimedia2_vol_control;
 static const DECLARE_TLV_DB_LINEAR(multimedia2_rx_vol_gain, 0,
@@ -64,7 +65,7 @@ static const DECLARE_TLV_DB_LINEAR(multimedia2_rx_vol_gain, 0,
 
 static int msm_route_compressed_vol_control;
 static const DECLARE_TLV_DB_LINEAR(compressed_rx_vol_gain, 0,
-			INT_RX_VOL_MAX_STEPS);
+			INT_RX_LR_VOL_MAX_STEPS);
 
 /* Equal to Frontend after last of the MULTIMEDIA SESSIONS */
 #define MAX_EQ_SESSIONS		MSM_FRONTEND_DAI_CS_VOICE
