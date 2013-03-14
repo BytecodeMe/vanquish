@@ -79,6 +79,7 @@ struct msm_audio {
 	int periods;
 	int mmap_flag;
 	atomic_t pending_buffer;
+	bool meta_data_mode;
 };
 
 #endif /*_MSM_PCM_H*/
