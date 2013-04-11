@@ -1487,6 +1487,22 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 		break;
 	}
+	case ION_IOC_ALLOC_OLD:
+	{
+		struct ion_allocation_data_old data;
+
+		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
+			return -EFAULT;
+		data.handle = ion_alloc(client, data.len, data.align,
+					     data.flags);
+
+		if (IS_ERR_OR_NULL(data.handle))
+			return -ENOMEM;
+
+		if (copy_to_user((void __user *)arg, &data, sizeof(data)))
+			return -EFAULT;
+		break;
+	}
 	case ION_IOC_FREE:
 	{
 		struct ion_handle_data data;
