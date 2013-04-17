@@ -1523,7 +1523,7 @@ static void mipi_dsi_wait_for_video_eng_busy(void)
 void mipi_dsi_cmd_mdp_busy(void)
 {
 	unsigned long flags;
-	int need_wait;
+	int need_wait=0;
 
 	pr_debug("%s: start pid=%d\n",
 				__func__, current->pid);
