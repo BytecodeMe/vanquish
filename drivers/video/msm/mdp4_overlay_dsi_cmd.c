@@ -1130,7 +1130,6 @@ static int mdp4_dsi_cmd_clk_check(struct vsycn_ctrl *vctrl)
 	mutex_lock(&vctrl->update_lock);
 	if (atomic_read(&vctrl->suspend)) {
 		mutex_unlock(&vctrl->update_lock);
-		mutex_unlock(&mfd->dma->ov_mutex);
 		pr_err("%s: suspended, no more pan display\n", __func__);
 		return -EPERM;
 	}
