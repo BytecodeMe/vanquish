@@ -220,12 +220,12 @@ struct msm_fb_data_type {
 	void *msm_fb_backup;
 	boolean panel_driver_on;
 	int vsync_sysfs_created;
+	void *cpu_pm_hdl;
 };
 struct msm_fb_backup_type {
 	struct fb_info info;
 	struct fb_var_screeninfo var;
 	struct msm_fb_data_type mfd;
-	void *cpu_pm_hdl;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
