@@ -41,10 +41,16 @@ static struct mipi_dsi_phy_ctrl dsi_cmd_mode_phy_db = {
 
 static char enter_sleep[2] = {DCS_CMD_ENTER_SLEEP_MODE, 0x00};
 static char display_off[2] = {DCS_CMD_SET_DISPLAY_OFF, 0x00};
+static char display_on[2] = {DCS_CMD_SET_DISPLAY_ON, 0x00};
 
 static struct dsi_cmd_desc display_off_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 10, sizeof(display_off), display_off},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(enter_sleep), enter_sleep},
+};
+
+static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
+	{DTYPE_DCS_WRITE, 1, 0, 0, DEFAULT_DELAY,
+		sizeof(display_on), display_on},
 };
 
 static char exit_sleep[2] = {DCS_CMD_EXIT_SLEEP_MODE, 0x00};
@@ -742,6 +748,9 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
 	mipi_dsi_cmds_tx(dsi_tx_buf, smd_qhd_429_cmds_7,
 			ARRAY_SIZE(smd_qhd_429_cmds_7));
+
+	mipi_dsi_cmds_tx(dsi_tx_buf, mot_cmd_on_cmds,
+					ARRAY_SIZE(mot_cmd_on_cmds));
 
 	return 0;
 }
