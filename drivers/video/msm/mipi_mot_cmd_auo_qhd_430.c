@@ -290,6 +290,7 @@ out:
 	pinfo->mipi.dsi_phy_db = &dsi_cmd_mode_phy_db;
 	pinfo->mipi.tx_eot_append = 0x01;
 	pinfo->mipi.rx_eot_ignore = 0;
+	pinfo->mipi.frame_rate = 60;
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
