@@ -261,7 +261,7 @@ out:
 	pinfo->lcd.v_back_porch = 2;
 	pinfo->lcd.v_front_porch = 2;
 	pinfo->lcd.v_pulse_width = 2;
-	pinfo->lcd.refx100 = 6000; /* adjust refx100 to prevent tearing */
+	pinfo->lcd.refx100 = 6090; /* adjust refx100 to prevent tearing */
 
 	pinfo->mipi.mode = DSI_CMD_MODE;
 	pinfo->mipi.dst_format = DSI_CMD_DST_FORMAT_RGB888;
@@ -283,7 +283,7 @@ out:
 	pinfo->mipi.tx_eot_append = 0x01;
 	pinfo->mipi.rx_eot_ignore = 0;
 	pinfo->mipi.frame_rate = 60;
-	pinfo->mipi.esc_byte_ratio = 4;
+	pinfo->mipi.esc_byte_ratio = 6;
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
