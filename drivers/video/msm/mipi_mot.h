@@ -105,8 +105,6 @@ struct mipi_mot_panel {
 
 	int (*panel_enable) (struct msm_fb_data_type *mfd);
 	int (*panel_disable) (struct msm_fb_data_type *mfd);
-	int (*panel_on)(struct msm_fb_data_type *mfd);
-	int (*panel_off)(struct msm_fb_data_type *mfd);
 	void (*esd_run) (void);
 	void (*set_backlight)(struct msm_fb_data_type *mfd);
 	void (*set_backlight_curve)(struct msm_fb_data_type *mfd);
