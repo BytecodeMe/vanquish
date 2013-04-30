@@ -339,53 +339,6 @@ err:
 	return ret;
 }
 
-static int panel_on(struct platform_device *pdev)
-{
-	struct msm_fb_data_type *mfd;
-	int ret = 0;
-
-	mfd = platform_get_drvdata(pdev);
-
-	ret = valid_mfd_info(mfd);
-	if (ret != 0)
-		goto err;
-
-	if (mot_panel.panel_on) {
-		mot_panel.panel_on(mfd);
-		pr_info("MIPI MOT Panel is ON\n");
-	}
-
-	atomic_set(&mot_panel.state, MOT_PANEL_ON);
-	if (!factory_run && mot_panel.esd_enabled &&
-				(mot_panel.esd_detection_run == false)) {
-		queue_delayed_work(mot_panel.esd_wq, &mot_panel.esd_work,
-						msecs_to_jiffies(20000));
-		mot_panel.esd_detection_run = true;
-	}
-	return 0;
-err:
-	return ret;
-}
-
-static int panel_off(struct platform_device *pdev)
-{
-	struct msm_fb_data_type *mfd;
-	int ret = 0;
-
-	mfd = platform_get_drvdata(pdev);
-
-	ret = valid_mfd_info(mfd);
-	if (ret != 0)
-		goto err;
-
-	if (mot_panel.panel_off) {
-		mot_panel.panel_off(mfd);
-		pr_debug("MIPI MOT Panel OFF\n");
-	}
-	return 0;
-err:
-	return ret;
-}
 static void mot_panel_esd_work(struct work_struct *work)
 {
 	if (mot_panel.esd_run)
@@ -487,8 +440,6 @@ static struct platform_driver this_driver = {
 static struct msm_fb_panel_data mot_panel_data = {
 	.on		= panel_enable,
 	.off		= panel_disable,
-	.panel_on	= panel_on,
-	.panel_off	= panel_off,
 };
 
 
@@ -585,9 +536,6 @@ static int __init mipi_mot_lcd_init(void)
 	mot_panel.get_controller_ver = mipi_mot_get_controller_ver;
 	mot_panel.get_controller_drv_ver = mipi_mot_get_controller_drv_ver;
 	mot_panel.esd_run = mipi_mot_esd_work;
-
-	mot_panel.panel_on = mipi_mot_panel_on;
-	mot_panel.panel_off = NULL;
 
 	factory_run = mot_panel_is_factory_mode();
 	if (factory_run)

@@ -68,7 +68,7 @@ static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm2), led_pwm2},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm3), led_pwm3},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm4), led_pwm4},
-    {DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on},
+	{DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on},
 };
 
 static struct dsi_cmd_desc mot_cmd_inverted_on_cmds[] = {

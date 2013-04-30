@@ -45,7 +45,6 @@ static int mipi_dsi_remove(struct platform_device *pdev);
 
 static int mipi_dsi_off(struct platform_device *pdev);
 static int mipi_dsi_on(struct platform_device *pdev);
-static int mipi_dsi_panel_on(struct platform_device *pdev);
 
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
@@ -63,11 +62,6 @@ static struct platform_driver mipi_dsi_driver = {
 };
 
 struct device dsi_dev;
-
-static int mipi_dsi_panel_on(struct platform_device *pdev)
-{
-	return panel_next_panel_on(pdev);
-}
 
 static int mipi_dsi_off(struct platform_device *pdev)
 {
@@ -506,7 +500,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	pdata = mdp_dev->dev.platform_data;
 	pdata->on = mipi_dsi_on;
 	pdata->off = mipi_dsi_off;
-	pdata->panel_on = mipi_dsi_panel_on;
 	pdata->next = pdev;
 
 	/*

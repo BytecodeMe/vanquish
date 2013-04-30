@@ -76,8 +76,6 @@ static struct vsycn_ctrl {
 	struct work_struct clk_work;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
-static bool dsi_panel_on;
-
 static void vsync_irq_enable(int intr, int term)
 {
 	unsigned long flag;
@@ -1196,19 +1194,4 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	mdp4_dsi_cmd_pipe_commit(cndx, 0);
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
-}
-
-void mdp4_dsi_panel_on(struct msm_fb_data_type *mfd)
-{
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-	struct msm_fb_panel_data *pdata =
-		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-
-	if (dsi_panel_on == false) {
-		if (pdata->panel_on)
-			pdata->panel_on(mfd->pdev);
-
-		dsi_panel_on = true;
-	}
-#endif
 }

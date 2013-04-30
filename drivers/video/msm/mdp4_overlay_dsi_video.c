@@ -34,6 +34,9 @@
 #include "msm_fb.h"
 #include "mdp4.h"
 #include "mipi_dsi.h"
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+#include "mipi_mot.h"
+#endif
 
 #include <mach/iommu_domains.h>
 
@@ -684,6 +687,9 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 	struct vsync_update *vp;
 	unsigned long flags;
 	int undx, need_wait = 0;
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	struct mipi_mot_panel *mot_panel;
+#endif
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 	vctrl = &vsync_ctrl_db[cndx];
@@ -705,11 +711,14 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 		mdp4_dsi_video_wait4ov(0);
 	}
 
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
 	/*
 	 * Image fade away on video mode panel when suspend,
 	 * work it around by turning off panel to hide it
 	 */
-	mdp4_dsi_panel_off(mfd);
+	mot_panel = mipi_mot_get_mot_panel();
+	mot_panel->panel_disable(mfd);
+#endif
 
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
 
@@ -1123,16 +1132,4 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
-}
-
-void mdp4_dsi_panel_off(struct msm_fb_data_type *mfd)
-{
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-	struct msm_fb_panel_data *pdata =
-		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-
-	if (pdata->panel_off)
-		pdata->panel_off(mfd->pdev);
-
-#endif
 }

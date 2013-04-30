@@ -1185,12 +1185,6 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
 	mot_panel->set_backlight = panel_set_backlight;
-	/*
-	 * panel's state need to set to on because mot_panel->panel_on is NULL
-	 * and disp_on (0x28) be a part of init seq
-	 */
-	mot_panel->panel_on = NULL;
-	mot_panel->panel_off = mipi_mot_panel_off;
 
 	atomic_set(&mot_panel->state, MOT_PANEL_ON);
 
