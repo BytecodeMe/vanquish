@@ -30,6 +30,9 @@
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mdp4.h"
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+#include "mipi_mot.h"
+#endif
 
 static int vsync_start_y_adjust = 4;
 
@@ -389,8 +392,16 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 
 	if (wait) {
 		long long tick;
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+		struct mipi_mot_panel *mot_panel;
+#endif
 
 		mdp4_dsi_cmd_wait4vsync(0, &tick);
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+		mot_panel = mipi_mot_get_mot_panel();
+		if (mot_panel->vsync_callback)
+			mot_panel->vsync_callback(vctrl->mfd);
+#endif
 	}
 
 	return cnt;

@@ -1184,10 +1184,8 @@ static int __init mipi_video_mot_hd_pt_init(void)
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
+	mot_panel->vsync_callback = NULL;
 	mot_panel->set_backlight = panel_set_backlight;
-
-	atomic_set(&mot_panel->state, MOT_PANEL_ON);
-
 	mot_panel->enable_acl = enable_acl;
 
 	/* For ESD detection information */

@@ -47,13 +47,18 @@ static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1), led_pwm1},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm2), led_pwm2},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm3), led_pwm3},
-	{DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on},
+};
+
+static struct dsi_cmd_desc mot_cmd_vsync_cmd = {
+	DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on
 };
 
 static struct dsi_cmd_desc mot_display_off_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(enter_sleep), enter_sleep},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_off), display_off},
 };
+
+static int panel_needs_turning_on;
 
 static int panel_enable(struct msm_fb_data_type *mfd)
 {
@@ -68,7 +73,26 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	mipi_dsi_cmds_tx(dsi_tx_buf, mot_cmd_on_cmds,
 					ARRAY_SIZE(mot_cmd_on_cmds));
 
+	panel_needs_turning_on = 1;
 	return 0;
+}
+
+static void panel_vsync_callback(struct msm_fb_data_type *mfd)
+{
+	if (panel_needs_turning_on)
+	{
+		struct dsi_buf *dsi_tx_buf;
+
+		if (mot_panel == NULL) {
+			pr_err("%s: Invalid mot_panel\n", __func__);
+			return;
+		}
+
+		dsi_tx_buf = mot_panel->mot_tx_buf;
+
+		mipi_dsi_cmds_tx(dsi_tx_buf, &mot_cmd_vsync_cmd, 1);
+		panel_needs_turning_on = 0;
+	}
 }
 
 static int panel_disable(struct msm_fb_data_type *mfd)
@@ -166,6 +190,7 @@ static int __init mipi_cmd_mot_auo_qhd_450_init(void)
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
+	mot_panel->vsync_callback = panel_vsync_callback;
 
 	/* For ESD detection information */
 	mot_panel->esd_enabled = true;
