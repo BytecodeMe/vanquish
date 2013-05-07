@@ -63,6 +63,10 @@
 #include "sme_Api.h"
 #include "csrNeighborRoam.h"
 
+<<<<<<< HEAD
+=======
+/* #define WLAN_FEATURE_NEIGHBOR_ROAMING_DEBUG 1 */
+>>>>>>> b46c42d... staging: prima: Disable debug
 #ifdef WLAN_FEATURE_NEIGHBOR_ROAMING_DEBUG
 #define NEIGHBOR_ROAM_DEBUG smsLog
 #else
