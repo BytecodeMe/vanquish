@@ -676,11 +676,9 @@ source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/sec/Kconfig"
 
-endif # MISC_DEVICES
-source "drivers/misc/mpu3050/Kconfig"
-
 config CPU_UNDERVOLTING
 	tristate "Several undervolting interfaces"
 	default y
 
-endmenu
+endif # MISC_DEVICES
+

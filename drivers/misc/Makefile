@@ -70,14 +70,5 @@ obj-$(CONFIG_QSEECOM) += qseecom.o
 obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
 obj-$(CONFIG_MOT_CONFIG) += config/
 obj-$(CONFIG_SEC_DRIVER) += sec/
-obj-$(CONFIG_AMSS_LASTLOG) += amsslastlog.o
-obj-$(CONFIG_LM3560_FLASHLED)	+= lm3560.o
-obj-$(CONFIG_LM3561_FLASHLED)	+= lm3561.o
-obj-$(CONFIG_SENSORS_MPU3050) += mpu3050/
-obj-$(CONFIG_NFC_PN544)		+= pn544.o
-obj-$(CONFIG_SONY_ONESEG_TUNER_PM) += oneseg_tunerpm.o
-obj-$(CONFIG_SONY_FELICA_SUPPORT) += felica.o
-obj-$(CONFIG_SONY_FELICA_NFC_SUPPORT) += felica_vdev.o
-obj-$(CONFIG_RAMDUMP_TAGS) += rdtags.o
 obj-$(CONFIG_CPU_UNDERVOLTING)  += cpu_undervolting.o
 
