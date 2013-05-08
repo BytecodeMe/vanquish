@@ -79,6 +79,7 @@ static const struct row_queue_params row_queues_def[] = {
 	{false, 1, false},	/* ROWQ_PRIO_REG_WRITE */
 	{false, 1, false},	/* ROWQ_PRIO_LOW_READ */
 	{false, 1, false}	/* ROWQ_PRIO_LOW_SWRITE */
+};
 
 /* Default values for row queues quantums in each dispatch cycle */
 static const int queue_quantum[] = {
