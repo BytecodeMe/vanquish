@@ -3634,15 +3634,12 @@ EXPORT_SYMBOL_GPL(work_on_cpu);
 void freeze_workqueues_begin(void)
 {
 	struct worker_pool *pool;
-	struct workqueue_struct *wq;
-	struct pool_workqueue *pwq;
 	int id;
 
 	spin_lock(&workqueue_lock);
 
 	BUG_ON(workqueue_freezing);
 	workqueue_freezing = true;
-
 
 	for_each_gcwq_cpu(cpu) {
 		struct global_cwq *gcwq = get_gcwq(cpu);
@@ -3662,24 +3659,23 @@ void freeze_workqueues_begin(void)
 
 		spin_unlock_irq(&gcwq->lock);
 
-	/* set FREEZING */
 	for_each_pool(pool, id) {
+		struct workqueue_struct *wq;
+
 		spin_lock(&pool->lock);
+
 		WARN_ON_ONCE(pool->flags & POOL_FREEZING);
 		pool->flags |= POOL_FREEZING;
-		spin_unlock(&pool->lock);
-	}
 
-	/* suppress further executions by setting max_active to zero */
-	list_for_each_entry(wq, &workqueues, list) {
-		if (!(wq->flags & WQ_FREEZABLE))
-			continue;
+		list_for_each_entry(wq, &workqueues, list) {
+			struct pool_workqueue *pwq = get_pwq(pool->cpu, wq);
 
-		for_each_pwq(pwq, wq) {
-			spin_lock(&pwq->pool->lock);
-			pwq->max_active = 0;
-			spin_unlock(&pwq->pool->lock);
+			if (pwq && pwq->pool == pool &&
+			    (wq->flags & WQ_FREEZABLE))
+				pwq->max_active = 0;
 		}
+
+		spin_unlock(&pool->lock);
 	}
 
 	spin_unlock(&workqueue_lock);
@@ -3700,9 +3696,8 @@ void freeze_workqueues_begin(void)
  */
 bool freeze_workqueues_busy(void)
 {
+	unsigned int cpu;
 	bool busy = false;
-	struct workqueue_struct *wq;
-	struct pool_workqueue *pwq;
 
 	spin_lock(&workqueue_lock);
 
@@ -3710,11 +3705,6 @@ bool freeze_workqueues_busy(void)
 
 	for_each_gcwq_cpu(cpu) {
 		struct workqueue_struct *wq;
-
-	list_for_each_entry(wq, &workqueues, list) {
-		if (!(wq->flags & WQ_FREEZABLE))
-			continue;
-
 		/*
 		 * nr_active is monotonically decreasing.  It's safe
 		 * to peek without lock.
@@ -3727,11 +3717,6 @@ bool freeze_workqueues_busy(void)
 
 			BUG_ON(cwq->nr_active < 0);
 			if (cwq->nr_active) {
-
-		for_each_pwq(pwq, wq) {
-			WARN_ON_ONCE(pwq->nr_active < 0);
-			if (pwq->nr_active) {
-
 				busy = true;
 				goto out_unlock;
 			}
@@ -3753,10 +3738,7 @@ out_unlock:
  */
 void thaw_workqueues(void)
 {
-	struct workqueue_struct *wq;
-	struct pool_workqueue *pwq;
-	struct worker_pool *pool;
-	int id;
+	unsigned int cpu;
 
 	spin_lock(&workqueue_lock);
 
@@ -3784,37 +3766,11 @@ void thaw_workqueues(void)
 			while (!list_empty(&cwq->delayed_works) &&
 			       cwq->nr_active < cwq->max_active)
 				cwq_activate_first_delayed(cwq);
-
-	/* clear FREEZING */
-	for_each_pool(pool, id) {
-		spin_lock(&pool->lock);
-		WARN_ON_ONCE(!(pool->flags & POOL_FREEZING));
-		pool->flags &= ~POOL_FREEZING;
-		spin_unlock(&pool->lock);
-	}
-
-	/* restore max_active and repopulate worklist */
-	list_for_each_entry(wq, &workqueues, list) {
-		if (!(wq->flags & WQ_FREEZABLE))
-			continue;
-
-		for_each_pwq(pwq, wq) {
-			spin_lock(&pwq->pool->lock);
-			pwq_set_max_active(pwq, wq->saved_max_active);
-			spin_unlock(&pwq->pool->lock);
-
 		}
 
 		wake_up_worker(gcwq);
 
 		spin_unlock_irq(&gcwq->lock);
-	}
-
-	/* kick workers */
-	for_each_pool(pool, id) {
-		spin_lock(&pool->lock);
-		wake_up_worker(pool);
-		spin_unlock(&pool->lock);
 	}
 
 	workqueue_freezing = false;
