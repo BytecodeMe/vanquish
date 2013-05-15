@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -622,7 +622,6 @@ done:
 	return ret;
 }
 
-
 int afe_loopback_gain(u16 port_id, u16 volume)
 {
 	struct afe_port_cmd_set_param set_param;
@@ -689,7 +688,7 @@ int afe_loopback_gain(u16 port_id, u16 volume)
 	ret = wait_event_timeout(this_afe.wait,
 		(atomic_read(&this_afe.state) == 0),
 			msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
@@ -750,7 +749,7 @@ int afe_apply_gain(u16 port_id, u16 gain)
 	ret = wait_event_timeout(this_afe.wait,
 		(atomic_read(&this_afe.state) == 0),
 			msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
@@ -1425,7 +1424,7 @@ int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 	ret = wait_event_timeout(this_afe.wait,
 		(atomic_read(&this_afe.state) == 0),
 			msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
