@@ -2108,8 +2108,8 @@ WLANTL_GetRssi
     {
       *pRssi = pTLCb->atlSTAClients[ucSTAId].rssiAvg;
     }
-    TLLOGE(VOS_TRACE( VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_ERROR,
-                                 "WLAN TL:bmpsRssi %d \n",*pRssi));
+    /*TLLOGE(VOS_TRACE( VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_ERROR,
+                                 "WLAN TL:bmpsRssi %d \n",*pRssi));*/
   }
   else
   {
