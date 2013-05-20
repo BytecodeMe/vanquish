@@ -74,6 +74,9 @@
 #define CMD_GETBAND				"GETBAND"
 #define CMD_COUNTRY				"COUNTRY"
 #define CMD_P2P_SET_NOA			"P2P_SET_NOA"
+#if !defined WL_ENABLE_P2P_IF
+#define CMD_P2P_GET_NOA			"P2P_GET_NOA"
+#endif
 #define CMD_P2P_SET_PS			"P2P_SET_PS"
 #define CMD_SET_AP_WPS_P2P_IE	"SET_AP_WPS_P2P_IE"
 
@@ -112,7 +115,7 @@ typedef struct android_wifi_priv_cmd {
  */
 void dhd_customer_gpio_wlan_ctrl(int onoff);
 uint dhd_dev_reset(struct net_device *dev, uint8 flag);
-void dhd_dev_init_ioctl(struct net_device *dev);
+int dhd_dev_init_ioctl(struct net_device *dev);
 #ifdef WL_CFG80211
 int wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr);
 int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, char *command);
@@ -384,8 +387,10 @@ int wl_android_wifi_on(struct net_device *dev)
 		sdioh_start(NULL, 0);
 		ret = dhd_dev_reset(dev, FALSE);
 		sdioh_start(NULL, 1);
-		if (!ret)
-			dhd_dev_init_ioctl(dev);
+		if (!ret) {
+			if (dhd_dev_init_ioctl(dev) < 0)
+				ret = -EFAULT;
+		}
 		g_wifi_on = 1;
 	}
 	dhd_net_if_unlock(dev);
@@ -560,6 +565,11 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wl_cfg80211_set_p2p_noa(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
+#if !defined WL_ENABLE_P2P_IF
+	else if (strnicmp(command, CMD_P2P_GET_NOA, strlen(CMD_P2P_GET_NOA)) == 0) {
+		bytes_written = wl_cfg80211_get_p2p_noa(net, command, priv_cmd.total_len);
+	}
+#endif
 	else if (strnicmp(command, CMD_P2P_SET_PS, strlen(CMD_P2P_SET_PS)) == 0) {
 		int skip = strlen(CMD_P2P_SET_PS) + 1;
 		bytes_written = wl_cfg80211_set_p2p_ps(net, command + skip,
@@ -611,7 +621,7 @@ int wl_android_init(void)
 {
 	int ret = 0;
 
-	dhd_msg_level = DHD_ERROR_VAL;
+	dhd_msg_level |= DHD_ERROR_VAL;
 #ifdef ENABLE_INSMOD_NO_FW_LOAD
 	dhd_download_fw_on_driverload = FALSE;
 #endif /* ENABLE_INSMOD_NO_FW_LOAD */
@@ -726,7 +736,7 @@ int wifi_set_power(int on, unsigned long msec)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35))
 int wifi_get_mac_addr(unsigned char *buf)
 {
-	DHD_ERROR(("%s\n", __FUNCTION__));
+	DHD_TRACE(("%s\n", __FUNCTION__));
 	if (!buf)
 		return -EINVAL;
 	if (wifi_control_data && wifi_control_data->get_mac_addr) {
