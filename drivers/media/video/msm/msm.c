@@ -98,6 +98,13 @@ static int msm_ctrl_cmd_done(void __user *arg)
 			sizeof(struct msm_ctrl_cmd)))
 		return -EINVAL;
 
+	if (command->evt_id != g_server_dev.server_evt_id) {
+		pr_err("%s Invalid event id from userspace cmd id %d %d\n",
+			   __func__, command->evt_id,
+			   g_server_dev.server_evt_id);
+		return -EINVAL;
+	}
+
 	qcmd = kzalloc(sizeof(struct msm_queue_cmd), GFP_KERNEL);
 	atomic_set(&qcmd->on_heap, 1);
 	uptr = command->value;
@@ -153,6 +160,7 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 	*((uint32_t *)v4l2_evt.u.data) = (uint32_t)isp_event;
 	isp_event->resptype = MSM_CAM_RESP_V4L2;
 	isp_event->isp_data.ctrl = *out;
+	isp_event->isp_data.ctrl.evt_id = g_server_dev.server_evt_id;
 	if (out->length > 0 && out->value != NULL) {
 		ctrlcmd_data = kzalloc(out->length, GFP_KERNEL);
 		if (!ctrlcmd_data) {
@@ -174,7 +182,7 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 	D("Waiting for config status\n");
 	rc = wait_event_interruptible_timeout(queue->wait,
 		!list_empty_careful(&queue->list),
-		out->timeout_ms);
+		msecs_to_jiffies(out->timeout_ms));
 	D("Waiting is over for config status\n");
 	if (list_empty_careful(&queue->list)) {
 		if (!rc)
@@ -182,7 +190,17 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 		if (rc < 0) {
 			if (g_server_dev.server_evt_id == 0)
 				g_server_dev.server_evt_id++;
-			pr_err("%s: wait_event error %d\n", __func__, rc);
+			pr_err("%s: wait_event error %d for command%d\n",
+				   __func__, rc, out->type);
+			if (out->type == MSM_V4L2_SET_CTRL_CMD
+				&& out->value != NULL) {
+				pr_err("Set native ctrl type is %d\n",
+				((struct msm_ctrl_cmd *)out->value)->type);
+			} else if (out->type == MSM_V4L2_SET_CTRL
+				&& out->value != NULL) {
+				pr_err("Set ctrl type is 0x%x\n",
+				((struct v4l2_control *)out->value)->id);
+			}
 			return rc;
 		}
 	}
@@ -193,9 +211,12 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 
 	ctrlcmd = (struct msm_ctrl_cmd *)(rcmd->command);
 	value = out->value;
-	if (ctrlcmd->length > 0 && value != NULL &&
-			ctrlcmd->length <= out->length)
+	if ((ctrlcmd->length > 0) && (out->length >= ctrlcmd->length))
 		memcpy(value, ctrlcmd->value, ctrlcmd->length);
+	else if (ctrlcmd->length > 0) {
+		pr_err("%s: Error - command length mismatch out=%d/cmd=%d\n",
+			__func__, out->length, ctrlcmd->length);
+	}
 
 	memcpy(out, ctrlcmd, sizeof(struct msm_ctrl_cmd));
 	out->value = value;
@@ -459,7 +480,10 @@ static int msm_server_proc_ctrl_cmd(struct msm_cam_v4l2_device *pcam,
 	ctrlcmd.type = MSM_V4L2_SET_CTRL_CMD;
 	ctrlcmd.length = cmd_len + value_len;
 	ctrlcmd.value = (void *)ctrl_data;
-	ctrlcmd.timeout_ms = 1000;
+	if (tmp_cmd->timeout_ms > 0)
+		ctrlcmd.timeout_ms = tmp_cmd->timeout_ms;
+	else
+		ctrlcmd.timeout_ms = 1000;
 	ctrlcmd.vnode_id = pcam->vnode_id;
 	ctrlcmd.config_ident = g_server_dev.config_info.config_dev_id[0];
 	/* send command to config thread in usersspace, and get return value */
@@ -2073,26 +2097,29 @@ static int msm_close_server(struct inode *inode, struct file *fp)
 	struct v4l2_event_subscription sub;
 	D("%s\n", __func__);
 	mutex_lock(&g_server_dev.server_lock);
-	if (g_server_dev.use_count > 0)
-		g_server_dev.use_count--;
-	mutex_unlock(&g_server_dev.server_lock);
-	if (g_server_dev.use_count == 0) {
+	if ((g_server_dev.use_count > 0) && (--g_server_dev.use_count == 0)) {
 		if (g_server_dev.pcam_active) {
 			struct v4l2_event v4l2_ev;
-			mutex_lock(&g_server_dev.server_lock);
 
 			v4l2_ev.type = V4L2_EVENT_PRIVATE_START
 				+ MSM_CAM_APP_NOTIFY_ERROR_EVENT;
 			ktime_get_ts(&v4l2_ev.timestamp);
 			v4l2_event_queue(
 				g_server_dev.pcam_active->pvdev, &v4l2_ev);
+		} else {
+			/* Only leave mutex locked if the pcam instance is active: */
+			mutex_unlock(&g_server_dev.server_lock);
 		}
 
 		sub.type = V4L2_EVENT_ALL;
 		msm_server_v4l2_unsubscribe_event(
 				&g_server_dev.server_command_queue.eventHandle, &sub);
 
+		/* NOTE: Return without unlocking mutex per QC's design
+			 ONLY when pcam is active. Mutex is unlocked in msm_close. */
+		return 0;
 	}
+	mutex_unlock(&g_server_dev.server_lock);
 	return 0;
 }
 
@@ -2103,8 +2130,8 @@ static long msm_v4l2_evt_notify(struct msm_cam_media_controller *mctl,
 	struct v4l2_event v4l2_ev;
 	struct msm_cam_v4l2_device *pcam = NULL;
 
-	if (!mctl) {
-		pr_err("%s: mctl is NULL\n", __func__);
+	if (!mctl || (NULL == g_server_dev.pcam_active)) {
+		pr_err("%s: __mot_deb mctl/pcam_active is NULL\n", __func__);
 		return -EINVAL;
 	}
 
@@ -2113,7 +2140,7 @@ static long msm_v4l2_evt_notify(struct msm_cam_media_controller *mctl,
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
 	}
-
+	D("%s: Sending event to HAL with type %x\n", __func__, v4l2_ev.type);
 	pcam = mctl->sync.pcam_sync;
 	ktime_get_ts(&v4l2_ev.timestamp);
 	v4l2_event_queue(pcam->pvdev, &v4l2_ev);
@@ -2512,6 +2539,7 @@ static int msm_setup_server_dev(int node, char *device_name)
 	g_server_dev.pcam_active = NULL;
 	g_server_dev.camera_info.num_cameras = 0;
 	atomic_set(&g_server_dev.number_pcam_active, 0);
+	g_server_dev.server_evt_id = 0;
 
 	/*initialize fake video device and event queue*/
 

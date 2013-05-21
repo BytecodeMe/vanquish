@@ -90,7 +90,7 @@ static int vpe_reset(void)
 
 	spin_lock_irqsave(&vpe_ctrl->lock, flags);
 	if (vpe_ctrl->state == VPE_STATE_IDLE) {
-		CDBG("%s: VPE already disabled.", __func__);
+		pr_err("%s: VPE already disabled.", __func__);
 		spin_unlock_irqrestore(&vpe_ctrl->lock, flags);
 		return rc;
 	}
@@ -532,7 +532,7 @@ int vpe_disable(void)
 	CDBG("%s", __func__);
 	spin_lock_irqsave(&vpe_ctrl->lock, flags);
 	if (vpe_ctrl->state == VPE_STATE_IDLE) {
-		CDBG("%s: VPE already disabled", __func__);
+		pr_err("%s: VPE already disabled", __func__);
 		spin_unlock_irqrestore(&vpe_ctrl->lock, flags);
 		return rc;
 	}
@@ -584,6 +584,7 @@ static long msm_vpe_subdev_ioctl(struct v4l2_subdev *sd,
 		(struct msm_mctl_pp_params *)arg;
 	struct msm_mctl_pp_cmd *cmd = vpe_params->cmd;
 	int rc = 0;
+	CDBG("_debug: commands being serviced by vpe = %d \n", cmd->id);
 	switch (cmd->id) {
 	case VPE_CMD_INIT:
 	case VPE_CMD_DEINIT:
@@ -677,22 +678,24 @@ static int msm_vpe_resource_init(struct platform_device *pdev)
 /* from this part it is error handling. */
 vpe_unmap_mem_region:
 	iounmap(vpe_ctrl->vpebase);
-	vpe_ctrl->vpebase = NULL;
 	return rc;  /* this rc should have error code. */
 }
 
 void msm_vpe_subdev_release(struct platform_device *pdev)
 {
+	unsigned long flags;
+
 	if (!atomic_read(&vpe_init_done)) {
 		/* no VPE object created */
 		pr_err("%s: no VPE object to release", __func__);
 		return;
 	}
 
-	vpe_reset();
-	vpe_disable();
+	spin_lock_irqsave(&vpe_ctrl->lock, flags);
+	vpe_ctrl->state = VPE_STATE_IDLE;
+	spin_unlock_irqrestore(&vpe_ctrl->lock, flags);
+
 	iounmap(vpe_ctrl->vpebase);
-	vpe_ctrl->vpebase = NULL;
 	atomic_set(&vpe_init_done, 0);
 }
 EXPORT_SYMBOL(msm_vpe_subdev_release);
