@@ -1905,12 +1905,15 @@ static int tabla_hphr_dac_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
+extern void alsa_to_h2w_headset_report(int state);
 
 static void tabla_snd_soc_jack_report(struct tabla_priv *tabla,
 				      struct snd_soc_jack *jack, int status,
 				      int mask)
 {
 	/* XXX: wake_lock_timeout()? */
+	if (TABLA_JACK_MASK & mask)
+		alsa_to_h2w_headset_report(status ? tabla->current_plug : 0);
 	snd_soc_jack_report_no_dapm(jack, status, mask);
 }
 
