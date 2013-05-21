@@ -231,31 +231,33 @@ static void msm8960_ext_spk_power_amp_off(u32 spk)
 {
 	if (spk & (BOTTOM_SPK_AMP_POS | BOTTOM_SPK_AMP_NEG)) {
 
-		if (!msm8960_ext_bottom_spk_pamp)
-			return;
+		if ((msm8960_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_POS) &&
+			(msm8960_ext_bottom_spk_pamp & BOTTOM_SPK_AMP_NEG)) {
 
-		gpio_direction_output(bottom_spk_pamp_gpio, 0);
-		gpio_free(bottom_spk_pamp_gpio);
-		msm8960_ext_bottom_spk_pamp = 0;
+			gpio_direction_output(bottom_spk_pamp_gpio, 0);
+			gpio_free(bottom_spk_pamp_gpio);
+			msm8960_ext_bottom_spk_pamp = 0;
 
-		pr_debug("%s: sleeping 4 ms after turning off external Bottom"
+			pr_debug("%s: sleeping 4 ms after turning off external Bottom"
 			" Speaker Ampl\n", __func__);
 
-		usleep_range(4000, 4000);
+			usleep_range(4000, 4000);
+		}
 
 	} else if (spk & (TOP_SPK_AMP_POS | TOP_SPK_AMP_NEG)) {
 
-		if (!msm8960_ext_top_spk_pamp)
-			return;
+		if ((msm8960_ext_top_spk_pamp & TOP_SPK_AMP_POS) &&
+			(msm8960_ext_top_spk_pamp & TOP_SPK_AMP_NEG)) {
 
-		gpio_direction_output(top_spk_pamp_gpio, 0);
-		gpio_free(top_spk_pamp_gpio);
-		msm8960_ext_top_spk_pamp = 0;
+			gpio_direction_output(top_spk_pamp_gpio, 0);
+			gpio_free(top_spk_pamp_gpio);
+			msm8960_ext_top_spk_pamp = 0;
 
-		pr_debug("%s: sleeping 4 ms after turning off external Top"
-			" Spkaker Ampl\n", __func__);
+			pr_debug("%s: sleeping 4 ms after turning off external Top"
+				" Spkaker Ampl\n", __func__);
 
-		usleep_range(4000, 4000);
+			usleep_range(4000, 4000);
+		}
 	} else  {
 
 		pr_err("%s: ERROR : Invalid Ext Spk Ampl. spk = 0x%08x\n",
