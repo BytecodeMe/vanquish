@@ -929,8 +929,6 @@ static void enable_acl(struct msm_fb_data_type *mfd)
 	if ((mfd->op_enable != 0) && (mfd->panel_power_on != 0)) {
 		dsi_tx_buf = mot_panel->mot_tx_buf;
 		mutex_lock(&mfd->dma->ov_mutex);
-//		mdp4_dsi_cmd_dma_busy_wait(mfd);
-//		mdp4_dsi_blt_dmap_busy_wait(mfd);
 		mipi_set_tx_power_mode(0);
 		ACL_enable_disable_settings[1] = mot_panel->acl_enabled;
 		mipi_dsi_cmds_tx(dsi_tx_buf, mot_acl_enable_disable,
@@ -1027,7 +1025,7 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 
 	mipi_dsi_cmds_tx(dsi_tx_buf, mot_video_on_cmds2_acl,
 					ARRAY_SIZE(mot_video_on_cmds2_acl));
-	mdelay(120);
+	msleep(120);
 
 	mipi_dsi_cmds_tx(dsi_tx_buf, mot_video_on_cmds3,
 					ARRAY_SIZE(mot_video_on_cmds3));
@@ -1083,9 +1081,6 @@ static void panel_set_backlight(struct msm_fb_data_type *mfd)
 	mot_set_brightness_cmds[2].payload = getElvssForGamma(idx);
 
 	mutex_lock(&mfd->dma->ov_mutex);
-//	mdp4_dsi_cmd_dma_busy_wait(mfd);
-//	mdp4_dsi_blt_dmap_busy_wait(mfd);
-
 	mipi_set_tx_power_mode(0);
 	mipi_dsi_cmds_tx(dsi_tx_buf, mot_set_brightness_cmds,
 					ARRAY_SIZE(mot_set_brightness_cmds));
