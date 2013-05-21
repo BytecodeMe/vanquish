@@ -1,10 +1,11 @@
+CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
+
 ifdef CONFIG_FUNCTION_TRACER
 CFLAGS_REMOVE_timer.o = -pg
 CFLAGS_REMOVE_clock.o = -pg
 CFLAGS_REMOVE_acpuclock.o = -pg
 CFLAGS_REMOVE_scm.o = -pg
 endif
-CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
 obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
@@ -259,7 +260,8 @@ obj-$(CONFIG_MACH_MSM8960_MMI) += \
 	board-mmi-atmxt.o \
 	board-mmi-vibrator.o \
 	board-mmi-melfas-touch.o \
-	mmi-bms-batterydata.o
+	mmi-bms-batterydata.o \
+	board-mmi-h2w.o
 obj-$(CONFIG_MACH_MSM8930_CDP) += board-8930-all.o board-8930-regulator.o
 obj-$(CONFIG_MACH_MSM8930_MTP) += board-8930-all.o board-8930-regulator.o
 obj-$(CONFIG_MACH_MSM8930_FLUID) += board-8930-all.o board-8930-regulator.o
