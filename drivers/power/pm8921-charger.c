@@ -200,6 +200,11 @@ struct bms_notify {
 	struct	work_struct	work;
 };
 
+enum pcb_temp_states {
+	PCB_TEMP_NORM,
+	PCB_TEMP_HOT,
+};
+
 /**
  * struct pm8921_chg_chip -device information
  * @dev:			device pointer to access the parent
@@ -283,8 +288,12 @@ struct pm8921_chg_chip {
 	struct alarm			alarm;
 	struct wake_lock		heartbeat_wake_lock;
 	struct work_struct		wakeup_alarm_work;
-	int		 	      	hot_temp_dc;
-	int		 	      	hot_temp_offset_dc;
+	int                             hot_temp_dc;
+	int                             hot_temp_offset_dc;
+	int                             hot_temp_pcb_dc;
+	signed char                     hot_temp_pcb_offset_dc;
+	int                             pcb_temp_dc;
+	int                             pcb_temp_state;
 #endif
 #ifdef CONFIG_PM8921_FACTORY_SHUTDOWN
 	void				(*arch_reboot_cb)(void);
@@ -1574,14 +1583,30 @@ static int get_prop_batt_temp(struct pm8921_chg_chip *chip)
 		return rc;
 	}
 	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
-						result.measurement);
+		 result.measurement);
 
 #ifdef CONFIG_PM8921_EXTENDED_INFO
-	if ((chip->hot_temp_dc > chip->warm_temp_dc) &&
-	    (result.physical >= chip->hot_temp_dc))
-		result.physical += chip->hot_temp_offset_dc;
+	if (chip->hot_temp_dc > chip->warm_temp_dc) {
+		if ((chip->hot_temp_pcb_dc) &&
+		    (chip->pcb_temp_state == PCB_TEMP_HOT)) {
+			if (result.physical < chip->hot_temp_dc) {
+				result.physical = (int)chip->pcb_temp_dc +
+				      (signed char)chip->hot_temp_pcb_offset_dc;
+			} else {
+				result.physical =
+					max((int)(result.physical +
+						  chip->hot_temp_offset_dc),
+					    (int)(chip->pcb_temp_dc +
+						 chip->hot_temp_pcb_offset_dc));
+			}
+		} else {
+			if (result.physical >= chip->hot_temp_dc) {
+				result.physical += chip->hot_temp_offset_dc;
+			}
+		}
+	}
+	pr_debug("Adjusted batt_temp phy = %lld\n", result.physical);
 #endif
-
 	if (result.physical > MAX_TOLERABLE_BATT_TEMP_DDC)
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 		result.physical = 800;
@@ -1615,7 +1640,8 @@ static int get_prop_cycle_count(struct pm8921_chg_chip *chip)
 
 	rc = pm8921_bms_get_aged_capacity(&aged);
 	if (rc) {
-		pr_err("error reading aged capacity(cycle count) rc = %d\n", rc);
+		pr_err("error reading aged capacity(cycle count) rc = %d\n",
+		       rc);
 		return rc;
 	}
 
@@ -2791,6 +2817,8 @@ static void update_heartbeat(struct work_struct *work)
 		data.warm_temp = (chip->warm_temp_dc / 10);
 		data.hot_temp = (chip->hot_temp_dc / 10);
 		data.hot_temp_offset = (chip->hot_temp_offset_dc / 10);
+		data.hot_temp_pcb = (chip->hot_temp_pcb_dc / 10);
+		data.hot_temp_pcb_offset = (chip->hot_temp_pcb_offset_dc / 10);
 		data.cool_bat_voltage = chip->cool_bat_voltage;
 		data.warm_bat_voltage = chip->warm_bat_voltage;
 		retval = pdata->temp_range_cb(batt_temp, batt_mvolt,
@@ -4614,6 +4642,63 @@ static DEVICE_ATTR(force_chg_itrick, 0664,
 		   force_chg_itrick_show,
 		   force_chg_itrick_store);
 
+static ssize_t pcb_temp_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	unsigned long r;
+	long pcb_temp;
+
+	r = strict_strtol(buf, 0, &pcb_temp);
+	if (r) {
+		pr_err("Invalid PCB temperature value\n");
+		r = -EINVAL;
+		return r;
+	}
+
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		r = -ENODEV;
+		return r;
+	}
+	the_chip->pcb_temp_dc = (int)pcb_temp;
+	pr_debug("PCB temperature = %d\n", (int)pcb_temp);
+
+	if (the_chip->hot_temp_pcb_dc) {
+		if ((the_chip->pcb_temp_state != PCB_TEMP_HOT) &&
+		    (pcb_temp >= the_chip->hot_temp_pcb_dc)) {
+			the_chip->pcb_temp_state = PCB_TEMP_HOT;
+			cancel_delayed_work(&the_chip->update_heartbeat_work);
+			schedule_delayed_work(&the_chip->update_heartbeat_work,
+					      msecs_to_jiffies(0));
+		} else if ((the_chip->pcb_temp_state != PCB_TEMP_NORM) &&
+			   (pcb_temp < (the_chip->hot_temp_pcb_dc -
+					(TEMP_HYSTERISIS_DEGC*10)))) {
+			the_chip->pcb_temp_state = PCB_TEMP_NORM;
+			cancel_delayed_work(&the_chip->update_heartbeat_work);
+			schedule_delayed_work(&the_chip->update_heartbeat_work,
+					      msecs_to_jiffies(0));
+		}
+	}
+	return r ? r : count;
+}
+
+static ssize_t pcb_temp_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	if (!the_chip) {
+		pr_err("chip not valid\n");
+		return -ENODEV;
+	}
+
+	return snprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n",
+			the_chip->pcb_temp_dc);
+}
+static DEVICE_ATTR(pcb_temp, 0664,
+		   pcb_temp_show,
+		   pcb_temp_store);
+
 static int pm8921_charger_resume(struct device *dev)
 {
 	int rc;
@@ -4720,6 +4805,9 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 #ifdef CONFIG_PM8921_EXTENDED_INFO
 	chip->hot_temp_dc = pdata->hot_temp * 10;
 	chip->hot_temp_offset_dc = pdata->hot_temp_offset * 10;
+	chip->hot_temp_pcb_dc = pdata->hot_temp_pcb * 10;
+	chip->hot_temp_pcb_offset_dc = pdata->hot_temp_pcb_offset * 10;
+	chip->pcb_temp_state = PCB_TEMP_NORM;
 #endif
 
 	chip->cold_thr = pdata->cold_thr;
@@ -4783,6 +4871,13 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 				&dev_attr_force_chg_itrick);
 	if (rc) {
 		pr_err("couldn't create force_chg_itrick\n");
+		goto free_chip;
+	}
+
+	rc = device_create_file(&pdev->dev,
+				&dev_attr_pcb_temp);
+	if (rc) {
+		pr_err("couldn't create pcb_temp\n");
 		goto free_chip;
 	}
 
