@@ -82,6 +82,9 @@
 #include "board-mmi.h"
 #endif
 
+extern void mmi_buzz_blip(void);
+extern void mmi_sw_ap_reset(void);
+
 #include "timer.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -119,6 +122,8 @@ static struct pm8xxx_pwrkey_platform_data pm8xxx_pwrkey_pdata = {
 	.pull_up		= 1,
 	.kpd_trigger_delay_us	= 15625,
 	.wakeup			= 1,
+	.buzz			= mmi_buzz_blip,
+	.reboot			= mmi_sw_ap_reset,
 };
 
 static int pm8921_therm_mitigation[] = {

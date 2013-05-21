@@ -23,14 +23,6 @@
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/input/pmic8xxx-pwrkey.h>
 
-/* define to enable reboot on very long key hold */
-#define VERY_LONG_HOLD_REBOOT
-
-#ifdef VERY_LONG_HOLD_REBOOT
-#include <mach/system.h>
-#include <linux/mfd/pm8xxx/misc.h>
-#endif
-
 #ifdef CONFIG_PM_DEEPSLEEP
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
@@ -48,15 +40,18 @@
 struct pmic8xxx_pwrkey {
 	struct input_dev *pwr;
 	int key_press_irq;
+	int key_release_irq;
 	const struct pm8xxx_pwrkey_platform_data *pdata;
 #ifdef CONFIG_PM_DEEPSLEEP
 	struct hrtimer longPress_timer;
 	int expired;
 	struct wake_lock wake_lock;
 #endif
-#ifdef VERY_LONG_HOLD_REBOOT
 	struct hrtimer very_longPress_timer;
-#endif
+	int do_reboot;
+	struct work_struct buzz_work;
+	void (*do_fbuzz)(void);
+	void (*do_freboot)(void);
 };
 
 #ifdef CONFIG_PM_DEEPSLEEP
@@ -75,24 +70,33 @@ static enum hrtimer_restart longPress_timer_callback(struct hrtimer *timer)
 }
 #endif
 
-#ifdef VERY_LONG_HOLD_REBOOT
+static void buzz_notify(struct work_struct *work)
+{
+	struct pmic8xxx_pwrkey *pwrkey =
+		container_of(work, struct pmic8xxx_pwrkey, buzz_work);
+
+	if (pwrkey->do_fbuzz)
+		pwrkey->do_fbuzz();
+}
+
 static enum hrtimer_restart very_longPress_timer_callback(struct hrtimer *timer)
 {
-	arch_reset(0, 0);
+	struct pmic8xxx_pwrkey *pwrkey =
+		container_of(timer, struct pmic8xxx_pwrkey, very_longPress_timer);
 
-	while (1) {
-		printk(KERN_ERR "power key pressed IRQ HANDLER (SHUTTING DOWN - forcing reboot)\n");
-	}
+	pwrkey->do_reboot++;
+	pr_info("Power key held for 7 seconds; will reboot on release.\n");
+	schedule_work(&pwrkey->buzz_work);
 
 	return HRTIMER_NORESTART;
 }
-#endif
 
 static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 {
 	struct pmic8xxx_pwrkey *pwrkey = _pwrkey;
-#ifdef VERY_LONG_HOLD_REBOOT
 	struct timespec uptime;
+
+	pwrkey->do_reboot = 0;
 
 	do_posix_clock_monotonic_gettime(&uptime);
 
@@ -100,7 +104,6 @@ static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 		hrtimer_start(&pwrkey->very_longPress_timer,
 				ktime_set(7, 0), HRTIMER_MODE_REL);
 	}
-#endif
 
 #ifdef CONFIG_PM_DEEPSLEEP
 
@@ -112,6 +115,7 @@ static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 	} else
 #endif
 	{
+	pr_info("Report pwrkey press event\n");
 	input_report_key(pwrkey->pwr, KEY_POWER, 1);
 	input_sync(pwrkey->pwr);
 	}
@@ -122,9 +126,13 @@ static irqreturn_t pwrkey_release_irq(int irq, void *_pwrkey)
 {
 	struct pmic8xxx_pwrkey *pwrkey = _pwrkey;
 
-#ifdef VERY_LONG_HOLD_REBOOT
 	hrtimer_cancel(&pwrkey->very_longPress_timer);
-#endif
+
+	if (pwrkey->do_reboot) {
+		pr_info("Power key released; REBOOTING.\n");
+		if (pwrkey->do_freboot)
+			pwrkey->do_freboot();
+	}
 
 #ifdef CONFIG_PM_DEEPSLEEP
 	if (get_deepsleep_mode()) {
@@ -138,6 +146,7 @@ static irqreturn_t pwrkey_release_irq(int irq, void *_pwrkey)
 	} else
 #endif
 	{
+	pr_info("Report pwrkey release event\n");
 	input_report_key(pwrkey->pwr, KEY_POWER, 0);
 	input_sync(pwrkey->pwr);
 	}
@@ -151,7 +160,7 @@ static int pmic8xxx_pwrkey_suspend(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(pwrkey->key_press_irq);
-
+		enable_irq_wake(pwrkey->key_release_irq);
 	return 0;
 }
 
@@ -161,7 +170,7 @@ static int pmic8xxx_pwrkey_resume(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(pwrkey->key_press_irq);
-
+		disable_irq_wake(pwrkey->key_release_irq);
 	return 0;
 }
 #endif
@@ -240,7 +249,22 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 		goto free_input_dev;
 	}
 
+	pwrkey->do_fbuzz = pdata->buzz;
+	pwrkey->do_freboot = pdata->reboot;
+
+	pwrkey->do_reboot = 0;
+
+	INIT_WORK(&pwrkey->buzz_work, buzz_notify);
+
+	hrtimer_init(&(pwrkey->very_longPress_timer),
+			CLOCK_MONOTONIC,
+			HRTIMER_MODE_REL);
+
+	(pwrkey->very_longPress_timer).function =
+		very_longPress_timer_callback;
+
 	pwrkey->key_press_irq = key_press_irq;
+	pwrkey->key_release_irq = key_release_irq;
 	pwrkey->pwr = pwr;
 
 	platform_set_drvdata(pdev, pwrkey);
@@ -261,15 +285,6 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 
 		goto free_press_irq;
 	}
-
-#ifdef VERY_LONG_HOLD_REBOOT
-	hrtimer_init(&(pwrkey->very_longPress_timer),
-			CLOCK_MONOTONIC,
-			HRTIMER_MODE_REL);
-
-	(pwrkey->very_longPress_timer).function =
-		very_longPress_timer_callback;
-#endif
 
 #ifdef CONFIG_PM_DEEPSLEEP
 
