@@ -927,13 +927,13 @@ static struct tabla_pdata tabla_platform_data = {
 	{
 		.name = "VDDD_CDC_D",
 		.min_uV = 1225000,
-		.max_uV = 1225000,
+		.max_uV = 1250000,
 		.optimum_uA = WCD9XXX_VDDD_CDC_D_CUR_MAX,
 	},
 	{
 		.name = "CDC_VDDA_A_1P2V",
 		.min_uV = 1225000,
-		.max_uV = 1225000,
+		.max_uV = 1250000,
 		.optimum_uA = WCD9XXX_VDDD_CDC_A_CUR_MAX,
 	},
 	},
@@ -994,13 +994,13 @@ static struct tabla_pdata tabla20_platform_data = {
 	{
 		.name = "VDDD_CDC_D",
 		.min_uV = 1225000,
-		.max_uV = 1225000,
+		.max_uV = 1250000,
 		.optimum_uA = WCD9XXX_VDDD_CDC_D_CUR_MAX,
 	},
 	{
 		.name = "CDC_VDDA_A_1P2V",
 		.min_uV = 1225000,
-		.max_uV = 1225000,
+		.max_uV = 1250000,
 		.optimum_uA = WCD9XXX_VDDD_CDC_A_CUR_MAX,
 	},
 	},
@@ -1347,7 +1347,7 @@ static struct msm_otg_platform_data msm_otg_pdata;
 static int wr_phy_init_seq[] = {
 	0x44, 0x80, /* set VBUS valid threshold
 			and disconnect valid threshold */
-	0x68, 0x81, /* update DC voltage level */
+	0x38, 0x81, /* update DC voltage level */
 	0x14, 0x82, /* set preemphasis and rise/fall time */
 	0x13, 0x83, /* set source impedance adjusment */
 	-1};
@@ -1355,7 +1355,7 @@ static int wr_phy_init_seq[] = {
 static int liquid_v1_phy_init_seq[] = {
 	0x44, 0x80,/* set VBUS valid threshold
 			and disconnect valid threshold */
-	0x6C, 0x81,/* update DC voltage level */
+	0x3C, 0x81,/* update DC voltage level */
 	0x18, 0x82,/* set preemphasis and rise/fall time */
 	0x23, 0x83,/* set source impedance sdjusment */
 	-1};
