@@ -544,7 +544,8 @@ static void handle_bam_mux_cmd(struct work_struct *work)
 				rx_hdr->ch_id);
 		handle_bam_mux_cmd_open(rx_hdr);
 		if (rx_hdr->reserved & ENABLE_DISCONNECT_ACK) {
-			bam_dmux_log("%s: activating disconnect ack\n");
+			bam_dmux_log("%s: activating disconnect ack\n",
+					__func__);
 			disconnect_ack = 1;
 		}
 		dev_kfree_skb_any(rx_skb);
