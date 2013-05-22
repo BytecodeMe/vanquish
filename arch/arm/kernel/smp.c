@@ -344,19 +344,10 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	 * before we continue.
 	 */
 	set_cpu_online(cpu, true);
-
 	while (!cpu_active(cpu))
 		cpu_relax();
 
-	printk(KERN_INFO"CPU1 is up\n")
-
-	/*
-	 * Setup the percpu timer for this CPU.
-	 */
-	percpu_timer_setup();
-
-	local_irq_enable();
-	local_fiq_enable();
+	printk(KERN_INFO"CPU1 is up\n");
 
 	/*
 	 * OK, it's off to the idle thread for us
