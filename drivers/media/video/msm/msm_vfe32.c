@@ -370,6 +370,7 @@ static void vfe32_stop(void)
 	unsigned long flags;
 
 	atomic_set(&vfe32_ctrl->vstate, 0);
+
 	/* for reset hw modules, and send msg when reset_irq comes.*/
 	spin_lock_irqsave(&vfe32_ctrl->stop_flag_lock, flags);
 	vfe32_ctrl->stop_ack_pending = TRUE;
@@ -400,7 +401,7 @@ static void vfe32_stop(void)
 	msm_io_w(AXI_HALT,
 		vfe32_ctrl->vfebase + VFE_AXI_CMD);
 	wmb();
-	while ((axiBusyFlag) && (!atomic_read(&vfe32_ctrl->cancel))) {
+	while (axiBusyFlag) {
 		if (msm_io_r(vfe32_ctrl->vfebase + VFE_AXI_STATUS) & 0x1)
 			axiBusyFlag = false;
 	}
@@ -498,7 +499,6 @@ static void vfe32_reset_internal_variables(void)
 {
 	unsigned long flags;
 	vfe32_ctrl->vfeImaskCompositePacked = 0;
-	atomic_set(&vfe32_ctrl->cancel, 0);
 	/* state control variables */
 	vfe32_ctrl->start_ack_pending = FALSE;
 	atomic_set(&irq_cnt, 0);
@@ -2822,75 +2822,47 @@ static void vfe32_process_error_irq(uint32_t errStatus)
 		pr_err("%s: violationStatus  = 0x%x\n", __func__, reg_value);
 	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_0_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_0_BUS_OVFL)
 		pr_err("vfe32_irq: image master 0 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_1_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_1_BUS_OVFL)
 		pr_err("vfe32_irq: image master 1 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_2_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_2_BUS_OVFL)
 		pr_err("vfe32_irq: image master 2 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_3_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_3_BUS_OVFL)
 		pr_err("vfe32_irq: image master 3 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_4_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_4_BUS_OVFL)
 		pr_err("vfe32_irq: image master 4 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_5_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_5_BUS_OVFL)
 		pr_err("vfe32_irq: image master 5 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_IMG_MAST_6_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_IMG_MAST_6_BUS_OVFL)
 		pr_err("vfe32_irq: image master 6 bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_AE_BG_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_AE_BG_BUS_OVFL)
 		pr_err("vfe32_irq: ae/bg stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_AF_BF_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_AF_BF_BUS_OVFL)
 		pr_err("vfe32_irq: af/bf stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_AWB_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_AWB_BUS_OVFL)
 		pr_err("vfe32_irq: awb stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_RS_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_RS_BUS_OVFL)
 		pr_err("vfe32_irq: rs stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_CS_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_CS_BUS_OVFL)
 		pr_err("vfe32_irq: cs stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_IHIST_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_IHIST_BUS_OVFL)
 		pr_err("vfe32_irq: ihist stats bus overflow\n");
-	}
 
-	if (errStatus & VFE32_IMASK_STATS_SKIN_BHIST_BUS_OVFL) {
-		atomic_set(&vfe32_ctrl->cancel, 1);
+	if (errStatus & VFE32_IMASK_STATS_SKIN_BHIST_BUS_OVFL)
 		pr_err("vfe32_irq: skin/bhist stats bus overflow\n");
-	}
 
 	if (errStatus & VFE32_IMASK_AXI_ERROR)
 		pr_err("vfe32_irq: axi error\n");
@@ -3650,10 +3622,6 @@ static long msm_vfe_subdev_ioctl(struct v4l2_subdev *sd,
 		}
 	}
 
-	/*
-	 * This function calls itself recursively via ISP, so we can't
-	 * take the mutex for all commands.  :/
-	 */
 	CDBG("%s: cmdType = %d\n", __func__, cmd->cmd_type);
 
 	if ((cmd->cmd_type == CMD_STATS_AF_ENABLE)    ||
@@ -3713,9 +3681,7 @@ static long msm_vfe_subdev_ioctl(struct v4l2_subdev *sd,
 	}
 	switch (cmd->cmd_type) {
 	case CMD_GENERAL:
-		mutex_lock(&vfe32_ctrl->vfe_lock);
 		rc = vfe32_proc_general(&vfecmd);
-		mutex_unlock(&vfe32_ctrl->vfe_lock);
 		break;
 
 	case CMD_CONFIG_PING_ADDR: {
@@ -3884,12 +3850,11 @@ static int msm_vfe_subdev_s_crystal_freq(struct v4l2_subdev *sd,
 	int rc = 0;
 	int round_rate;
 
-	mutex_lock(&vfe32_ctrl->vfe_lock);
 	round_rate = clk_round_rate(vfe32_ctrl->vfe_clk[0], freq);
 	if (rc < 0) {
 		pr_err("%s: clk_round_rate failed %d\n",
 					__func__, rc);
-		goto crystal_freq_done;
+		return rc;
 	}
 
 	vfe_clk_rate = round_rate;
@@ -3898,8 +3863,6 @@ static int msm_vfe_subdev_s_crystal_freq(struct v4l2_subdev *sd,
 		pr_err("%s: clk_set_rate failed %d\n",
 					__func__, rc);
 
-crystal_freq_done:
-	mutex_unlock(&vfe32_ctrl->vfe_lock);
 	return rc;
 }
 
@@ -3921,8 +3884,6 @@ int msm_vfe_subdev_init(struct v4l2_subdev *sd, void *data,
 {
 	int rc = 0;
 	struct msm_sync *sync = data;
-
-	mutex_lock(&vfe32_ctrl->vfe_lock);
 	v4l2_set_subdev_hostdata(sd, data);
 	vfe_syncdata = data;
 
@@ -3947,6 +3908,8 @@ int msm_vfe_subdev_init(struct v4l2_subdev *sd, void *data,
 	vfe32_ctrl->update_la = false;
 	vfe32_ctrl->update_gamma = false;
 	vfe32_ctrl->hfr_mode = HFR_MODE_OFF;
+
+	enable_irq(vfe32_ctrl->vfeirq->start);
 
 	vfe32_ctrl->vfebase = ioremap(vfe32_ctrl->vfemem->start,
 		resource_size(vfe32_ctrl->vfemem));
@@ -3989,9 +3952,7 @@ int msm_vfe_subdev_init(struct v4l2_subdev *sd, void *data,
 	else
 		vfe32_ctrl->register_total = VFE33_REGISTER_TOTAL;
 
-	enable_irq(vfe32_ctrl->vfeirq->start);
-
-	goto vfe_init_done;
+	return rc;
 
 vfe_clk_enable_failed:
 	regulator_disable(vfe32_ctrl->fs_vfe);
@@ -4001,22 +3962,13 @@ vfe_fs_failed:
 	iounmap(vfe32_ctrl->vfebase);
 	vfe32_ctrl->vfebase = NULL;
 vfe_remap_failed:
-vfe_init_done:
-	mutex_unlock(&vfe32_ctrl->vfe_lock);
+	disable_irq(vfe32_ctrl->vfeirq->start);
 	return rc;
 }
 
 void msm_vfe_subdev_release(struct platform_device *pdev)
 {
 	struct msm_sync *sync = vfe_syncdata;
-
-	/* Release any polling loops. */
-	atomic_set(&vfe32_ctrl->cancel, 1);
-
-	/* Wait for polling functions to be clear before tearing-down. */
-	CDBG("%s, waiting\n", __func__);
-	mutex_lock(&vfe32_ctrl->vfe_lock);
-
 	CDBG("%s, free_irq\n", __func__);
 	disable_irq(vfe32_ctrl->vfeirq->start);
 	tasklet_kill(&vfe32_tasklet);
@@ -4036,8 +3988,6 @@ void msm_vfe_subdev_release(struct platform_device *pdev)
 	msm_camio_bus_scale_cfg(
 		sync->sdata->pdata->cam_bus_scale_table, S_EXIT);
 	vfe_syncdata = NULL;
-
-	mutex_unlock(&vfe32_ctrl->vfe_lock);
 }
 
 static int __devinit vfe32_probe(struct platform_device *pdev)
@@ -4049,8 +3999,6 @@ static int __devinit vfe32_probe(struct platform_device *pdev)
 		pr_err("%s: no enough memory\n", __func__);
 		return -ENOMEM;
 	}
-
-	mutex_init(&vfe32_ctrl->vfe_lock);
 
 	v4l2_subdev_init(&vfe32_ctrl->subdev, &msm_vfe_subdev_ops);
 	snprintf(vfe32_ctrl->subdev.name,
