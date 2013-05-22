@@ -167,7 +167,6 @@ static const struct file_operations audio_amrnb_fops = {
 	.open = audio_open,
 	.release = audio_aio_release,
 	.unlocked_ioctl = audio_ioctl,
-	.fsync = audio_aio_fsync,
 };
 
 struct miscdevice audio_amrnb_misc = {
