@@ -184,10 +184,11 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 	mixer = pipe->mixer_num;
 	mdp4_overlay_iommu_unmap_freelist(mixer);
 
-	if (vp->update_cnt == 0) {
-		mutex_unlock(&vctrl->update_lock);
-		return 0;
-	}
+	/*
+	 * allow stage_commit without pipes queued
+	 * (vp->update_cnt == 0) to unstage pipes after
+	 * overlay_unset
+	 */
 
 	vctrl->update_ndx++;
 	vctrl->update_ndx &= 0x01;
@@ -241,6 +242,31 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 	return cnt;
 }
 
+static void mdp4_dtv_vsync_irq_ctrl(int cndx, int enable)
+{
+	struct vsycn_ctrl *vctrl;
+	static int vsync_irq_cnt;
+
+	vctrl = &vsync_ctrl_db[cndx];
+
+	mutex_lock(&vctrl->update_lock);
+	if (enable) {
+		if (vsync_irq_cnt == 0)
+			vsync_irq_enable(INTR_EXTERNAL_VSYNC,
+						MDP_EXTER_VSYNC_TERM);
+		vsync_irq_cnt++;
+	} else {
+		if (vsync_irq_cnt) {
+			vsync_irq_cnt--;
+			if (vsync_irq_cnt == 0)
+				vsync_irq_disable(INTR_EXTERNAL_VSYNC,
+						MDP_EXTER_VSYNC_TERM);
+		}
+	}
+	pr_debug("%s: enable=%d cnt=%d\n", __func__, enable, vsync_irq_cnt);
+	mutex_unlock(&vctrl->update_lock);
+}
+
 void mdp4_dtv_vsync_ctrl(struct fb_info *info, int enable)
 {
 	struct vsycn_ctrl *vctrl;
@@ -258,16 +284,13 @@ void mdp4_dtv_vsync_ctrl(struct fb_info *info, int enable)
 
 	vctrl->vsync_irq_enabled = enable;
 
-	if (enable)
-		vsync_irq_enable(INTR_EXTERNAL_VSYNC, MDP_EXTER_VSYNC_TERM);
-	else
-		vsync_irq_disable(INTR_EXTERNAL_VSYNC, MDP_EXTER_VSYNC_TERM);
+	mdp4_dtv_vsync_irq_ctrl(cndx, enable);
 
 	if (vctrl->vsync_irq_enabled &&  atomic_read(&vctrl->suspend) == 0)
 		atomic_set(&vctrl->vsync_resume, 1);
 }
 
-void mdp4_dtv_wait4vsync(int cndx, long long *vtime)
+void mdp4_dtv_wait4vsync(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
@@ -284,6 +307,8 @@ void mdp4_dtv_wait4vsync(int cndx, long long *vtime)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
+	mdp4_dtv_vsync_irq_ctrl(cndx, 1);
+
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 
 	if (vctrl->wait_vsync_cnt == 0)
@@ -292,9 +317,8 @@ void mdp4_dtv_wait4vsync(int cndx, long long *vtime)
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 
 	wait_for_completion(&vctrl->vsync_comp);
+	mdp4_dtv_vsync_irq_ctrl(cndx, 0);
 	mdp4_stat.wait4vsync1++;
-
-	*vtime = ktime_to_ns(vctrl->vsync_time);
 }
 
 static void mdp4_dtv_wait4dmae(int cndx)
@@ -598,10 +622,7 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	atomic_set(&vctrl->suspend, 1);
 	atomic_set(&vctrl->vsync_resume, 0);
 
-	if (vctrl->vsync_irq_enabled) {
-		while (vctrl->wait_vsync_cnt)
-			msleep(20);     /* >= 17 ms */
-	}
+	mdp4_dtv_wait4vsync(cndx);
 
 	complete_all(&vctrl->vsync_comp);
 
@@ -629,6 +650,11 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	}
 
 	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
+
+        if (vctrl->vsync_irq_enabled) {
+            vctrl->vsync_irq_enabled = 0;
+            vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
+        }
 
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];

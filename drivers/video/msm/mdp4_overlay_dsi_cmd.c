@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -279,10 +279,11 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 
 	mdp_update_pm(vctrl->mfd, vctrl->vsync_time);
 
-	if (vp->update_cnt == 0) {
-		mutex_unlock(&vctrl->update_lock);
-		return cnt;
-	}
+	/*
+	 * allow stage_commit without pipes queued
+	 * (vp->update_cnt == 0) to unstage pipes after
+	 * overlay_unset
+	 */
 
 	vctrl->update_ndx++;
 	vctrl->update_ndx &= 0x01;
@@ -390,19 +391,8 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 
 	mdp4_stat.overlay_commit[pipe->mixer_num]++;
 
-	if (wait) {
-		long long tick;
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-		struct mipi_mot_panel *mot_panel;
-#endif
-
-		mdp4_dsi_cmd_wait4vsync(0, &tick);
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-		mot_panel = mipi_mot_get_mot_panel();
-		if (mot_panel->vsync_callback)
-			mot_panel->vsync_callback(vctrl->mfd);
-#endif
-	}
+	if (wait)
+		mdp4_dsi_cmd_wait4vsync(0);
 
 	return cnt;
 }
@@ -454,7 +444,7 @@ void mdp4_dsi_cmd_vsync_ctrl(struct fb_info *info, int enable)
 	mutex_unlock(&vctrl->update_lock);
 }
 
-void mdp4_dsi_cmd_wait4vsync(int cndx, long long *vtime)
+void mdp4_dsi_cmd_wait4vsync(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
@@ -468,10 +458,8 @@ void mdp4_dsi_cmd_wait4vsync(int cndx, long long *vtime)
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
 
-	if (atomic_read(&vctrl->suspend) > 0) {
-		*vtime = -1;
+	if (atomic_read(&vctrl->suspend) > 0)
 		return;
-	}
 
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (vctrl->wait_vsync_cnt == 0)
@@ -483,8 +471,6 @@ void mdp4_dsi_cmd_wait4vsync(int cndx, long long *vtime)
 			&vctrl->vsync_comp, msecs_to_jiffies(100)))
 		pr_err("%s %d  TIMEOUT_\n", __func__, __LINE__);
 	mdp4_stat.wait4vsync0++;
-
-	*vtime = ktime_to_ns(vctrl->vsync_time);
 }
 
 static void mdp4_dsi_cmd_wait4dmap(int cndx)

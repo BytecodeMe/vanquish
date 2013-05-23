@@ -2,7 +2,7 @@
  *
  * MSM MDP Interface (used by framebuffer core)
  *
- * Copyright (c) 2007-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2007-2013, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
  * This software is licensed under the terms of the GNU General Public
@@ -914,12 +914,10 @@ int _mdp_histogram_ctrl(boolean en, struct mdp_hist_mgmt *mgmt)
 	int ret = 0;
 
 	mutex_lock(&mgmt->mdp_hist_mutex);
-	if (mgmt->mdp_is_hist_start == TRUE) {
-		if (en)
-			ret = mdp_histogram_enable(mgmt);
-		else
-			ret = mdp_histogram_disable(mgmt);
-	}
+	if (mgmt->mdp_is_hist_start && !mgmt->mdp_is_hist_data && en)
+		ret = mdp_histogram_enable(mgmt);
+	else if (mgmt->mdp_is_hist_data && !en)
+		ret = mdp_histogram_disable(mgmt);
 	mutex_unlock(&mgmt->mdp_hist_mutex);
 
 	if (en == false)
@@ -1018,7 +1016,6 @@ int mdp_histogram_stop(struct fb_info *info, uint32_t block)
 	mgmt->mdp_is_hist_start = FALSE;
 
 	if (!mfd->panel_power_on) {
-		mgmt->mdp_is_hist_data = FALSE;
 		if (mgmt->hist != NULL) {
 			mgmt->hist = NULL;
 			complete(&mgmt->mdp_hist_comp);
@@ -1410,6 +1407,23 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 	u32 frame_rate = 0, pixel_rate = 0, total_pixel;
 	struct msm_panel_info *panel_info = &mfd->panel_info;
 
+	if ((panel_info->type == MIPI_VIDEO_PANEL ||
+	     panel_info->type == MIPI_CMD_PANEL) &&
+	    panel_info->mipi.frame_rate)
+		frame_rate = panel_info->mipi.frame_rate;
+
+	if (mfd->dest == DISPLAY_LCD) {
+		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
+			frame_rate = panel_info->lcd.refx100 / (100 * 2);
+		else if (panel_info->type != MIPI_CMD_PANEL)
+			frame_rate = panel_info->lcd.refx100 / 100;
+	}
+	pr_debug("%s type=%d frame_rate=%d\n", __func__,
+		 panel_info->type, frame_rate);
+
+	if (frame_rate)
+		return frame_rate;
+
 	pixel_rate =
 		(panel_info->type == MIPI_CMD_PANEL ||
 		 panel_info->type == MIPI_VIDEO_PANEL) ?
@@ -1434,16 +1448,9 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 	else
 		pr_warn("%s total pixels are zero\n", __func__);
 
-	if (mfd->dest == DISPLAY_LCD) {
-		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
-			frame_rate = panel_info->lcd.refx100 / (100 * 2);
-		else if (panel_info->type != MIPI_CMD_PANEL)
-			frame_rate = panel_info->lcd.refx100 / 100;
-	}
-
 	if (frame_rate == 0) {
 		frame_rate = DEFAULT_FRAME_RATE;
-		pr_warn("%s frame rate=%d is default\n", __func__, frame_rate);
+		pr_debug("%s frame rate=%d is default\n", __func__, frame_rate);
 	}
 	pr_debug("%s frame rate=%d total_pixel=%d, pixel_rate=%d\n", __func__,
 		frame_rate, total_pixel, pixel_rate);

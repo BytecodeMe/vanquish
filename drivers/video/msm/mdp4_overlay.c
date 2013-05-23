@@ -1,4 +1,5 @@
-/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+/*
+ * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -3241,19 +3242,21 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 	return 0;
 }
 
-int mdp4_overlay_wait4vsync(struct fb_info *info, long long *vtime)
+int mdp4_overlay_wait4vsync(struct fb_info *info)
 {
+        long long vtime;
+
 	if (!hdmi_prim_display && info->node == 0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO)
-			mdp4_dsi_video_wait4vsync(0, vtime);
+			mdp4_dsi_video_wait4vsync(0);
 		else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
-			mdp4_dsi_cmd_wait4vsync(0, vtime);
+			mdp4_dsi_cmd_wait4vsync(0);
 		else if (ctrl->panel_mode & MDP4_PANEL_LCDC)
-			mdp4_lcdc_wait4vsync(0, vtime);
+                        mdp4_lcdc_wait4vsync(0);
 		else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
-			mdp4_mddi_wait4vsync(0, vtime);
+			mdp4_mddi_wait4vsync(0, &vtime);
 	} else if (hdmi_prim_display || info->node == 1) {
-		mdp4_dtv_wait4vsync(0, vtime);
+		mdp4_dtv_wait4vsync(0);
 	}
 
 	return 0;
@@ -3369,9 +3372,6 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 
 	if (mfd == NULL)
 		return -ENODEV;
-
-	if (!mfd->panel_power_on) /* suspended */
-		return -EPERM;
 
 	pipe = mdp4_overlay_ndx2pipe(req->id);
 	if (pipe == NULL) {

@@ -1,4 +1,5 @@
-/* drivers/video/msm/msm_fb.c
+/*
+ * drivers/video/msm/msm_fb.c
  *
  * Core MSM framebuffer driver.
  *
@@ -185,16 +186,19 @@ static void msm_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
 	int bl_lvl;
 
-	if (value > MAX_BACKLIGHT_BRIGHTNESS)
-		value = MAX_BACKLIGHT_BRIGHTNESS;
+	/* This maps android backlight level 1 to 255 into
+	   driver backlight level bl_min to bl_max with rounding
+	   and maps backlight level 0 to 0. */
+	if (value <= 0)
+		bl_lvl = 0;
+	else if (value >= MAX_BACKLIGHT_BRIGHTNESS)
+		bl_lvl = mfd->panel_info.bl_max;
+	else
+		bl_lvl = mfd->panel_info.bl_min + ((value - 1) * 2 *
+			(mfd->panel_info.bl_max - mfd->panel_info.bl_min) +
+			MAX_BACKLIGHT_BRIGHTNESS - 1) /
+			(MAX_BACKLIGHT_BRIGHTNESS - 1) / 2;
 
-	/* This maps android backlight level 0 to 255 into
-	   driver backlight level 0 to bl_max with rounding */
-	bl_lvl = (2 * value * mfd->panel_info.bl_max + MAX_BACKLIGHT_BRIGHTNESS)
-		/(2 * MAX_BACKLIGHT_BRIGHTNESS);
-
-	if (!bl_lvl && value)
-		bl_lvl = 1;
 	down(&mfd->sem);
 	msm_fb_set_backlight(mfd, bl_lvl);
 	up(&mfd->sem);
@@ -575,17 +579,13 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 	if ((!mfd) || (mfd->key != MFD_KEY))
 		return 0;
 
-	lock_panel_mutex(mfd);
-	if (mfd->msmfb_no_update_notify_timer.function)
-		del_timer(&mfd->msmfb_no_update_notify_timer);
-	complete(&mfd->msmfb_no_update_notify);
-
 	/*
 	 * suspend this channel
 	 */
 	mfd->suspend.sw_refreshing_enable = mfd->sw_refreshing_enable;
 	mfd->suspend.op_enable = mfd->op_enable;
 	mfd->suspend.panel_power_on = mfd->panel_power_on;
+	mfd->suspend.op_suspend = true;
 
 	if (mfd->op_enable) {
 		ret =
@@ -657,12 +657,10 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 				      mfd->op_enable);
 		if (ret)
 			MSM_FB_INFO("msm_fb_resume: can't turn on display!\n");
-	} else {
-		if (pdata->power_ctrl)
-			pdata->power_ctrl(TRUE);
 	}
 
 	unlock_panel_mutex(mfd);
+	mfd->suspend.op_suspend = false;
 
 	return ret;
 }
@@ -951,6 +949,11 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			curr_pwr_state = mfd->panel_power_on;
 			mfd->panel_power_on = FALSE;
 			cancel_delayed_work_sync(&mfd->backlight_worker);
+
+			if (mfd->msmfb_no_update_notify_timer.function)
+				del_timer(&mfd->msmfb_no_update_notify_timer);
+			complete(&mfd->msmfb_no_update_notify);
+
 			bl_updated = 0;
 			msleep(16);
 			ret = pdata->off(mfd->pdev);
@@ -1539,7 +1542,8 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	ret = 0;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	if (mfd->panel_info.type != DTV_PANEL) {
+	if (hdmi_prim_display ||
+	    (mfd->panel_info.type != DTV_PANEL)) {
 		mfd->early_suspend.suspend = msmfb_early_suspend;
 		mfd->early_suspend.resume = msmfb_early_resume;
 		mfd->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 2;
@@ -1901,6 +1905,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 {
 	struct mdp_display_commit disp_commit;
 	memset(&disp_commit, 0, sizeof(disp_commit));
+	disp_commit.var = *var;
 	disp_commit.wait_for_finish = TRUE;
 	return msm_fb_pan_display_ex(info, &disp_commit);
 }
@@ -3212,6 +3217,17 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 		return ret;
 	}
 
+	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
+		mdp_set_dma_pan_info(info, NULL, TRUE);
+		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
+			pr_err("%s: can't turn on display!\n", __func__);
+			return -EINVAL;
+		}
+	}
+
+	if (!mfd->panel_power_on) /* suspended */
+		return -EPERM;
+
 	complete(&mfd->msmfb_update_notify);
 	mutex_lock(&msm_fb_notify_update_sem);
 	if (mfd->msmfb_no_update_notify_timer.function)
@@ -3220,14 +3236,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 	mfd->msmfb_no_update_notify_timer.expires = jiffies + (2 * HZ);
 	add_timer(&mfd->msmfb_no_update_notify_timer);
 	mutex_unlock(&msm_fb_notify_update_sem);
-
-	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
-		mdp_set_dma_pan_info(info, NULL, TRUE);
-		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
-			pr_err("%s: can't turn on display!\n", __func__);
-			return -EINVAL;
-		}
-	}
 
 	ret = mdp4_overlay_play(info, &req);
 
