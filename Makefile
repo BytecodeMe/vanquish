@@ -1,8 +1,8 @@
 VERSION = 3
 PATCHLEVEL = 0
-SUBLEVEL = 79
-EXTRAVERSION =
-NAME = Sneaky Weasel
+SUBLEVEL = 80
+EXTRAVERSION = +
+NAME = Skl Ed.
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
