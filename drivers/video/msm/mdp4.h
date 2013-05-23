@@ -115,33 +115,23 @@ enum {
 };
 
 /* system interrupts */
+/*note histogram interrupts defined in mdp.h*/
 #define INTR_OVERLAY0_DONE		BIT(0)
 #define INTR_OVERLAY1_DONE		BIT(1)
 #define INTR_DMA_S_DONE			BIT(2)
 #define INTR_DMA_E_DONE			BIT(3)
 #define INTR_DMA_P_DONE			BIT(4)
-#define INTR_VG1_HISTOGRAM		BIT(5)
-#define INTR_VG2_HISTOGRAM		BIT(6)
 #define INTR_PRIMARY_VSYNC		BIT(7)
 #define INTR_PRIMARY_INTF_UDERRUN	BIT(8)
 #define INTR_EXTERNAL_VSYNC		BIT(9)
 #define INTR_EXTERNAL_INTF_UDERRUN	BIT(10)
 #define INTR_PRIMARY_RDPTR		BIT(11)	/* read pointer */
-#define INTR_DMA_P_HISTOGRAM		BIT(17)
-#define INTR_DMA_S_HISTOGRAM		BIT(26)
 #define INTR_OVERLAY2_DONE		BIT(30)
 
 #ifdef CONFIG_FB_MSM_OVERLAY
-#define MDP4_ANY_INTR_MASK	(INTR_DMA_P_HISTOGRAM | \
-				INTR_DMA_S_HISTOGRAM | \
-				INTR_VG1_HISTOGRAM | \
-				INTR_VG2_HISTOGRAM )
+#define MDP4_ANY_INTR_MASK	(0)
 #else
-#define MDP4_ANY_INTR_MASK	(INTR_DMA_P_DONE| \
-				INTR_DMA_P_HISTOGRAM | \
-				INTR_DMA_S_HISTOGRAM | \
-				INTR_VG1_HISTOGRAM | \
-				INTR_VG2_HISTOGRAM)
+#define MDP4_ANY_INTR_MASK	(INTR_DMA_P_DONE)
 #endif
 
 enum {
@@ -197,6 +187,8 @@ enum {
 	MDP4_CHROMA_420
 };
 
+#define CSC_MAX_BLOCKS 6
+
 #define MDP4_BLEND_BG_TRANSP_EN		BIT(9)
 #define MDP4_BLEND_FG_TRANSP_EN		BIT(8)
 #define MDP4_BLEND_BG_MOD_ALPHA		BIT(7)
@@ -248,6 +240,7 @@ enum {
 
 #define MDP4_MAX_PLANE		4
 #define VSYNC_PERIOD		16
+#define WAIT_FOR_COMPLETION_TIMEOUT	800
 
 #ifdef BLT_RGB565
 #define BLT_BPP 2
@@ -414,6 +407,7 @@ struct mdp4_statistic {
 	ulong intr_dsi_err;
 	ulong kickoff_ov0;
 	ulong kickoff_ov1;
+	ulong kickoff_ov2;
 	ulong kickoff_dmap;
 	ulong kickoff_dmae;
 	ulong kickoff_dmas;
@@ -476,9 +470,6 @@ void mdp4_isr_read(int);
 void mdp4_clear_lcdc(void);
 void mdp4_mixer_blend_init(int mixer_num);
 void mdp4_vg_qseed_init(int vg_num);
-void mdp4_vg_csc_setup(int vp_num);
-void mdp4_mixer_csc_setup(uint32 mixer);
-void mdp4_dmap_csc_setup(void);
 void mdp4_vg_csc_update(struct mdp_csc *p);
 irqreturn_t mdp4_isr(int irq, void *ptr);
 void mdp4_overlay_format_to_pipe(uint32 format, struct mdp4_overlay_pipe *pipe);
@@ -632,7 +623,7 @@ void mdp4_overlay_dmap_cfg(struct msm_fb_data_type *mfd, int lcdc);
 void mdp4_overlay_dmap_xy(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_dmae_cfg(struct msm_fb_data_type *mfd, int atv);
 void mdp4_overlay_dmae_xy(struct mdp4_overlay_pipe *pipe);
-int mdp4_overlay_pipe_staged(int mixer);
+int mdp4_overlay_pipe_staged(struct mdp4_overlay_pipe *pipe);
 void mdp4_lcdc_primary_vsyn(void);
 void mdp4_overlay0_done_lcdc(int cndx);
 void mdp4_overlay0_done_mddi(struct mdp_dma_data *dma);
@@ -952,11 +943,9 @@ int mdp4_overlay_borderfill_supported(void);
 int mdp4_overlay_writeback_on(struct platform_device *pdev);
 int mdp4_overlay_writeback_off(struct platform_device *pdev);
 void mdp4_writeback_overlay(struct msm_fb_data_type *mfd);
-void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
-		struct mdp4_overlay_pipe *pipe);
-void mdp4_writeback_dma_busy_wait(struct msm_fb_data_type *mfd);
-void mdp4_overlay1_done_writeback(struct mdp_dma_data *dma);
 void mdp4_dma_e_done_dtv(void);
+void mdp4_overlay2_done_wfd(struct mdp_dma_data *dma);
+
 
 int mdp4_writeback_start(struct fb_info *info);
 int mdp4_writeback_stop(struct fb_info *info);
@@ -1004,4 +993,24 @@ int mdp4_calc_blt_mdp_bw(struct msm_fb_data_type *mfd,
 int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 			      struct mdp4_overlay_pipe *plist);
 void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd, int flag);
+#ifndef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+static inline void mdp4_wfd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)
+{
+	/* empty */
+}
+static inline void mdp4_wfd_init(int cndx)
+{
+	/* empty */
+}
+static inline int mdp4_wfd_pipe_commit(struct msm_fb_data_type *mfd,
+					int cndx, int wait)
+{
+	return 0;
+}
+#else
+void mdp4_wfd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
+void mdp4_wfd_init(int cndx);
+int mdp4_wfd_pipe_commit(struct msm_fb_data_type *mfd, int cndx, int wait);
+#endif
+
 #endif /* MDP_H */

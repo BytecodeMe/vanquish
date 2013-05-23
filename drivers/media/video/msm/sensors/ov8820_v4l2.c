@@ -25,12 +25,20 @@
 #define OV8820_OTP_BANK      0x3D84
 #define OV8820_OTP_BANK_SIZE 0x20
 
+#define SWAP_2_BYTES(x) (((x << 8) & 0xff00) | \
+		(x >> 8))
+#define SWAP_4_BYTES(x) (((x) << 24) | \
+		(((x) << 8) & 0x00ff0000) | \
+		(((x) >> 8) & 0x0000ff00) | \
+		((x) >> 24))
+
 DEFINE_MUTEX(ov8820_mut);
 static struct msm_sensor_ctrl_t ov8820_s_ctrl;
 
 static struct regulator *reg_1p8;
 
 static struct otp_info_t otp_info;
+struct af_info_t af_info;
 
 static struct msm_camera_i2c_reg_conf ov8820_start_settings[] = {
 	{0x0100, 0x01},
@@ -658,6 +666,17 @@ static int32_t ov8820_read_otp(struct msm_sensor_ctrl_t *s_ctrl)
 	}
 
 	memcpy((void *)&otp_info, otp, sizeof(struct otp_info_t));
+	memcpy(&af_info.af_man_type1, &(otp_info.otp_info[16]),
+			sizeof(uint32_t));
+	memcpy(&af_info.af_man_type2, &(otp_info.otp_info[20]),
+			sizeof(uint32_t));
+	memcpy(&af_info.af_act_type, &(otp_info.otp_info[25]),
+			sizeof(uint16_t));
+
+	af_info.af_act_type = SWAP_2_BYTES(af_info.af_act_type);
+	af_info.af_man_type1 = SWAP_4_BYTES(af_info.af_man_type1);
+	af_info.af_man_type2 = SWAP_4_BYTES(af_info.af_man_type2);
+
 	return rc;
 }
 
@@ -787,6 +806,9 @@ static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 			goto power_up_done;
 	}
 
+	/* Wait for core supplies to power up */
+	usleep(10000);
+
 	/* Enable AVDD and AF supplies*/
 	gpio_direction_output(pinfo->analog_en, 1);
 	usleep(200);
@@ -833,6 +855,9 @@ static int32_t ov8820_power_down(
 		gpio_direction_output(pinfo->digital_en, 0);
 	else
 		ov8820_regulator_off(reg_1p8, "1.8");
+
+	/* Wait for core to shut off */
+	usleep(10000);
 
 	/*Set PWRDWN Low*/
 	gpio_direction_output(pinfo->sensor_pwd, 0);

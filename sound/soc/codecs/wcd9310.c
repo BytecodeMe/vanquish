@@ -457,6 +457,17 @@ static int tabla_get_iir_band_audio_mixer(
 	return 0;
 }
 
+int tabla_mot_get_emu_audio_state(void)
+{
+	/* yes this is a bit of a hack.  This information should reside in the
+	   card private data so it's accessible by all soc components, but QC
+	   isn't using that mechanism yet and I don't want to add it just for
+	   this one flag
+	*/
+	return emu_analog_antipop;
+}
+
+
 static void set_iir_band_coeff(struct snd_soc_codec *codec,
 				int iir_idx, int band_idx,
 				int coeff_idx, uint32_t value)
@@ -1905,12 +1916,15 @@ static int tabla_hphr_dac_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
+extern void alsa_to_h2w_headset_report(int state);
 
 static void tabla_snd_soc_jack_report(struct tabla_priv *tabla,
 				      struct snd_soc_jack *jack, int status,
 				      int mask)
 {
 	/* XXX: wake_lock_timeout()? */
+	if (TABLA_JACK_MASK & mask)
+		alsa_to_h2w_headset_report(status ? tabla->current_plug : 0);
 	snd_soc_jack_report_no_dapm(jack, status, mask);
 }
 

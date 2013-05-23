@@ -434,11 +434,18 @@ int vfp_flush_context(void)
 
 		/* disable, just in case */
 		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
-		saved = 1;
+	} else if (vfp_current_hw_state[ti->cpu]) {
+#ifndef CONFIG_SMP
+		fmxr(FPEXC, fpexc | FPEXC_EN);
+		vfp_save_state(vfp_current_hw_state[ti->cpu], fpexc);
+		fmxr(FPEXC, fpexc);
+#endif
 	}
 	vfp_current_hw_state[cpu] = NULL;
 
-	local_irq_restore(flags);
+	/* clear any information we had about last context state */
+	vfp_current_hw_state[ti->cpu] = NULL;
+
 
 	return saved;
 }

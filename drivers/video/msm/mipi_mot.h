@@ -31,6 +31,8 @@
 #ifndef MIPI_MOT_PANEL_H
 #define MIPI_MOT_PANEL_H
 
+#include "smd_dynamic_gamma.h"
+
 #define DCS_CMD_SOFT_RESET           0x01
 #define DCS_CMD_GET_POWER_MODE       0x0A
 #define DCS_CMD_ENTER_SLEEP_MODE     0x10
@@ -50,10 +52,12 @@
 #define DCS_CMD_SET_CABC             0x55
 #define DCS_CMD_READ_CABC            0x56
 #define DCS_CMD_READ_DDB_START       0xA1
+#define DCS_CMD_SET_OFFSET           0xB0
 #define DCS_CMD_SET_MCS              0xB2
 #define DCS_CMD_SET_DISPLAY_MODE     0xB3
 #define DCS_CMD_SET_BCKLGHT_PWM      0xB4
 #define DCS_CMD_DATA_LANE_CONFIG     0xB5
+#define DCS_CMD_READ_RAW_MTP         0xD3
 #define DCS_CMD_READ_DA              0xDA
 #define DCS_CMD_READ_DB              0xDB
 #define DCS_CMD_READ_DC              0xDC
@@ -127,6 +131,11 @@ void mipi_mot_set_mot_panel(struct mipi_mot_panel *mot_panel_ptr);
 u16 mipi_mot_get_manufacture_id(struct msm_fb_data_type *mfd);
 u16 mipi_mot_get_controller_ver(struct msm_fb_data_type *mfd);
 u16 mipi_mot_get_controller_drv_ver(struct msm_fb_data_type *mfd);
+int mipi_mot_get_raw_mtp(struct msm_fb_data_type *mfd);
+void mipi_mot_dynamic_gamma_calc(uint32_t v0_val, uint8_t preamble_1,
+	uint8_t preamble_2, uint16_t in_gamma[NUM_VOLT_PTS][NUM_COLORS]);
+
+u8 *mipi_mot_get_gamma_setting(struct msm_fb_data_type *mfd, int level);
 u8 mipi_mode_get_pwr_mode(struct msm_fb_data_type *mfd);
 void mipi_mot_esd_work(void);
 

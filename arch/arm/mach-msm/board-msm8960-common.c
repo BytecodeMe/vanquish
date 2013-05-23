@@ -780,7 +780,6 @@ static struct platform_device android_pmem_adsp_device = {
 	.id = 2,
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
-#endif
 
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
@@ -794,6 +793,7 @@ static struct platform_device android_pmem_audio_device = {
 	.id = 4,
 	.dev = { .platform_data = &android_pmem_audio_pdata },
 };
+#endif
 #endif
 
 struct fmem_platform_data fmem_pdata = {
@@ -891,15 +891,17 @@ static void __init size_pmem_devices(void)
 	}
 
 	android_pmem_pdata.size = pmem_size;
-#endif
 	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
+#endif
 #endif
 }
 
+#ifdef CONFIG_KERNEL_PMEM_AUDIO_MMI
 static void __init reserve_memory_for(struct android_pmem_platform_data *p)
 {
 	msm8960_reserve_table[p->memory_type].size += p->size;
 }
+#endif
 
 static void __init reserve_pmem_memory(void)
 {
@@ -907,8 +909,8 @@ static void __init reserve_pmem_memory(void)
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	reserve_memory_for(&android_pmem_adsp_pdata);
 	reserve_memory_for(&android_pmem_pdata);
-#endif
 	reserve_memory_for(&android_pmem_audio_pdata);
+#endif
 	msm8960_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
 #endif
 }
@@ -1418,14 +1420,15 @@ void __init msm8960_reserve(void)
 	msm_reserve();
 	if (fmem_pdata.size) {
 #if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
-		fmem_pdata.phys = reserve_info->fixed_area_start +
-			MSM_MM_FW_SIZE;
-		pr_info("mm fw at %lx (fixed) size %x\n",
-			reserve_info->fixed_area_start, MSM_MM_FW_SIZE);
-		pr_info("fmem start %lx (fixed) size %lx\n",
-			fmem_pdata.phys, fmem_pdata.size);
-#else
-		fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size, fmem_pdata.align);
+		if (reserve_info->fixed_area_size) {
+			fmem_pdata.phys =
+				reserve_info->fixed_area_start + MSM_MM_FW_SIZE;
+			pr_info("mm fw at %lx (fixed) size %x\n",
+				reserve_info->fixed_area_start, MSM_MM_FW_SIZE);
+			pr_info("fmem start %lx (fixed) size %lx\n",
+				fmem_pdata.phys,
+				fmem_pdata.size);
+		}
 #endif
 	}
 }
@@ -2682,9 +2685,9 @@ static struct msm_mmc_slot_reg_data mmc_slot_vreg_data[MAX_SDCC_CONTROLLER] = {
 
 /* SDC1 pad data */
 static struct msm_mmc_pad_drv sdc1_pad_drv_on_cfg[] = {
-	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA},
-	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_10MA},
-	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_10MA}
+	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_6MA},
+	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_6MA},
+	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_6MA}
 };
 
 static struct msm_mmc_pad_drv sdc1_pad_drv_off_cfg[] = {
@@ -2787,7 +2790,7 @@ struct msm_mmc_pin_data mmc_slot_pin_data[MAX_SDCC_CONTROLLER] = {
 };
 
 static unsigned int sdc1_sup_clk_rates[] = {
-	400000, 24000000, 48000000
+	400000, 24000000, 48000000, 96000000
 };
 
 static unsigned int sdc3_sup_clk_rates[] = {
@@ -2807,7 +2810,10 @@ static struct mmc_platform_data msm8960_sdc1_data = {
 	.pclk_src_dfab	= 1,
 	.nonremovable	= 1,
 	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
-	.pin_data	= &mmc_slot_pin_data[SDCC1]
+	.pin_data	= &mmc_slot_pin_data[SDCC1],
+	.uhs_caps	= (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+			MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50 |
+			MMC_CAP_1_8V_DDR)
 };
 #endif
 
@@ -3032,6 +3038,13 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
 		true,
 		100, 650, 801, 200,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		true,
+		2000, 200, 576000, 2000,
 	},
 
 	{
@@ -3432,8 +3445,8 @@ struct platform_device *common_devices[] __initdata = {
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&android_pmem_device,
 	&android_pmem_adsp_device,
-#endif
 	&android_pmem_audio_device,
+#endif
 #endif
 #ifdef CONFIG_ANDROID_RAM_CONSOLE
 	&ram_console_device,

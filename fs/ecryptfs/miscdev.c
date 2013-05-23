@@ -431,9 +431,9 @@ ecryptfs_miscdev_write(struct file *file, const char __user *buf,
 		   || count > (1 + 4 + 2 + sizeof(struct ecryptfs_message) + 4
 			       + ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES)) {
 		printk(KERN_WARNING "%s: Acceptable packet size range is "
-		       "[%d-%u], but amount of data written is [%zu].",
+		       "[%d-%lu], but amount of data written is [%zu].",
 		       __func__, (1 + 4 + 1),
-		       (1 + 4 + 2 + sizeof(struct ecryptfs_message) + 4
+		       (long unsigned int)(1 + 4 + 2 + sizeof(struct ecryptfs_message) + 4
 			+ ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES), count);
 		return -EINVAL;
 	}

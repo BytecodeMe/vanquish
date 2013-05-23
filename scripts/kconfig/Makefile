@@ -107,6 +107,10 @@ ifneq ($(VARIANT_DEFCONFIG),)
 export KCONFIG_VARIANT := arch/$(SRCARCH)/configs/$(VARIANT_DEFCONFIG)
 endif
 
+ifneq ($(SELINUX_DEFCONFIG),)
+export KCONFIG_SELINUX := arch/$(SRCARCH)/configs/$(SELINUX_DEFCONFIG)
+endif
+
 listnewconfig oldnoconfig: $(obj)/conf
 	$< --$@ $(Kconfig)
 

@@ -242,7 +242,6 @@ static const struct address_space_operations fat_aops = {
 	.bmap		= _fat_bmap
 };
 
-#ifdef CONFIG_SUPPORT_VMW
 int _fat_fallocate(struct inode *inode, loff_t len)
 {
 	struct super_block *sb = inode->i_sb;
@@ -307,7 +306,6 @@ int _fat_fallocate(struct inode *inode, loff_t len)
 
 	return err;
 }
-#endif
 
 /*
  * New FAT inode stuff. We do the following:

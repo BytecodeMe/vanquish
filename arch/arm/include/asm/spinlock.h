@@ -7,6 +7,8 @@
 
 #include <asm/processor.h>
 
+extern int msm_krait_need_wfe_fixup;
+
 /*
  * sev and wfe are ARMv6K extensions.  Uniprocessor ARMv6 may not have the K
  * extensions, so when running on UP, we have to patch these instructions away.
@@ -19,57 +21,46 @@
 	"	.popsection\n"
 
 #ifdef CONFIG_THUMB2_KERNEL
-#ifdef CONFIG_KRAIT_ERRATA32
-#error Thumb workaround for Krait Errata 32 not implemented
-#endif
-
 #define SEV		ALT_SMP("sev.w", "nop.w")
 /*
- * For Thumb-2, special care is needed to ensure that the conditional WFE
- * instruction really does assemble to exactly 4 bytes (as required by
- * the SMP_ON_UP fixup code).   By itself "wfene" might cause the
- * assembler to insert a extra (16-bit) IT instruction, depending on the
- * presence or absence of neighbouring conditional instructions.
- *
- * To avoid this unpredictableness, an approprite IT is inserted explicitly:
- * the assembler won't change IT instructions which are explicitly present
- * in the input.
+ * Both instructions given to the ALT_SMP macro need to be the same size, to
+ * allow the SMP_ON_UP fixups to function correctly. Hence the explicit encoding
+ * specifications.
  */
-#define WFE(cond)	ALT_SMP(		\
-	"it " cond "\n\t"			\
-	"wfe" cond ".n",			\
-						\
+#define WFE()		ALT_SMP(		\
+	"wfe.w",				\
 	"nop.w"					\
 )
 #else
 #define SEV		ALT_SMP("sev", "nop")
-#ifdef CONFIG_KRAIT_ERRATA32
-
-/* Errata 32 Workaround:
- * Branch prediction should never find a WFE.  So:
- * - Disable interrupts and fiq
- * - Clear "NOPWFE" bit
- * - isb, wfe
- * - Set "NOPWFE" bit
- * - restore interrupts and fiq state
- * WFE() parameters reg1, regs are scratch registers.
- */
-
-#define WFE(reg1, reg2) \
-"	mrs	" reg2 ", cpsr\n"		\
-"	cpsid	if\n"				\
-"	mrc	p15, 7, " reg1 ", c15, c0, 5\n" \
-"	bic	" reg1 ", " reg1 ", #0x10000\n" \
-"	mcr	p15, 7, " reg1 ", c15, c0, 5\n" \
-"	isb\n"					\
-"	wfe\n"					\
-"	orr	" reg1 ", " reg1 ", #0x10000\n" \
-"	mcr	p15, 7, " reg1 ", c15, c0, 5\n" \
-"	isb\n"					\
-"	msr	cpsr_c, " reg2 "\n"
-#else
-#define WFE(cond)	ALT_SMP("wfe" cond, "nop")
+#define WFE()		ALT_SMP("wfe", "nop")
 #endif
+
+/*
+ * The fixup involves disabling FIQs during execution of the WFE instruction.
+ * This could potentially lead to deadlock if a thread is trying to acquire a
+ * spinlock which is being released from an FIQ. This should not be a problem
+ * because FIQs are handled by the secure environment and do not directly
+ * manipulate spinlocks.
+ */
+#ifdef CONFIG_MSM_KRAIT_WFE_FIXUP
+#define WFE_SAFE(fixup, tmp) 				\
+"	mrs	" tmp ", cpsr\n"			\
+"	cmp	" fixup ", #0\n"			\
+"	wfeeq\n"					\
+"	beq	10f\n"					\
+"	cpsid   f\n"					\
+"	mrc	p15, 7, " fixup ", c15, c0, 5\n"	\
+"	bic	" fixup ", " fixup ", #0x10000\n"	\
+"	mcr	p15, 7, " fixup ", c15, c0, 5\n"	\
+"	isb\n"						\
+"	wfe\n"						\
+"	orr	" fixup ", " fixup ", #0x10000\n"	\
+"	mcr	p15, 7, " fixup ", c15, c0, 5\n"	\
+"	isb\n"						\
+"10:	msr	cpsr_cf, " tmp "\n"
+#else
+#define WFE_SAFE(fixup, tmp)	"	wfe\n"
 #endif
 
 static inline void dsb_sev(void)
@@ -109,28 +100,21 @@ static inline void dsb_sev(void)
 
 static inline void arch_spin_lock(arch_spinlock_t *lock)
 {
-	unsigned long tmp;
-#ifdef CONFIG_KRAIT_ERRATA32
-	unsigned long tmp2;
-#endif
+	unsigned long tmp, fixup = msm_krait_need_wfe_fixup;
 
 	__asm__ __volatile__(
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
-#ifdef CONFIG_KRAIT_ERRATA32
 "	beq	2f\n"
-	WFE("%[tmp]", "%[tmp2]")
+	WFE_SAFE("%[fixup]", "%[tmp]")
 "2:\n"
-#else
-	WFE("ne")
-#endif
 "	strexeq	%[tmp], %[bit0], [%[lock]]\n"
 "	teqeq	%[tmp], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bne	1b"
-	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2)
+	: [tmp] "=&r" (tmp), [fixup] "+r" (fixup)
 	: [lock] "r" (&lock->lock), [bit0] "r" (1)
 	: "cc");
 
@@ -197,9 +181,8 @@ static inline void arch_spin_unlock(arch_spinlock_t *lock)
 static inline void arch_spin_lock(arch_spinlock_t *lock)
 {
 	unsigned long tmp, ticket, next_ticket;
-#ifdef CONFIG_KRAIT_ERRATA32
-	unsigned long tmp2;
-#endif
+	unsigned long fixup = msm_krait_need_wfe_fixup;
+
 	/* Grab the next ticket and wait for it to be "served" */
 	__asm__ __volatile__(
 "1:	ldrex	%[ticket], [%[lockaddr]]\n"
@@ -210,19 +193,15 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 "	uxth	%[ticket], %[ticket]\n"
 "2:\n"
 #ifdef CONFIG_CPU_32v6K
-#ifdef CONFIG_KRAIT_ERRATA32
 "	beq	3f\n"
-	WFE("%[tmp]", "%[tmp2]")
+	WFE_SAFE("%[fixup]", "%[tmp]")
 "3:\n"
-#else
-"	wfene\n"
-#endif
 #endif
 "	ldr	%[tmp], [%[lockaddr]]\n"
 "	cmp	%[ticket], %[tmp], lsr #16\n"
 "	bne	2b"
 	: [ticket]"=&r" (ticket), [tmp]"=&r" (tmp),
-	  [next_ticket]"=&r" (next_ticket), [tmp2]"=&r" (tmp2)
+	  [next_ticket]"=&r" (next_ticket), [fixup]"+r" (fixup)
 	: [lockaddr]"r" (&lock->lock), [val1]"r" (1)
 	: "cc");
 	smp_mb();
@@ -271,23 +250,16 @@ static inline void arch_spin_unlock(arch_spinlock_t *lock)
 
 static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 {
-	unsigned long ticket;
-#ifdef CONFIG_KRAIT_ERRATA32
-	unsigned long tmp, tmp2;
-#endif
+	unsigned long ticket, tmp, fixup = msm_krait_need_wfe_fixup;
 
 	/* Wait for now_serving == next_ticket */
 	__asm__ __volatile__(
 #ifdef CONFIG_CPU_32v6K
 "	cmpne	%[lockaddr], %[lockaddr]\n"
 "1:\n"
-#ifdef CONFIG_KRAIT_ERRATA32
-"	beq	3f\n"
-	WFE("%[tmp]", "%[tmp2]")
-"3:\n"
-#else
-"	wfene\n"
-#endif
+"	beq	2f\n"
+	WFE_SAFE("%[fixup]", "%[tmp]")
+"2:\n"
 #else
 "1:\n"
 #endif
@@ -296,7 +268,8 @@ static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 "	uxth	%[ticket], %[ticket]\n"
 "	cmp	%[ticket], #0\n"
 "	bne	1b"
-	: [ticket]"=&r" (ticket), [tmp]"=&r" (tmp), [tmp2]"=&r" (tmp2)
+	: [ticket]"=&r" (ticket), [tmp]"=&r" (tmp),
+	  [fixup]"+r" (fixup)
 	: [lockaddr]"r" (&lock->lock)
 	: "cc");
 }
@@ -324,27 +297,21 @@ static inline int arch_spin_is_contended(arch_spinlock_t *lock)
 
 static inline void arch_write_lock(arch_rwlock_t *rw)
 {
-	unsigned long tmp;
-#ifdef CONFIG_KRAIT_ERRATA32
-	unsigned long tmp2;
-#endif
+	unsigned long tmp, fixup = msm_krait_need_wfe_fixup;
+
 	__asm__ __volatile__(
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
-#ifdef CONFIG_KRAIT_ERRATA32
 "	beq	2f\n"
-	WFE("%[tmp]", "%[tmp2]")
+	WFE_SAFE("%[fixup]", "%[tmp]")
 "2:\n"
-#else
-	WFE("ne")
-#endif
 "	strexeq	%[tmp], %[bit31], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bne	1b"
-	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2)
+	: [tmp] "=&r" (tmp), [fixup] "+r" (fixup)
 	: [lock] "r" (&rw->lock), [bit31] "r" (0x80000000)
 	: "cc");
 
@@ -401,28 +368,21 @@ static inline void arch_write_unlock(arch_rwlock_t *rw)
  */
 static inline void arch_read_lock(arch_rwlock_t *rw)
 {
-	unsigned long tmp;
-#ifdef CONFIG_KRAIT_ERRATA32
-	unsigned long tmp2;
-#endif
+	unsigned long tmp, tmp2, fixup = msm_krait_need_wfe_fixup;
 
 	__asm__ __volatile__(
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	adds	%[tmp], %[tmp], #1\n"
 "	strexpl	%[tmp2], %[tmp], [%[lock]]\n"
-#ifdef CONFIG_KRAIT_ERRATA32
 "	bpl	2f\n"
-	WFE("%[tmp]", "%[tmp2]")
+	WFE_SAFE("%[fixup]", "%[tmp]")
 "2:\n"
-#else
-	WFE("mi")
-#endif
 "	rsbpls	%[tmp], %[tmp2], #0\n"
 #if __LINUX_ARM_ARCH__ >= 7
 "	dmb\n"
 #endif
 "	bmi	1b"
-	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2)
+	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2), [fixup] "+r" (fixup)
 	: [lock] "r" (&rw->lock)
 	: "cc");
 
