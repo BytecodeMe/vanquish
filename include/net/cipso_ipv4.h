@@ -42,6 +42,7 @@
 #include <net/netlabel.h>
 #include <net/request_sock.h>
 #include <asm/atomic.h>
+#include <asm/unaligned.h>
 
 /* known doi values */
 #define CIPSO_V4_DOI_UNKNOWN          0x00000000

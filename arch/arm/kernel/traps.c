@@ -27,7 +27,7 @@
 #include <linux/sched.h>
 #include <linux/nmi.h>
 
-#include <linux/atomic.h>
+#include <asm/atomic.h>
 #include <asm/cacheflush.h>
 #include <asm/exception.h>
 #include <asm/system.h>
