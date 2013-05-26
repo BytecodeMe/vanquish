@@ -321,19 +321,6 @@ void mdp4_iommu_unmap(struct mdp4_overlay_pipe *pipe)
 	}
 }
 
-/* static array with index 0 for unset status and 1 for set status */
-static bool overlay_status[MDP4_OVERLAY_TYPE_MAX];
-
-void mdp4_overlay_status_write(enum mdp4_overlay_status type, bool val)
-{
-	overlay_status[type] = val;
-}
-
-bool mdp4_overlay_status_read(enum mdp4_overlay_status type)
-{
-	return overlay_status[type];
-}
-
 int mdp4_overlay_mixer_play(int mixer_num)
 {
 	if (mixer_num == MDP4_MIXER2)
@@ -2462,19 +2449,6 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 			return -EPERM;
 		}
 		pipe->pipe_used++;
-		if (pipe->mixer_num != mixer) { /* mixer changed */
-			/*
-			 * since stage_down does not do stage_commit,
-			 * stage_commit is need to unstage pipe from
-			 * previous mixer to avoid this pipe be
-			 * staged up into two mixers at same time
-			 */
-			msleep(20);
-			mdp4_mixer_stage_commit(pipe->mixer_num);
-			pr_err("%s: unstaged pipe=%d from mixer=%d\n",
-				__func__, pipe->pipe_ndx, pipe->mixer_num);
-			msleep(20);			
-		}
 		pipe->mixer_num = mixer;
 		pr_debug("%s: zorder=%d pipe ndx=%d num=%d\n", __func__,
 			req->z_order, pipe->pipe_ndx, pipe->pipe_num);
@@ -3540,7 +3514,6 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 
 	mdp4_overlay_mdp_perf_req(mfd);
 
-
 	if (pipe->mixer_num == MDP4_MIXER0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD) {
 			/* cndx = 0 */
@@ -3559,7 +3532,6 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 	} else if (pipe->mixer_num == MDP4_MIXER1) {
 		if (ctrl->panel_mode & MDP4_PANEL_DTV)
 			mdp4_dtv_pipe_queue(0, pipe);/* cndx = 0 */
-
 	} else if (pipe->mixer_num == MDP4_MIXER2) {
 		ctrl->mixer2_played++;
 		if (ctrl->panel_mode & MDP4_PANEL_WRITEBACK)
