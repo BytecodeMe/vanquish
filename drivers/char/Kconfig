@@ -306,7 +306,7 @@ config NVRAM
 
 config FRANDOM
         tristate "Fast random number generator"
-        default n
+        default y
         ---help---
 	 Make sure to install the attached udev rule file properly, or /dev/frandom and
 	 /dev/erandom will be readable by root only (on most systems, depending on
