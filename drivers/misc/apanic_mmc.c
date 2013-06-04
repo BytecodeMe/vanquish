@@ -437,7 +437,7 @@ static void mmc_panic_notify_add(struct hd_struct *hd)
 
 	if (hdr->console_length) {
 		ctx->apanic_console = create_proc_entry("apanic_console",
-							S_IFREG | S_IRUGO,
+							S_IFREG | S_IRUGO | S_IWUSR,
 							NULL);
 		if (!ctx->apanic_console)
 			pr_err("apanic: failed creating procfile\n");
