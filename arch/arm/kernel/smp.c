@@ -30,11 +30,8 @@
 #include <asm/cacheflush.h>
 #include <asm/cpu.h>
 #include <asm/cputype.h>
-<<<<<<< HEAD
 #include <asm/exception.h>
 #include <asm/idmap.h>
-=======
->>>>>>> fb3020f... ARM: 7011/1: Add ARM cpu topology definition
 #include <asm/topology.h>
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
