@@ -496,7 +496,7 @@ static struct acpu_level acpu_freq_tbl_8960_kraitv2_slow[] = {
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_nom[] = {
 	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   800000 },
         { 1, {   194000, HFPLL, 0, 2, 0x0C }, L2(0),   800000 },
-	{ 1, {   384000, PLL_8, 2, 0, 0x00 }, L2(1),   800000 },
+	{ 1, {   384000, PLL_8, 0, 2, 0x00 }, L2(1),   800000 },
 	{ 0, {   432000, HFPLL, 2, 0, 0x20 }, L2(7),   825000 },
 	{ 1, {   486000, HFPLL, 2, 0, 0x24 }, L2(7),   850000 },
 	{ 0, {   540000, HFPLL, 2, 0, 0x28 }, L2(7),   850000 },
