@@ -677,8 +677,8 @@ void mipi_dsi_clk_enable(void)
 		pr_err("%s: dsi_byte_div_clk - "
 			"clk_set_rate failed\n", __func__);
 	if (clk_set_rate(dsi_esc_clk, esc_byte_ratio) < 0) /* divided by esc */
-		pr_err("%s: dsi_esc_clk - "			 /* clk ratio */
-			"clk_set_rate failed\n", __func__);
+		pr_err("%s: dsi_esc_clk - "                      /* clk ratio */
+			"clk_set_rate failed (esc_byte_ratio==%d)\n", __func__, esc_byte_ratio);
 	mipi_dsi_pclk_ctrl(&dsi_pclk, 1);
 	mipi_dsi_clk_ctrl(&dsicore_clk, 1);
 	clk_enable(dsi_byte_div_clk);
