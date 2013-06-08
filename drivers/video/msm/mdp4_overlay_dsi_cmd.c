@@ -283,6 +283,9 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 	int need_dmap_wait = 0;
 	int need_ov_wait = 0;
 	int cnt = 0;
+#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
+	struct mipi_mot_panel *mot_panel;
+#endif
 
 	vctrl = &vsync_ctrl_db[0];
 
@@ -406,18 +409,15 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 
 	mdp4_stat.overlay_commit[pipe->mixer_num]++;
 
-	if (wait) {
+	if (wait)
+		mdp4_dsi_cmd_wait4vsync(0);
+
 #ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-		struct mipi_mot_panel *mot_panel;
+	mot_panel = mipi_mot_get_mot_panel();
+	if (mot_panel->commit_callback)
+		mot_panel->commit_callback(vctrl->mfd, wait);
 #endif
 
-		mdp4_dsi_cmd_wait4vsync(0);
-#ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
-		mot_panel = mipi_mot_get_mot_panel();
-		if (mot_panel->vsync_callback)
-			mot_panel->vsync_callback(vctrl->mfd);
-#endif
-	}
 	return cnt;
 }
 
