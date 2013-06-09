@@ -53,7 +53,7 @@ static struct dsi_cmd_desc mot_cmd_on_cmds[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(set_scanline), set_scanline},
 };
 
-static struct dsi_cmd_desc mot_cmd_vsync_cmd = {
+static struct dsi_cmd_desc mot_cmd_commit_cmd = {
 	DTYPE_DCS_WRITE, 1, 0, 0, 1, sizeof(display_on), display_on
 };
 
@@ -81,7 +81,7 @@ static int panel_enable(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
-static void panel_vsync_callback(struct msm_fb_data_type *mfd)
+static void panel_commit_callback(struct msm_fb_data_type *mfd, int vsync)
 {
 	if (panel_needs_turning_on)
 	{
@@ -94,7 +94,7 @@ static void panel_vsync_callback(struct msm_fb_data_type *mfd)
 
 		dsi_tx_buf = mot_panel->mot_tx_buf;
 
-		mipi_dsi_cmds_tx(dsi_tx_buf, &mot_cmd_vsync_cmd, 1);
+		mipi_dsi_cmds_tx(dsi_tx_buf, &mot_cmd_commit_cmd, 1);
 		panel_needs_turning_on = 0;
 	}
 }
@@ -194,7 +194,7 @@ static int __init mipi_cmd_mot_auo_qhd_450_init(void)
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
-	mot_panel->vsync_callback = panel_vsync_callback;
+	mot_panel->commit_callback = panel_commit_callback;
 
 	/* For ESD detection information */
 	mot_panel->esd_enabled = true;
