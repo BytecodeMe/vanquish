@@ -38,7 +38,7 @@ module_param(check_interval_ms, int, 0);
 static struct delayed_work check_temp_work;
 
 static int thermal_max_freq = CONFIG_THERMAL_MONITOR_MAXFREQ;
-module_param_named(thermal_max_freq, thermal_max_freq, int, S_IRUGO);
+module_param_named(thermal_max_freq, thermal_max_freq, int, S_IRUGO | S_IWUSR);
 
 static int update_cpu_max_freq(struct cpufreq_policy *cpu_policy,
 			       int cpu, int max_freq)
@@ -48,9 +48,9 @@ static int update_cpu_max_freq(struct cpufreq_policy *cpu_policy,
 	if (!cpu_policy)
 		return -EINVAL;
 
-	if(CONFIG_THERMAL_MONITOR_MAXFREQ >= cpu_policy->min
-			&& max_freq > CONFIG_THERMAL_MONITOR_MAXFREQ) {
-		max_freq = CONFIG_THERMAL_MONITOR_MAXFREQ;
+	if(thermal_max_freq >= cpu_policy->min
+			&& max_freq > thermal_max_freq) {
+		max_freq = thermal_max_freq;
 	}
 	cpufreq_verify_within_limits(cpu_policy,
 				cpu_policy->min, max_freq);
