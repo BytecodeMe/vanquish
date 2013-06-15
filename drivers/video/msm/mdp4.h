@@ -32,7 +32,6 @@ extern u64 mdp_max_bw;
 #define MDP4_BW_AB_FACTOR (115)	/* 1.15 */
 #define MDP4_BW_IB_FACTOR (125)	/* 1.25 */
 #define MDP_BUS_SCALE_AB_STEP (0x4000000)
-#define MDP_BUS_SCALE_INIT (0x10000000)
 
 #define MDP4_OVERLAYPROC0_BASE	0x10000
 #define MDP4_OVERLAYPROC1_BASE	0x18000
@@ -90,6 +89,12 @@ enum {
 #define MDP4_PANEL_DSI_VIDEO	BIT(4)
 #define MDP4_PANEL_DSI_CMD	BIT(5)
 #define MDP4_PANEL_WRITEBACK		BIT(6)
+
+enum {
+	OVERLAY_BLT_SWITCH_TG_ON,
+	OVERLAY_BLT_SWITCH_TG_OFF,
+	OVERLAY_BLT_ALWAYS_ON
+};
 
 enum {
 	OVERLAY_MODE_NONE,
@@ -585,7 +590,7 @@ int mdp4_overlay_dsi_state_get(void);
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all);
 void mdp4_mixer_blend_setup(int mixer);
-void mdp4_mixer_blend_cfg(int mixer);
+void mdp4_mixer_blend_cfg(int);
 struct mdp4_overlay_pipe *mdp4_overlay_stage_pipe(int mixer, int stage);
 void mdp4_mixer_stage_up(struct mdp4_overlay_pipe *pipe, int commit);
 void mdp4_mixer_stage_down(struct mdp4_overlay_pipe *pipe, int commit);
@@ -635,6 +640,7 @@ void mdp4_lcdc_wait4vsync(int cndx);
 void mdp4_overlay_lcdc_vsync_push(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe);
 void mdp4_mddi_overlay_dmas_restore(void);
+void mdp4_overlay_solidfill_init(struct mdp4_overlay_pipe *pipe);
 
 #ifndef CONFIG_FB_MSM_MIPI_DSI
 void mdp4_mddi_dma_busy_wait(struct msm_fb_data_type *mfd);
@@ -798,6 +804,7 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev);
 int mdp4_dsi_cmd_off(struct platform_device *pdev);
 int mdp4_dsi_video_off(struct platform_device *pdev);
 int mdp4_dsi_video_on(struct platform_device *pdev);
+int mdp4_dsi_video_splash_done(void);
 void mdp4_primary_vsync_dsi_video(void);
 void mdp4_dsi_cmd_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_dsi_cmd_wait4vsync(int cndx);
@@ -891,6 +898,11 @@ static inline void mdp4_overlay_dsi_video_start(void)
 {
 	/* empty */
 }
+
+static int mdp4_dsi_video_splash_done(void)
+{
+}
+
 #ifdef CONFIG_FB_MSM_MDP40
 static inline void mdp_dsi_cmd_overlay_suspend(struct msm_fb_data_type *mfd)
 {

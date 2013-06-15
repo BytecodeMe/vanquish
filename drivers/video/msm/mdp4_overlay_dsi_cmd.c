@@ -293,6 +293,12 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
 	pipe = vctrl->base_pipe;
+	if (pipe == NULL) {
+		pr_err("%s: NO base pipe\n", __func__);
+		mutex_unlock(&vctrl->update_lock);
+		return 0;
+	}
+
 	mixer = pipe->mixer_num;
 
 	mdp_update_pm(vctrl->mfd, vctrl->vsync_time);
@@ -906,6 +912,8 @@ static void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 	/* disable dsi trigger */
 	MDP_OUTP(MDP_BASE + 0x000a4, 0x00);
 
+	mdp4_overlay_solidfill_init(pipe);
+
 	mdp4_overlay_setup_pipe_addr(mfd, pipe);
 
 	mdp4_overlay_rgb_setup(pipe);
@@ -1031,6 +1039,8 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev)
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 	mfd->cont_splash_done = 1;
 
+	mutex_lock(&mfd->dma->ov_mutex);
+
 	vctrl = &vsync_ctrl_db[cndx];
 	vctrl->mfd = mfd;
 	vctrl->dev = mfd->fbi->dev;
@@ -1043,6 +1053,8 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev)
 	mdp4_iommu_attach();
 
 	atomic_set(&vctrl->suspend, 0);
+
+	mutex_unlock(&mfd->dma->ov_mutex);
 
 	pr_debug("%s-:\n", __func__);
 
@@ -1059,15 +1071,19 @@ int mdp4_dsi_cmd_off(struct platform_device *pdev)
 	struct vsync_update *vp;
 	int undx;
 	int need_wait, cnt;
+	unsigned long flags;
 
 	pr_debug("%s+: pid=%d\n", __func__, current->pid);
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
+	mutex_lock(&mfd->dma->ov_mutex);
+
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
 	if (pipe == NULL) {
 		pr_err("%s: NO base pipe\n", __func__);
+		mutex_unlock(&mfd->dma->ov_mutex);
 		return ret;
 	}
 
@@ -1093,11 +1109,16 @@ int mdp4_dsi_cmd_off(struct platform_device *pdev)
 		}
 	}
 
-	/* message for system suspnded */
-	if (cnt > 10)
-		pr_err("%s:Error,  mdp clocks NOT off\n", __func__);
-	else
-		pr_debug("%s: mdp clocks off at cnt=%d\n", __func__, cnt);
+	if (cnt > 10) {
+		spin_lock_irqsave(&vctrl->spin_lock, flags);
+		vctrl->clk_control = 0;
+		vctrl->clk_enabled = 0;
+		vctrl->expire_tick = 0;
+		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
+		mipi_dsi_clk_cfg(0);
+		mdp_clk_ctrl(0);
+		pr_err("%s: Error, SET_CLK_OFF by force\n", __func__);
+	}
 
 	/* sanity check, free pipes besides base layer */
 	mdp4_overlay_unset_mixer(pipe->mixer_num);
@@ -1122,6 +1143,8 @@ int mdp4_dsi_cmd_off(struct platform_device *pdev)
 		pr_warn("%s: update_cnt=%d\n", __func__, vp->update_cnt);
 		mdp4_dsi_cmd_pipe_clean(vp);
 	}
+
+	mutex_unlock(&mfd->dma->ov_mutex);
 
 	pr_debug("%s-:\n", __func__);
 	return ret;

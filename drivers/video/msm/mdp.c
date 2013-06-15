@@ -327,11 +327,13 @@ static int mdp_hist_lut_write_off(struct mdp_hist_lut_data *data,
 		pr_err("%s: Error copying histogram data", __func__);
 		return -ENOMEM;
 	}
+	mdp_clk_ctrl(1);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	for (i = 0; i < MDP_HIST_LUT_SIZE; i++)
 		MDP_OUTP(MDP_BASE + base + offset + (0x400*(sel)) + (4*i),
 				element[i]);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
 
 	return 0;
 }
@@ -824,6 +826,7 @@ static int mdp_histogram_enable(struct mdp_hist_mgmt *mgmt)
 		return -EINVAL;
 	}
 
+	mdp_clk_ctrl(1);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	base = (uint32_t) (MDP_BASE + mgmt->base);
 	/*First make sure that device is not collecting histogram*/
@@ -865,6 +868,7 @@ static int mdp_histogram_enable(struct mdp_hist_mgmt *mgmt)
 	mgmt->mdp_is_hist_init = FALSE;
 	__mdp_histogram_reset(mgmt);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
 	return 0;
 }
 
@@ -883,6 +887,7 @@ static int mdp_histogram_disable(struct mdp_hist_mgmt *mgmt)
 
 	base = (uint32_t) (MDP_BASE + mgmt->base);
 
+	mdp_clk_ctrl(1);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	outp32(MDP_INTR_CLEAR, mgmt->intr);
@@ -899,6 +904,7 @@ static int mdp_histogram_disable(struct mdp_hist_mgmt *mgmt)
 
 	MDP_OUTP(base + 0x0018, INTR_HIST_DONE | INTR_HIST_RESET_SEQ_DONE);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
 
 	if (mgmt->hist != NULL) {
 		mgmt->hist = NULL;
@@ -1201,12 +1207,14 @@ static void mdp_hist_read_work(struct work_struct *data)
 	if (mgmt->mdp_is_hist_init == FALSE)
 			mgmt->mdp_is_hist_init = TRUE;
 
+	mdp_clk_ctrl(1);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	if (!ret && hist_ready)
 		__mdp_histogram_kickoff(mgmt);
 	else
 		__mdp_histogram_reset(mgmt);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
 
 error:
 	mutex_unlock(&mgmt->mdp_hist_mutex);
@@ -2251,6 +2259,8 @@ void mdp4_hw_init(void)
 
 #endif
 
+static int mdp_bus_scale_restore_request(void);
+
 static int mdp_on(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -2259,9 +2269,26 @@ static int mdp_on(struct platform_device *pdev)
 
 	pr_debug("%s:+\n", __func__);
 
+	if (!(mfd->cont_splash_done)) {
+		if (mfd->panel.type == MIPI_VIDEO_PANEL)
+			mdp4_dsi_video_splash_done();
+
+		/* Clks are enabled in probe.
+		Disabling clocks now */
+		mdp_clk_ctrl(0);
+		mfd->cont_splash_done = 1;
+	}
+
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+
+	ret = panel_next_on(pdev);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+
+
 	if (mdp_rev >= MDP_REV_40) {
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		mdp_clk_ctrl(1);
+		mdp_bus_scale_restore_request();
 		mdp4_hw_init();
 		outpdw(MDP_BASE + 0x0038, mdp4_display_intf);
 		if (mfd->panel.type == MIPI_CMD_PANEL) {
@@ -2286,10 +2313,6 @@ static int mdp_on(struct platform_device *pdev)
 	if ((mdp_rev == MDP_REV_303) &&
 			(mfd->panel.type == MIPI_CMD_PANEL))
 		vsync_cntrl.dev = mfd->fbi->dev;
-
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-	ret = panel_next_on(pdev);
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	mdp_histogram_ctrl_all(TRUE);
 	pr_debug("%s:-\n", __func__);
@@ -2374,18 +2397,21 @@ static int mdp_bus_scale_register(void)
 		mdp_bus_usecases[i].num_paths = 1;
 		mdp_bus_usecases[i].vectors = &mdp_bus_vectors[i];
 	}
-	mdp_bus_scale_handle = msm_bus_scale_register_client(bus_pdata);
+
 	if (!mdp_bus_scale_handle) {
-		pr_err("%s: not able to get bus scale!\n", __func__);
-		return -ENOMEM;
+		mdp_bus_scale_handle = msm_bus_scale_register_client(bus_pdata);
+		if (!mdp_bus_scale_handle) {
+			pr_err("%s: not able to get bus scale!\n", __func__);
+			return -ENOMEM;
+		}
 	}
+
 	return 0;
 }
 
+static int bus_index = 1;
 int mdp_bus_scale_update_request(u64 ab, u64 ib)
 {
-	static int bus_index = 1;
-
 	if (mdp_bus_scale_handle < 1) {
 		printk(KERN_ERR "%s invalid bus handle\n", __func__);
 		return -EINVAL;
@@ -2410,6 +2436,20 @@ int mdp_bus_scale_update_request(u64 ab, u64 ib)
 
 	return msm_bus_scale_client_update_request
 		(mdp_bus_scale_handle, bus_index);
+}
+static int mdp_bus_scale_restore_request(void)
+{
+	pr_debug("%s: index=%d ab=%u ib=%u\n", __func__, bus_index,
+		mdp_bus_usecases[bus_index].vectors->ab,
+		mdp_bus_usecases[bus_index].vectors->ib);
+	return mdp_bus_scale_update_request
+		(mdp_bus_usecases[bus_index].vectors->ab,
+		 mdp_bus_usecases[bus_index].vectors->ib);
+}
+#else
+static int mdp_bus_scale_restore_request(void)
+{
+	return 0;
 }
 #endif
 DEFINE_MUTEX(mdp_clk_lock);
@@ -2971,9 +3011,7 @@ static int mdp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	/* req bus bandwidth immediately */
-	if (!(mfd->cont_splash_done))
-		mdp_bus_scale_update_request
-			(MDP_BUS_SCALE_INIT, MDP_BUS_SCALE_INIT);
+	mdp_bus_scale_update_request(mdp_max_bw, mdp_max_bw);
 #endif
 
 	/* set driver data */
@@ -3016,8 +3054,10 @@ static int mdp_probe(struct platform_device *pdev)
       mdp_probe_err:
 	platform_device_put(msm_fb_dev);
 #ifdef CONFIG_MSM_BUS_SCALING
-	if (mdp_bus_scale_handle > 0)
+	if (mdp_bus_scale_handle > 0) {
 		msm_bus_scale_unregister_client(mdp_bus_scale_handle);
+		mdp_bus_scale_handle = 0;
+	}
 #endif
 	return rc;
 }
@@ -3131,8 +3171,10 @@ static int mdp_remove(struct platform_device *pdev)
 	iounmap(msm_mdp_base);
 	pm_runtime_disable(&pdev->dev);
 #ifdef CONFIG_MSM_BUS_SCALING
-	if (mdp_bus_scale_handle > 0)
+	if (mdp_bus_scale_handle > 0) {
 		msm_bus_scale_unregister_client(mdp_bus_scale_handle);
+		mdp_bus_scale_handle = 0;
+	}
 #endif
 	return 0;
 }

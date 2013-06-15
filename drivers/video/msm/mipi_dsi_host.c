@@ -1627,7 +1627,7 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 		}
 	}
 
-	if (req->flags && CMD_REQ_RX)
+	if (req->flags & CMD_REQ_RX)
 		mipi_dsi_cmdlist_rx(req);
 	else
 		mipi_dsi_cmdlist_tx(req);

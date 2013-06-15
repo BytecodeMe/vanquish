@@ -542,6 +542,7 @@ static int __init mipi_cmd_mot_smd_qhd_429_init(void)
 	pinfo->mipi.tx_eot_append = 0x01;
 	pinfo->mipi.rx_eot_ignore = 0;
 	pinfo->mipi.frame_rate = 60;
+	pinfo->mipi.esc_byte_ratio = 2;
 
 	mot_panel->acl_support_present = TRUE;
 	mot_panel->acl_enabled = FALSE; /* By default the ACL is disbled. */

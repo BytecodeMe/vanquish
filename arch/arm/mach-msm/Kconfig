@@ -2274,4 +2274,10 @@ config GPU_OVERCLOCK
 	help
 		Adreno2xx overclocking up to 480 MHz
 
+config CPU_OVERCLOCK
+	bool "Enable CPU Overclocking option"
+	default n
+	help
+		Processor overclocking up to 2 GHz for fast bin or 1.9 GHz for nom
+
 endif
