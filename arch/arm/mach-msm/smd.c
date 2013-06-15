@@ -33,6 +33,7 @@
 #include <linux/uaccess.h>
 #include <linux/kfifo.h>
 #include <linux/wakelock.h>
+#include <linux/syscore_ops.h>
 #include <mach/msm_smd.h>
 #include <mach/msm_iomap.h>
 #include <mach/system.h>
@@ -2940,8 +2941,45 @@ static struct platform_driver msm_smd_driver = {
 	},
 };
 
-static int __init msm_smd_init(void)
+static struct delayed_work resume_work;
+static int smd_suspend(void)
 {
+	pr_info("%s: enabling power logging\n", __func__);
+	msm_smd_debug_mask = MSM_SMx_POWER_INFO;
+	return 0;
+}
+
+static void smd_resume(void)
+{
+	/*
+	 * if we are the wakeup source, this gets called before we process
+	 * any interrupts, so delay turning off the logging for a short time
+	 * so that the logs are enabled when we process any wakeup interrupts
+	 */
+	schedule_delayed_work(&resume_work, msecs_to_jiffies(500));
+}
+
+static struct syscore_ops smd_syscore_ops = {
+	.suspend = smd_suspend,
+	.resume = smd_resume,
+};
+
+static void resume_work_func(struct work_struct *work)
+{
+	pr_info("%s: disabling power logging\n", __func__);
+	msm_smd_debug_mask = 0;
+}
+
+int __init msm_smd_init(void)
+{
+	static bool registered;
+
+	if (registered)
+		return 0;
+
+	registered = true;
+	INIT_DELAYED_WORK(&resume_work, resume_work_func);
+	register_syscore_ops(&smd_syscore_ops);
 	return platform_driver_register(&msm_smd_driver);
 }
 
