@@ -1617,6 +1617,7 @@ struct msm_panel_common_pdata mdp_pdata = {
 	.cont_splash_enabled = 0x01,
 	.splash_screen_addr = 0x00,
 	.splash_screen_size = 0x00,
+	.mdp_iommu_split_domain = 0,
 };
 
 void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
