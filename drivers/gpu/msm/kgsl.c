@@ -757,6 +757,7 @@ kgsl_get_process_private(struct kgsl_device_private *cur_dev_priv)
 	list_add(&private->list, &kgsl_driver.process_list);
 
 	kgsl_process_init_sysfs(private);
+	kgsl_process_init_debugfs(private);
 
 out:
 	mutex_unlock(&kgsl_driver.process_mutex);
@@ -779,6 +780,7 @@ kgsl_put_process_private(struct kgsl_device *device,
 		goto unlock;
 
 	kgsl_process_uninit_sysfs(private);
+	debugfs_remove_recursive(private->debug_root);
 
 	list_del(&private->list);
 
@@ -1912,6 +1914,8 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 
 	if (result)
 		goto error;
+
+	entry->memdesc.priv |= param->flags & KGSL_MEMTYPE_MASK;
 
 	result = kgsl_mmu_map(private->pagetable,
 			      &entry->memdesc,

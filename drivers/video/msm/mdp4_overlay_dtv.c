@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -695,6 +695,7 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
 	struct vsync_update *vp;
+	int mixer = 0;
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
@@ -711,22 +712,19 @@ int mdp4_dtv_off(struct platform_device *pdev)
 
 	pipe = vctrl->base_pipe;
 	if (pipe != NULL) {
+		mixer = pipe->mixer_num;
 		/* sanity check, free pipes besides base layer */
-		mdp4_overlay_unset_mixer(pipe->mixer_num);
+		mdp4_overlay_unset_mixer(mixer);
 		if (hdmi_prim_display && mfd->ref_cnt == 0) {
 			/* adb stop */
 			if (pipe->pipe_type == OVERLAY_TYPE_BF)
 				mdp4_overlay_borderfill_stage_down(pipe);
 
-			/* base pipe may change after borderfill_stage_down */
-			pipe = vctrl->base_pipe;
-			mdp4_mixer_stage_down(pipe, 1);
-			mdp4_overlay_pipe_free(pipe);
 			/* pipe == rgb2 */
 			vctrl->base_pipe = NULL;
 		} else {
 			mdp4_mixer_stage_down(pipe, 1);
-			mdp4_overlay_pipe_free(pipe);
+			mdp4_overlay_pipe_free(pipe, 1);
 			vctrl->base_pipe = NULL;
 		}
 	}
@@ -750,6 +748,14 @@ int mdp4_dtv_off(struct platform_device *pdev)
 
 	ret = panel_next_off(pdev);
 	mdp_footswitch_ctrl(FALSE);
+
+	/*
+	 * clean up ion freelist
+	 * there need two stage to empty ion free list
+	 * therefore need call unmap freelist twice
+	 */
+	mdp4_overlay_iommu_unmap_freelist(mixer);
+	mdp4_overlay_iommu_unmap_freelist(mixer);
 
 	/* Mdp clock disable */
 	mdp_clk_ctrl(0);
@@ -890,6 +896,7 @@ static void mdp4_overlay_dtv_alloc_pipe(struct msm_fb_data_type *mfd,
 	mdp4_overlay_reg_flush(pipe, 1);
 	mdp4_mixer_stage_up(pipe, 0);
 	mdp4_mixer_stage_commit(pipe->mixer_num);
+
 	vctrl->base_pipe = pipe; /* keep it */
 }
 
@@ -1030,27 +1037,22 @@ void mdp4_overlay1_done_dtv(void)
 	spin_unlock(&vctrl->spin_lock);
 }
 
-void mdp4_dtv_set_black_screen()
+void mdp4_dtv_set_black_screen(bool commit)
 {
 	char *rgb_base;
 	/*Black color*/
 	uint32 color = 0x00000000;
 	uint32 temp_src_format;
-	int commit = 1, cndx = 0;
-	int pipe_num = OVERLAY_PIPE_RGB1;
+	int cndx = 0;
 	struct vsycn_ctrl *vctrl;
 
 	vctrl = &vsync_ctrl_db[cndx];
-	if (!hdmi_prim_display)
+	if (vctrl->base_pipe == NULL || !hdmi_prim_display) {
+		pr_debug("dtv_pipe is not configured yet\n");
 		return;
-
-	if (vctrl->base_pipe == NULL)
-		commit = 0;
-	else
-		pipe_num = vctrl->base_pipe->pipe_num;
-
+	}
 	rgb_base = MDP_BASE;
-	rgb_base += (MDP4_RGB_OFF * (pipe_num + 2));
+	rgb_base += (MDP4_RGB_OFF * (vctrl->base_pipe->pipe_num + 2));
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
@@ -1065,12 +1067,13 @@ void mdp4_dtv_set_black_screen()
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 		mdp4_overlay_reg_flush(vctrl->base_pipe, 1);
+
 		mdp4_mixer_stage_up(vctrl->base_pipe, 0);
 		mdp4_mixer_stage_commit(vctrl->base_pipe->mixer_num);
 	} else {
 		/* MDP_OVERLAY_REG_FLUSH for pipe*/
 		MDP_OUTP(MDP_BASE + 0x18000,
-			BIT(pipe_num + 2) | BIT(MDP4_MIXER1));
+			BIT(vctrl->base_pipe->pipe_num + 2) | BIT(MDP4_MIXER1));
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 }
@@ -1183,8 +1186,8 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 		mdp4_dtv_pipe_queue(0, pipe);
 	}
 
-	if (mdp4_dtv_pipe_commit(0, 0))
-		mdp4_dtv_wait4dmae(0);
-
+	mdp4_overlay_mdp_perf_upd(mfd, 1);
+	mdp4_dtv_pipe_commit(0, 1);
+	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }

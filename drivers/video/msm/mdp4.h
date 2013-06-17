@@ -1,4 +1,5 @@
-/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+/*
+ * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,7 +33,7 @@ extern u64 mdp_max_bw;
 extern u32 mdp_bw_ab_factor;
 extern u32 mdp_bw_ib_factor;
 #define MDP4_BW_AB_DEFAULT_FACTOR (115)	/* 1.15 */
-#define MDP4_BW_IB_DEFAULT_FACTOR (125)	/* 1.25 */
+#define MDP4_BW_IB_DEFAULT_FACTOR (150)	/* 1.5 */
 #define MDP_BUS_SCALE_AB_STEP (0x4000000)
 
 #define MDP4_OVERLAYPROC0_BASE	0x10000
@@ -268,7 +269,6 @@ struct mdp4_iommu_pipe_info {
 #define IOMMU_FREE_LIST_MAX 32
 
 struct iommu_free_list {
-	int total;
 	int fndx;
 	struct ion_handle *ihdl[IOMMU_FREE_LIST_MAX];
 };
@@ -297,6 +297,8 @@ struct mdp4_overlay_pipe {
 	uint32 src_format;
 	uint32 src_width;	/* source img width */
 	uint32 src_height;	/* source img height */
+	uint32 prev_src_width;	/* source img width */
+	uint32 prev_src_height;	/* source img height */
 	uint32 is_3d;
 	uint32 src_width_3d;	/* source img width */
 	uint32 src_height_3d;	/* source img height */
@@ -382,7 +384,6 @@ struct mdp4_overlay_pipe {
 	struct completion dmas_comp;
 	struct mdp4_iommu_pipe_info iommu;
 };
-
 
 struct mdp4_statistic {
 	ulong intr_tot;
@@ -495,6 +496,7 @@ void mdp4_dmae_done_dtv(void);
 void mdp4_dtv_wait4vsync(int cndx);
 void mdp4_dtv_vsync_ctrl(struct fb_info *info, int enable);
 void mdp4_dtv_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
+void mdp4_dtv_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
 int mdp4_dtv_pipe_commit(int cndx, int wait);
 #else
 static inline void mdp4_overlay_dtv_start(void)
@@ -552,7 +554,7 @@ static inline int mdp4_dtv_pipe_commit(int cndx, int wait)
 }
 #endif /* CONFIG_FB_MSM_DTV */
 
-void mdp4_dtv_set_black_screen(void);
+void mdp4_dtv_set_black_screen(bool commit);
 
 int mdp4_overlay_dtv_set(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
@@ -571,6 +573,7 @@ void mdp4_overlay0_done_dsi_video(int cndx);
 void mdp4_overlay0_done_dsi_cmd(int cndx);
 void mdp4_primary_rdptr(void);
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd);
+int mdp4_overlay_commit(struct fb_info *info);
 int mdp4_dsi_video_pipe_commit(int cndx, int wait);
 int mdp4_dsi_cmd_pipe_commit(int cndx, int wait);
 int mdp4_lcdc_pipe_commit(int cndx, int wait);
@@ -611,16 +614,13 @@ int mdp4_overlay_unset_mixer(int mixer);
 int mdp4_overlay_play_wait(struct fb_info *info,
 	struct msmfb_overlay_data *req);
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req);
-int mdp4_overlay_commit(struct fb_info *info);
 struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, int mixer);
 void mdp4_overlay_dma_commit(int mixer);
 void mdp4_overlay_vsync_commit(struct mdp4_overlay_pipe *pipe);
-void mdp4_solidfill_commit(int mixer);
 void mdp4_mixer_stage_commit(int mixer);
 void mdp4_dsi_cmd_do_update(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_lcdc_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
-void mdp4_dtv_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
-void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe);
+void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe, int all);
 void mdp4_overlay_dmap_cfg(struct msm_fb_data_type *mfd, int lcdc);
 void mdp4_overlay_dmap_xy(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_dmae_cfg(struct msm_fb_data_type *mfd, int atv);
@@ -810,6 +810,7 @@ void mdp4_primary_vsync_dsi_video(void);
 void mdp4_dsi_cmd_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_dsi_cmd_wait4vsync(int cndx);
 void mdp4_dsi_video_wait4vsync(int cndx);
+void mdp4_mixer_reset(int mixer);
 void mdp4_dsi_cmd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_dsi_video_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_dsi_cmd_vsync_ctrl(struct fb_info *info, int enable);
@@ -887,7 +888,7 @@ static inline void mdp4_dsi_video_pipe_queue(int cndx,
 {
 }
 static inline void mdp4_dsi_cmd_vsync_ctrl(struct fb_info *info,
-					int enable)
+				int enable)
 {
 }
 static inline void mdp4_dsi_video_vsync_ctrl(struct fb_info *info,
@@ -994,6 +995,8 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd, int flag);
 int mdp4_update_base_blend(struct msm_fb_data_type *mfd,
 				struct mdp_blend_cfg *mdp_blend_cfg);
 u32 mdp4_get_mixer_num(u32 panel_type);
+int mdp4_overlay_reset(void);
+void mdp4_vg_csc_restore(void);
 
 #ifndef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
 static inline void mdp4_wfd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)

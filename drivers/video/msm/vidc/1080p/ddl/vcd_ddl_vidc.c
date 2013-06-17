@@ -963,6 +963,7 @@ void ddl_vidc_encode_slice_batch_run(struct ddl_client_context *ddl)
 		ddl_update_core_start_time(__func__, ENC_SLICE_OP_TIME);
 		ddl_set_core_start_time(__func__, ENC_OP_TIME);
 	}
+	encoder->num_slices_comp = 0;
 	ddl_vidc_encode_set_batch_slice_info(ddl);
 	ddl_context->vidc_encode_slice_batch_start[ddl->command_channel] (
 			&enc_param);
@@ -1083,6 +1084,7 @@ void ddl_vidc_decode_frame_run(struct ddl_client_context *ddl)
 		decoder->flush_pending = false;
 	} else
 		dec_param.dpb_flush = false;
+	ddl_set_vidc_timeout(ddl);
 	vidc_sm_set_frame_tag(&ddl->shared_mem[ddl->command_channel],
 		bit_stream->ip_frm_tag);
 	if (ddl_context->pix_cache_enable) {
