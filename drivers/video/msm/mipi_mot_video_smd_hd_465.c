@@ -1140,8 +1140,8 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	pinfo->lcdc.v_front_porch = 13;
 	pinfo->lcdc.v_pulse_width = 2;
 
-	pinfo->lcdc.border_clr = 0x0;
-	pinfo->lcdc.underflow_clr = 0xff;
+	pinfo->lcdc.border_clr = 0;			/* blk */ /* was 0x0; */
+	pinfo->lcdc.underflow_clr = 0x0;	/* blue => black */ /* was blue 0xff; */
 	pinfo->lcdc.hsync_skew = 0;
 	pinfo->bl_max = NUMBER_BRIGHTNESS_LEVELS - 1;
 	pinfo->bl_min = 0;
