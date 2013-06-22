@@ -46,7 +46,6 @@ static unsigned int intelli_plug_active = 1;
 module_param(intelli_plug_active, uint, 0644);
 
 static unsigned int eco_mode_active = 0;
-module_param(eco_mode_active, uint, 0644);
 
 static unsigned int persist_count = 0;
 static bool suspended = false;
