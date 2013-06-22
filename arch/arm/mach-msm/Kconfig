@@ -1391,29 +1391,17 @@ config MSM_CPU_FREQ_MIN
 
 endif # CPU_FREQ_MSM
 
-<<<<<<< HEAD
 config INTELLI_PLUG
 	bool "Enable intelli-plug cpu hotplug driver"
 	default n
 	help
 	  Generic Intelli-plug cpu hotplug driver for ARM SOCs
 
-config MSM_CPUFREQ_LIMITER
-	tristate "MSM CPU frequency limiter"
-	default n
-	help
-	  This driver limits MSM CPU frequency through sysfs file system.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_stats.
-
-	  If in doubt, say N.
-
 config CPU_OVERCLOCK
 	bool "Enable CPU Overclocking option"
 	default n
 	help
-	  Krait overclocking up to 1.84 GHz
+	  Krait overclocking up to 1.89 GHz
 
 config CPU_VOLTAGE_TABLE
 	bool "Enable CPU Voltage Table via sysfs for adjustements"
