@@ -143,7 +143,6 @@ static void tz_wake(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 					device->pwrctrl.default_pwrlevel);
 }
 
-static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 #ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
 /* KGSL Simple GPU Governor */
 /* Copyright (c) 2011-2013, Paul Reioux (Faux123). All rights reserved. */
@@ -187,6 +186,7 @@ static int simple_governor(struct kgsl_device *device, int idle_stat)
 }
 #endif
 
+static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct tz_priv *priv = pwrscale->priv;
