@@ -110,6 +110,13 @@ static u64 boostpulse_endtime;
 #define DEFAULT_TIMER_SLACK (4 * DEFAULT_TIMER_RATE)
 static int timer_slack_val = DEFAULT_TIMER_SLACK;
 
+/*
+ * Treat IO as busy or not
+ */
+#define DEFAULT_IO_IS_BUSY 0
+static unsigned long io_is_busy;
+
+
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event);
 
@@ -122,6 +129,21 @@ struct cpufreq_governor cpufreq_gov_interactive = {
 	.max_transition_latency = 1000000,
 	.owner = THIS_MODULE,
 };
+
+static inline u64 get_gov_idle_time(int cpu, u64 *last)
+{
+	u64 io = get_cpu_iowait_time_us(cpu, last);
+	u64 idle = get_cpu_idle_time_us(cpu, last);
+	if (io_is_busy && io != (-1ULL)) {
+		idle -= io;
+		/* In a corner case, if iowait time gets incremented between
+		 * reading iowait and idle times, more idle is reported than
+		 * should be. Subsequent call could return slightly less idle.
+		 * Take care to handle (new idle - old idle) < 0
+		 */
+	}
+	return idle;
+}
 
 static void cpufreq_interactive_timer_resched(
 	struct cpufreq_interactive_cpuinfo *pcpu)
@@ -866,6 +888,29 @@ static ssize_t store_boostpulse_duration(
 
 define_one_global_rw(boostpulse_duration);
 
+static ssize_t show_io_is_busy(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", io_is_busy);
+}
+
+static ssize_t store_io_is_busy(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = strict_strtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	io_is_busy = val;
+	return count;
+}
+
+static struct global_attr io_is_busy_attr =
+	__ATTR(io_is_busy, 0644,
+		show_io_is_busy, store_io_is_busy);
+
 static struct attribute *interactive_attributes[] = {
 	&target_loads_attr.attr,
 	&hispeed_freq_attr.attr,
@@ -877,6 +922,7 @@ static struct attribute *interactive_attributes[] = {
 	&boost.attr,
 	&boostpulse.attr,
 	&boostpulse_duration.attr,
+        &io_is_busy_attr.attr,
 	NULL,
 };
 
