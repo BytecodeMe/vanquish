@@ -98,6 +98,10 @@ int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	event->func = cb;
 	event->owner = owner;
 
+	/* inc refcount to avoid race conditions in cleanup */
+	if (context)
+		kgsl_context_get(context);
+
 	/*
 	 * Add the event in order to the list.  Order is by context id
 	 * first and then by timestamp for that context.
@@ -152,6 +156,7 @@ static void kgsl_cancel_events_ctxt(struct kgsl_device *device,
 		if (event->func)
 			event->func(device, event->priv, id, cur);
 
+		kgsl_context_put(context);
 		list_del(&event->list);
 		kfree(event);
 	}
@@ -185,6 +190,9 @@ void kgsl_cancel_events(struct kgsl_device *device,
 		 */
 		if (event->func)
 			event->func(device, event->priv, id, cur);
+
+		if (event->context)
+			kgsl_context_put(event->context);
 
 		list_del(&event->list);
 		kfree(event);
@@ -444,6 +452,9 @@ void kgsl_timestamp_expired(struct work_struct *work)
 		if (event->func)
 			event->func(device, event->priv, id, ts_processed);
 
+		if (event->context)
+			kgsl_context_put(event->context);
+
 		list_del(&event->list);
 		kfree(event);
 	}
@@ -618,23 +629,32 @@ end:
 
 static int kgsl_resume_device(struct kgsl_device *device)
 {
-	int status = -EINVAL;
-
 	if (!device)
 		return -EINVAL;
 
 	KGSL_PWR_WARN(device, "resume start\n");
 	mutex_lock(&device->mutex);
 	if (device->state == KGSL_STATE_SUSPEND) {
-		kgsl_pwrctrl_set_state(device, KGSL_STATE_SLUMBER);
-		status = 0;
 		complete_all(&device->hwaccess_gate);
+	} else {
+		/*
+		 * This is an error situation,so wait for the device
+		 * to idle and then put the device to SLUMBER state.
+		 * This will put the device to the right state when
+		 * we resume.
+		 */
+		device->ftbl->idle(device);
+		kgsl_pwrctrl_request_state(device, KGSL_STATE_SLUMBER);
+		kgsl_pwrctrl_sleep(device);
+		KGSL_PWR_ERR(device,
+			"resume invoked without a suspend\n");
 	}
+	kgsl_pwrctrl_set_state(device, KGSL_STATE_SLUMBER);
 	kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 
 	mutex_unlock(&device->mutex);
 	KGSL_PWR_WARN(device, "resume end\n");
-	return status;
+	return 0;
 }
 
 static int kgsl_suspend(struct device *dev)
@@ -1632,6 +1652,8 @@ static int memdesc_sg_virt(struct kgsl_memdesc *memdesc,
 		return -ENOMEM;
 
 	memdesc->sglen = sglen;
+	memdesc->sglen_alloc = sglen;
+
 	sg_init_table(memdesc->sg, sglen);
 
 	spin_lock(&current->mm->page_table_lock);
@@ -1916,6 +1938,11 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 		goto error;
 
 	entry->memdesc.priv |= param->flags & KGSL_MEMTYPE_MASK;
+
+	if (entry->memdesc.size >= SZ_1M)
+		entry->memdesc.priv |= ilog2(SZ_1M) << KGSL_MEMALIGN_SHIFT;
+	else if (entry->memdesc.size >= SZ_64K)
+		entry->memdesc.priv |= ilog2(SZ_64K) << KGSL_MEMALIGN_SHIFT;
 
 	result = kgsl_mmu_map(private->pagetable,
 			      &entry->memdesc,

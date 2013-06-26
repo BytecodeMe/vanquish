@@ -561,8 +561,10 @@ static int kgsl_set_register_map(struct kgsl_mmu *mmu)
 		}
 		iommu_unit->reg_map.size = data.physend - data.physstart + 1;
 		iommu_unit->reg_map.physaddr = data.physstart;
-		memdesc_sg_phys(&iommu_unit->reg_map, data.physstart,
+		ret = memdesc_sg_phys(&iommu_unit->reg_map, data.physstart,
 				iommu_unit->reg_map.size);
+		if (ret)
+			goto err;
 	}
 	iommu->unit_count = pdata_dev->iommu_count;
 	return ret;
@@ -789,9 +791,7 @@ static int kgsl_iommu_start(struct kgsl_mmu *mmu)
 		kgsl_regwrite(mmu->device, MH_MMU_CONFIG, 0x00000001);
 		kgsl_regwrite(mmu->device, MH_MMU_MPU_END,
 			mh->mpu_base +
-			iommu->iommu_units
-				[iommu->unit_count - 1].reg_map.gpuaddr -
-				PAGE_SIZE);
+			iommu->iommu_units[0].reg_map.gpuaddr);
 	} else {
 		kgsl_regwrite(mmu->device, MH_MMU_CONFIG, 0x00000000);
 	}
