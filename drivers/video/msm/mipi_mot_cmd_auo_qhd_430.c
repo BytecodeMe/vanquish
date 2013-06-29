@@ -61,8 +61,8 @@ static char cmd_C4_40[2] = {0x00, 0x40};
 static char set_2_dot_inversion_1[2] = {0x00, 0xB3};
 static char set_2_dot_inversion_2[2] = {0xC0, 0x10};
 
-/* Set scan line to the top of the screen */
-static char set_scanline[3] = {DCS_CMD_SET_SCAN_LINE, 0x00, 0x00};
+/* Set scan line to 2/3 of the screen */
+static char set_scanline[3] = {DCS_CMD_SET_SCAN_LINE, 0x02, 0x80};
 static struct dsi_cmd_desc mot_cmd_scanline_cmds[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(set_scanline), set_scanline},
 };
