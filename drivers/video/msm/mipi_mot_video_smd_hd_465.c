@@ -809,8 +809,16 @@ static char* getElvssForGamma(int gammaIdx)
 	{
 		int brightness = nits <=300 && nits > 200 ? 0x00 :
 			nits <= 200 && nits > 100 ? 0x05 : 0x0d;
-		smart_dynamic_elvss[2] = (unsigned char)min(0x9f,
-			max(0x81, id_regs[2] + brightness - 0xf));
+		/* elvss_tth_status will be set to "1" when battery temp
+		 * is >= threshold
+		 */
+		if (mot_panel->elvss_tth_status)
+			smart_dynamic_elvss[2] = (unsigned char)min(0x9f,
+				max(0x81, id_regs[2] + brightness));
+		else
+			smart_dynamic_elvss[2] = (unsigned char)min(0x9f,
+				max(0x81, id_regs[2] + brightness - 0xf));
+
 		return &smart_dynamic_elvss[0];
 	}
 	else if ((id_regs[0] == EARLY0_FACTORY_ID && id_regs[1] == 0x0)
@@ -1080,6 +1088,10 @@ static void panel_set_backlight(struct msm_fb_data_type *mfd)
 	mot_set_brightness_cmds[0].payload = getGamma(idx);
 	mot_set_brightness_cmds[2].payload = getElvssForGamma(idx);
 
+	pr_debug(".. ELVSS test: ID3=0x%x brightnes=%d elvsss=%d B1[2]=0x%x\n",
+			id_regs[2], mfd->bl_level , mot_panel->elvss_tth_status,
+			(unsigned int)(*(mot_set_brightness_cmds[2].payload)));
+
 	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_set_tx_power_mode(0);
 	mipi_dsi_cmds_tx(dsi_tx_buf, mot_set_brightness_cmds,
@@ -1177,6 +1189,8 @@ static int __init mipi_video_mot_hd_pt_init(void)
 	pinfo->mipi.esc_byte_ratio = 2;
 	mot_panel->acl_support_present = TRUE;
 	mot_panel->acl_enabled = FALSE; /* By default the ACL is disabled. */
+
+	mot_panel->elvss_tth_support_present = TRUE;
 
 	mot_panel->panel_enable = panel_enable;
 	mot_panel->panel_disable = panel_disable;
