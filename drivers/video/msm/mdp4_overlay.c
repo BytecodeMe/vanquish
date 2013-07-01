@@ -1108,6 +1108,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C1_B_Cb;	/* B */
 		pipe->bpp = 2;	/* 2 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_RGB_888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1124,6 +1125,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C2_R_Cr;	/* R */
 		pipe->bpp = 3;	/* 3 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_BGR_565:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1140,6 +1142,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C2_R_Cr;	/* R */
 		pipe->bpp = 2;	/* 2 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_XRGB_8888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1157,6 +1160,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C2_R_Cr;	/* R */
 		pipe->element0 = C3_ALPHA;	/* alpha */
 		pipe->bpp = 4;		/* 4 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_ARGB_8888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1174,6 +1178,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C2_R_Cr;	/* R */
 		pipe->element0 = C3_ALPHA;	/* alpha */
 		pipe->bpp = 4;		/* 4 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_RGBA_8888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1191,6 +1196,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C2_R_Cr;	/* R */
 		pipe->bpp = 4;		/* 4 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_RGBX_8888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1208,6 +1214,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C2_R_Cr;	/* R */
 		pipe->bpp = 4;		/* 4 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_BGRA_8888:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1225,6 +1232,7 @@ int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe)
 		pipe->element1 = C0_G_Y;	/* G */
 		pipe->element0 = C1_B_Cb;	/* B */
 		pipe->bpp = 4;		/* 4 bpp */
+		pipe->chroma_sample = MDP4_CHROMA_RGB;
 		break;
 	case MDP_YCRYCB_H2V1:
 		pipe->frame_format = MDP4_FRAME_FORMAT_LINEAR;
@@ -1508,13 +1516,10 @@ uint32 mdp4_overlay_format(struct mdp4_overlay_pipe *pipe)
 
 	format |= (pipe->frame_format << 29);
 
-	if (pipe->fetch_plane == OVERLAY_PLANE_PSEUDO_PLANAR ||
-			pipe->fetch_plane == OVERLAY_PLANE_PLANAR) {
-		/* video/graphic */
-		format |= (pipe->fetch_plane << 19);
-		format |= (pipe->chroma_site << 28);
-		format |= (pipe->chroma_sample << 26);
-	}
+	/* video/graphic */
+	format |= (pipe->fetch_plane << 19);
+	format |= (pipe->chroma_site << 28);
+	format |= (pipe->chroma_sample << 26);
 
 	return format;
 }
@@ -3142,12 +3147,12 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd)
 		 ab_quota_port1, perf_req->mdp_ab_port1_bw,
 		 ib_quota_port1, perf_req->mdp_ib_port1_bw);
 
-	if (ab_quota_total > mdp_max_bw)
+	/* if (ab_quota_total > mdp_max_bw)
 		pr_warn("%s: req ab bw=%llu is larger than max bw=%llu",
 			__func__, ab_quota_total, mdp_max_bw);
 	if (ib_quota_total > mdp_max_bw)
 		pr_warn("%s: req ib bw=%llu is larger than max bw=%llu",
-			__func__, ib_quota_total, mdp_max_bw);
+			__func__, ib_quota_total, mdp_max_bw); */
 
 	pr_debug("%s %d: pid %d cnt %d clk %d ov0_blt %d, ov1_blt %d\n",
 		 __func__, __LINE__, current->pid, cnt,
@@ -3550,6 +3555,10 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 	mdp4_mixer_stage_down(pipe, 0);
 
 	if (pipe->mixer_num == MDP4_MIXER0) {
+		if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
+			if (mfd->panel_power_on)
+				mdp4_mddi_overlay_restore();
+		}
 	} else {	/* mixer1, DTV, ATV */
 		if (ctrl->panel_mode & MDP4_PANEL_DTV) {
 			if (hdmi_prim_display)
@@ -4137,4 +4146,11 @@ int mdp4_update_base_blend(struct msm_fb_data_type *mfd,
 		blend->bg_alpha = 0;
 	}
 	return ret;
+}
+
+int mdp4_overlay_reset()
+{
+	memset(&perf_request, 0, sizeof(perf_request));
+	memset(&perf_current, 0, sizeof(perf_current));
+	return 0;
 }

@@ -12,6 +12,7 @@
  */
 
 #include <media/msm/vidc_type.h>
+#include <media/msm/vidc_init.h>
 #include "vcd.h"
 
 u32 vcd_init(struct vcd_init_config *config, s32 *driver_handle)
@@ -119,31 +120,9 @@ static int is_session_invalid(u32 decoding, u32 flags) {
 	client_count = vcd_get_clients_security_info(&sec_info);
 	secure_session_running = (sec_info.secure_enc > 0) ||
 			(sec_info.secure_dec > 0);
-	if (!decoding && is_secure) {
-		if ((sec_info.secure_dec == 1))
-			VCD_MSG_LOW("SE-SD: SUCCESS\n");
-		else {
-			VCD_MSG_LOW("SE is permitted only with SD: FAILURE\n");
-			return -EACCES;
-		}
-	} else if (!decoding && !is_secure) {
+	if (!is_secure) {
 		if (secure_session_running) {
-			VCD_MSG_LOW("SD-NSE: FAILURE\n");
-			VCD_MSG_LOW("SE-NSE: FAILURE\n");
-			return -EACCES;
-		}
-	} else if (decoding && is_secure) {
-		if (client_count > 0) {
-			VCD_MSG_LOW("S/NS-SD: FAILURE\n");
-			if (sec_info.secure_enc > 0 ||
-				sec_info.non_secure_enc > 0) {
-				return -EAGAIN;
-			}
-			return -EACCES;
-		}
-	} else {
-		if (sec_info.secure_dec > 0) {
-			VCD_MSG_LOW("SD-NSD: FAILURE\n");
+			pr_err("Secure vs non secure session: FAILURE\n");
 			return -EACCES;
 		}
 	}
@@ -155,7 +134,7 @@ u32 vcd_open(s32 driver_handle, u32 decoding,
 		       void *handle, void *const client_data),
 	void *client_data, int flags)
 {
-	u32 rc = 0;
+	u32 rc = 0, num_of_instances = 0;
 	struct vcd_drv_ctxt *drv_ctxt;
 	struct vcd_clnt_ctxt *cctxt;
 	int is_secure = (flags & VCD_CP_SESSION) ? 1:0;
@@ -165,6 +144,17 @@ u32 vcd_open(s32 driver_handle, u32 decoding,
 		VCD_MSG_ERROR("Bad parameters");
 		return -EINVAL;
 	}
+
+	drv_ctxt = vcd_get_drv_context();
+	cctxt = drv_ctxt->dev_ctxt.cctxt_list_head;
+	while (cctxt) {
+		num_of_instances++;
+		cctxt = cctxt->next;
+	}
+	if (num_of_instances == VIDC_MAX_NUM_CLIENTS) {
+		pr_err(" %s(): Max number of clients reached\n", __func__);
+		return -ENODEV;
+	}
 	rc = is_session_invalid(decoding, flags);
 	if (rc) {
 		VCD_MSG_ERROR("Invalid Session: is_decoder: %d, secure: %d\n",
@@ -173,7 +163,6 @@ u32 vcd_open(s32 driver_handle, u32 decoding,
 	}
 	if (is_secure)
 		res_trk_secure_set();
-	drv_ctxt = vcd_get_drv_context();
 	mutex_lock(&drv_ctxt->dev_mutex);
 
 	if (drv_ctxt->dev_state.state_table->ev_hdlr.open) {

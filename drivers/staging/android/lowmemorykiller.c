@@ -30,6 +30,8 @@
  *
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
@@ -62,7 +64,7 @@ static ktime_t lowmem_deathpending_timeout;
 #define lowmem_print(level, x...)			\
 	do {						\
 		if (lowmem_debug_level >= (level))	\
-			printk(x);			\
+			pr_info(x);			\
 	} while (0)
 
 static int test_task_flag(struct task_struct *p, int flag)
@@ -90,7 +92,12 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int rem = 0;
 	int tasksize;
 	int i;
+<<<<<<< HEAD
 	int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
+=======
+	int min_adj = OOM_ADJUST_MAX + 1;
+	int minfree = 0;
+>>>>>>> 6e07fa8b5f2efef22c18220a768ee8b92b4e2691
 	int selected_tasksize = 0;
 	int selected_oom_score_adj;
 	int array_size = ARRAY_SIZE(lowmem_adj);
@@ -112,9 +119,16 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	if (lowmem_minfree_size < array_size)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
+<<<<<<< HEAD
 		if (other_free < lowmem_minfree[i] &&
 		    other_file < lowmem_minfree[i]) {
 			min_score_adj = lowmem_adj[i];
+=======
+		minfree = lowmem_minfree[i];
+		if ((other_free < minfree && other_file < minfree) ||
+		    (total_swap_pages ? nr_swap_pages < lowmem_swapfree[i] : 0)) {
+			min_adj = lowmem_adj[i];
+>>>>>>> 6e07fa8b5f2efef22c18220a768ee8b92b4e2691
 			break;
 		}
 	}
@@ -182,6 +196,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		}
 		selected = p;
 		selected_tasksize = tasksize;
+<<<<<<< HEAD
 		selected_oom_score_adj = oom_score_adj;
 		lowmem_print(2, "select %d (%s), adj %d, size %d, to kill\n",
 			     p->pid, p->comm, oom_score_adj, tasksize);
@@ -194,6 +209,27 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 							   NSEC_PER_SEC/2);
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
+=======
+		selected_oom_adj = oom_adj;
+		lowmem_print(2, "select '%s' (%d), adj %d, size %d, to kill\n",
+			     p->comm, p->pid, oom_adj, tasksize);
+	}
+	if (selected) {
+		lowmem_print(1, "Killing '%s' (%d), adj %d,\n" \
+				"   to free %ldkB on behalf of '%s' (%d) because\n" \
+				"   cache %ldkB is below limit %ldkB for oom_adj %d\n" \
+				"   Free memory is %ldkB above reserved\n",
+			     selected->comm, selected->pid,
+			     selected_oom_adj,
+			     selected_tasksize * (long)(PAGE_SIZE / 1024),
+			     current->comm, current->pid,
+			     other_file * (long)(PAGE_SIZE / 1024),
+			     minfree * (long)(PAGE_SIZE / 1024),
+			     min_adj,
+			     other_free * (long)(PAGE_SIZE / 1024));
+		lowmem_deathpending_timeout = jiffies + HZ;
+		force_sig(SIGKILL, selected);
+>>>>>>> 6e07fa8b5f2efef22c18220a768ee8b92b4e2691
 		rem -= selected_tasksize;
 		rcu_read_unlock();
 		/* give the system time to free up the memory */

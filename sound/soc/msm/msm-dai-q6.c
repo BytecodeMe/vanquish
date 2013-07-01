@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -247,6 +247,8 @@ static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
 		}
 		break;
 	case 2:
+	case 6:
+	case 8:
 		if (dai->id == SLIMBUS_0_RX) {
 			slave_port_mapping[0] = 1;
 			slave_port_mapping[1] = 2;

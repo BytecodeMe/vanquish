@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  *
  */
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 #include <mach/msm_memtypes.h>
 #include "vcd_ddl.h"
 #include "vcd_ddl_shared_mem.h"
@@ -169,6 +169,28 @@ u32 ddl_decoder_dpb_transact(struct ddl_decoder_data *decoder,
 			} else if (operation == DDL_DPB_OP_MARK_FREE) {
 				dpb_mask->client_mask |= (0x1 << loopc);
 				*found_frame = *in_out_frame;
+				if ((decoder->meta_data_enable_flag) &&
+				    (in_out_frame->vcd_frm.buff_ion_handle)) {
+					struct ddl_context *ddl_context =
+						ddl_get_context();
+					unsigned long *vaddr =
+						(unsigned long *)((u32)
+						in_out_frame->vcd_frm.virtual +
+						decoder->meta_data_offset);
+					DDL_MSG_LOW("%s: Cache clean: vaddr"\
+						" (%p), offset %u, size %u",
+						__func__,
+						in_out_frame->vcd_frm.virtual,
+						decoder->meta_data_offset,
+						decoder->suffix);
+					msm_ion_do_cache_op(
+						ddl_context->video_ion_client,
+						in_out_frame->vcd_frm.\
+						buff_ion_handle,
+						vaddr,
+						(unsigned long)decoder->suffix,
+						ION_IOC_CLEAN_CACHES);
+				}
 			}
 		} else {
 			in_out_frame->vcd_frm.physical = NULL;
@@ -382,6 +404,8 @@ void ddl_release_client_internal_buffers(struct ddl_client_context *ddl)
 		encoder->dynamic_prop_change = 0;
 		ddl_free_enc_hw_buffers(ddl);
 	}
+	ddl_pmem_free(&ddl->shared_mem[0]);
+	ddl_pmem_free(&ddl->shared_mem[1]);
 }
 
 u32 ddl_codec_type_transact(struct ddl_client_context *ddl,
@@ -481,6 +505,8 @@ u32 ddl_get_yuv_buf_size(u32 width, u32 height, u32 format)
 
 	width_round_up  = width;
 	height_round_up = height;
+	align = SZ_4K;
+
 	if (format == DDL_YUV_BUF_TYPE_TILE) {
 		width_round_up  = DDL_ALIGN(width, DDL_TILE_ALIGN_WIDTH);
 		height_round_up = DDL_ALIGN(height, DDL_TILE_ALIGN_HEIGHT);
@@ -510,6 +536,7 @@ void ddl_free_dec_hw_buffers(struct ddl_client_context *ddl)
 	ddl_pmem_free(&dec_bufs->stx_parser);
 	ddl_pmem_free(&dec_bufs->desc);
 	ddl_pmem_free(&dec_bufs->context);
+	ddl_pmem_free(&dec_bufs->extnuserdata);
 	memset(dec_bufs, 0, sizeof(struct ddl_dec_buffers));
 }
 
@@ -578,6 +605,7 @@ void ddl_calc_dec_hw_buffers_size(enum vcd_codec codec, u32 width,
 	u32 sz_sub_anchor_mv = 0, sz_overlap_xform = 0, sz_bit_plane3 = 0;
 	u32 sz_bit_plane2 = 0, sz_bit_plane1 = 0, sz_stx_parser = 0;
 	u32 sz_desc, sz_cpb, sz_context, sz_vert_nb_mv = 0, sz_nb_ip = 0;
+	u32 sz_extnuserdata = 0;
 
 	if (codec == VCD_CODEC_H264) {
 		sz_mv = ddl_get_yuv_buf_size(width,
@@ -592,22 +620,29 @@ void ddl_calc_dec_hw_buffers_size(enum vcd_codec codec, u32 width,
 			(codec == VCD_CODEC_DIVX_6) ||
 			(codec == VCD_CODEC_XVID) ||
 			(codec == VCD_CODEC_H263)) {
+			u32 val = DDL_MAX(DDL_MAX_FRAME_WIDTH,
+				DDL_MAX_FRAME_HEIGHT);
+			sz_sub_anchor_mv = DDL_ALIGN(((val >> 4) * 128 * 2 * 8),
+				DDL_LINEAR_BUFFER_ALIGN_BYTES);
 			sz_nb_dcac = DDL_KILO_BYTE(16);
 			sz_upnb_mv = DDL_KILO_BYTE(68);
-			sz_sub_anchor_mv = DDL_KILO_BYTE(136);
 			sz_overlap_xform = DDL_KILO_BYTE(32);
 			if (codec != VCD_CODEC_H263)
 				sz_stx_parser = DDL_KILO_BYTE(68);
 		} else if ((codec == VCD_CODEC_VC1) ||
 			(codec == VCD_CODEC_VC1_RCV)) {
+			u32 val = DDL_MAX(DDL_MAX_FRAME_WIDTH,
+				DDL_MAX_FRAME_HEIGHT);
+			sz_sub_anchor_mv = DDL_ALIGN(((val >> 4) * 128 * 2 * 8),
+				DDL_LINEAR_BUFFER_ALIGN_BYTES);
 			sz_nb_dcac = DDL_KILO_BYTE(16);
 			sz_upnb_mv = DDL_KILO_BYTE(68);
-			sz_sub_anchor_mv = DDL_KILO_BYTE(136);
 			sz_overlap_xform = DDL_KILO_BYTE(32);
 			sz_bit_plane3 = DDL_KILO_BYTE(2);
 			sz_bit_plane2 = DDL_KILO_BYTE(2);
 			sz_bit_plane1 = DDL_KILO_BYTE(2);
-		}
+		} else if (codec == VCD_CODEC_MPEG2)
+			sz_extnuserdata = DDL_KILO_BYTE(2);
 	}
 	sz_desc = DDL_KILO_BYTE(128);
 	sz_cpb = VCD_DEC_CPB_SIZE;
@@ -634,6 +669,7 @@ void ddl_calc_dec_hw_buffers_size(enum vcd_codec codec, u32 width,
 		buf_size->sz_desc           = sz_desc;
 		buf_size->sz_cpb            = sz_cpb;
 		buf_size->sz_context        = sz_context;
+		buf_size->sz_extnuserdata   = sz_extnuserdata;
 	}
 }
 
@@ -654,8 +690,9 @@ u32 ddl_allocate_dec_hw_buffers(struct ddl_client_context *ddl)
 		ptr = ddl_pmem_alloc(&dec_bufs->context, buf_size.sz_context,
 			DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
-		msm_ion_do_cache_op(ddl_context->video_ion_client,
+			goto fail_free_exit;
+		else
+			msm_ion_do_cache_op(ddl_context->video_ion_client,
 					dec_bufs->context.alloc_handle,
 					dec_bufs->context.virtual_base_addr,
 					dec_bufs->context.buffer_size,
@@ -666,77 +703,77 @@ u32 ddl_allocate_dec_hw_buffers(struct ddl_client_context *ddl)
 		ptr = ddl_pmem_alloc(&dec_bufs->h264_nb_ip, buf_size.sz_nb_ip,
 			DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_vert_nb_mv > 0) {
 		dec_bufs->h264_vert_nb_mv.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->h264_vert_nb_mv,
 			buf_size.sz_vert_nb_mv, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_nb_dcac > 0) {
 		dec_bufs->nb_dcac.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->nb_dcac, buf_size.sz_nb_dcac,
 			DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_upnb_mv > 0) {
 		dec_bufs->upnb_mv.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->upnb_mv, buf_size.sz_upnb_mv,
 			DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_sub_anchor_mv > 0) {
 		dec_bufs->sub_anchor_mv.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->sub_anchor_mv,
 			buf_size.sz_sub_anchor_mv, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_overlap_xform > 0) {
 		dec_bufs->overlay_xform.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->overlay_xform,
 			buf_size.sz_overlap_xform, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_bit_plane3 > 0) {
 		dec_bufs->bit_plane3.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->bit_plane3,
 			buf_size.sz_bit_plane3, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_bit_plane2 > 0) {
 		dec_bufs->bit_plane2.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->bit_plane2,
 			buf_size.sz_bit_plane2, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_bit_plane1 > 0) {
 		dec_bufs->bit_plane1.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->bit_plane1,
 			buf_size.sz_bit_plane1, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_stx_parser > 0) {
 		dec_bufs->stx_parser.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->stx_parser,
 			buf_size.sz_stx_parser, DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 	}
 	if (buf_size.sz_desc > 0) {
 		dec_bufs->desc.mem_type = DDL_MM_MEM;
 		ptr = ddl_pmem_alloc(&dec_bufs->desc, buf_size.sz_desc,
 			DDL_KILO_BYTE(2));
 		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			goto fail_free_exit;
 		else {
 			if (!res_trk_check_for_sec_session()) {
 				memset(dec_bufs->desc.align_virtual_addr,
@@ -750,8 +787,20 @@ u32 ddl_allocate_dec_hw_buffers(struct ddl_client_context *ddl)
 			}
 		}
 	}
-	if (status)
-		ddl_free_dec_hw_buffers(ddl);
+	if (buf_size.sz_extnuserdata > 0) {
+		dec_bufs->extnuserdata.mem_type = DDL_CMD_MEM;
+		ptr = ddl_pmem_alloc(&dec_bufs->extnuserdata,
+				buf_size.sz_extnuserdata, DDL_KILO_BYTE(2));
+		if (!ptr)
+			goto fail_free_exit;
+		else
+			memset(dec_bufs->extnuserdata.align_virtual_addr,
+				0, buf_size.sz_extnuserdata);
+	}
+	return status;
+fail_free_exit:
+	status = VCD_ERR_ALLOC_FAIL;
+	ddl_free_dec_hw_buffers(ddl);
 	return status;
 }
 
@@ -879,65 +928,69 @@ u32 ddl_allocate_enc_hw_buffers(struct ddl_client_context *ddl)
 			ptr = ddl_pmem_alloc(&enc_bufs->mv, buf_size.sz_mv,
 				DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_col_zero > 0) {
 			enc_bufs->col_zero.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->col_zero,
 				buf_size.sz_col_zero, DDL_KILO_BYTE(2));
-		if (!ptr)
-			status = VCD_ERR_ALLOC_FAIL;
+			if (!ptr)
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_md > 0) {
 			enc_bufs->md.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->md, buf_size.sz_md,
 				DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_pred > 0) {
 			enc_bufs->pred.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->pred,
 				buf_size.sz_pred, DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_nbor_info > 0) {
 			enc_bufs->nbor_info.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->nbor_info,
 				buf_size.sz_nbor_info, DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_acdc_coef > 0) {
 			enc_bufs->acdc_coef.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->acdc_coef,
 				buf_size.sz_acdc_coef, DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_mb_info > 0) {
 			enc_bufs->mb_info.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->mb_info,
 				buf_size.sz_mb_info, DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
+				goto fail_enc_free_exit;
 		}
 		if (buf_size.sz_context > 0) {
 			enc_bufs->context.mem_type = DDL_MM_MEM;
 			ptr = ddl_pmem_alloc(&enc_bufs->context,
 				buf_size.sz_context, DDL_KILO_BYTE(2));
 			if (!ptr)
-				status = VCD_ERR_ALLOC_FAIL;
-			msm_ion_do_cache_op(ddl_context->video_ion_client,
+				goto fail_enc_free_exit;
+			else
+				msm_ion_do_cache_op(
+					ddl_context->video_ion_client,
 					enc_bufs->context.alloc_handle,
 					enc_bufs->context.virtual_base_addr,
 					enc_bufs->context.buffer_size,
 					ION_IOC_CLEAN_INV_CACHES);
 		}
-		if (status)
-			ddl_free_enc_hw_buffers(ddl);
 	}
+	return status;
+fail_enc_free_exit:
+	status = VCD_ERR_ALLOC_FAIL;
+	ddl_free_enc_hw_buffers(ddl);
 	return status;
 }
 
@@ -952,7 +1005,7 @@ void ddl_decoder_chroma_dpb_change(struct ddl_client_context *ddl)
 	u32 luma_size, i, dpb;
 	luma_size = decoder->dpb_buf_size.size_y;
 	dpb = decoder->dp_buf.no_of_dec_pic_buf;
-	DDL_MSG_HIGH("%s Decoder num DPB buffers = %u Luma Size = %u"
+	DDL_MSG_HIGH("%s Decoder num DPB buffers = %u Luma Size = %u",
 			 __func__, dpb, luma_size);
 	if (dpb > DDL_MAX_BUFFER_COUNT)
 		dpb = DDL_MAX_BUFFER_COUNT;
@@ -1003,9 +1056,27 @@ u32 ddl_check_reconfig(struct ddl_client_context *ddl)
 			(decoder->frame_size.scan_lines ==
 			decoder->client_frame_size.scan_lines) &&
 			(decoder->frame_size.stride ==
-			decoder->client_frame_size.stride))
+			decoder->client_frame_size.stride) &&
+			decoder->progressive_only)
 				need_reconfig = false;
 	}
+	DDL_MSG_HIGH("%s(): need_reconfig = %u, cont_mode = %u\n"\
+	"Actual: WxH = %ux%u, SxSH = %ux%u, sz = %u, min = %u, act = %u\n"\
+	"Client: WxH = %ux%u, SxSH = %ux%u, sz = %u, min = %u, act = %u\n",
+	__func__, need_reconfig, decoder->cont_mode,
+	decoder->frame_size.width, decoder->frame_size.height,
+	decoder->frame_size.stride, decoder->frame_size.scan_lines,
+	decoder->actual_output_buf_req.sz,
+	decoder->actual_output_buf_req.min_count,
+	decoder->actual_output_buf_req.actual_count,
+	decoder->client_frame_size.width,
+	decoder->client_frame_size.height,
+	decoder->client_frame_size.stride,
+	decoder->client_frame_size.scan_lines,
+	decoder->client_output_buf_req.sz,
+	decoder->client_output_buf_req.min_count,
+	decoder->client_output_buf_req.actual_count);
+
 	return need_reconfig;
 }
 

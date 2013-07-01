@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2258,7 +2258,9 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #endif
 	.disable_dmx = 0,
 	.disable_fullhd = 0,
+	.cont_mode_dpb_count = 8
 	.disable_turbo = 1
+	.enable_sec_metadata = 0,
 };
 
 struct platform_device msm_device_vidc = {

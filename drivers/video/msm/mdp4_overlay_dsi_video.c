@@ -395,9 +395,7 @@ static void mdp4_dsi_video_wait4dmap(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
-	if (!wait_for_completion_timeout(
-			&vctrl->dmap_comp, msecs_to_jiffies(100)))
-		pr_err("%s %d  TIMEOUT_\n", __func__, __LINE__);
+	wait_for_completion(&vctrl->dmap_comp);
 }
 
 
@@ -434,9 +432,7 @@ static void mdp4_dsi_video_wait4ov(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
-	if (!wait_for_completion_timeout(
-			&vctrl->ov_comp, msecs_to_jiffies(100)))
-		pr_err("%s %d  TIMEOUT_\n", __func__, __LINE__);
+	wait_for_completion(&vctrl->ov_comp);
 }
 
 ssize_t mdp4_dsi_video_show_event(struct device *dev,
@@ -507,7 +503,6 @@ ssize_t mdp4_dsi_video_show_event(struct device *dev,
 	return ret;
 }
 
-extern int mipi_panel_power_en(int on);
 void mdp4_dsi_vsync_init(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
@@ -820,8 +815,8 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 		if (vctrl->ov_koff != vctrl->ov_done)
 			need_wait = 1;
 		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
-	if(need_wait)
-		mdp4_dsi_video_wait4ov(0);
+		if (need_wait)
+			mdp4_dsi_video_wait4ov(0);
 	}
 
 #ifdef CONFIG_FB_MSM_MIPI_DSI_MOT
@@ -1090,10 +1085,6 @@ void mdp4_dmap_done_dsi_video(int cndx)
 	}
 
 	complete_all(&vctrl->dmap_comp);
-
-	if (mdp_rev <= MDP_REV_41)
-		mdp4_mixer_blend_cfg(MDP4_MIXER0);
-
 	mdp4_overlay_dma_commit(cndx);
 	spin_unlock(&vctrl->spin_lock);
 }
@@ -1203,11 +1194,11 @@ static void mdp4_dsi_video_do_blt(struct msm_fb_data_type *mfd, int enable)
 		}
 		if (tg_enabled) {
 			/*
-			* need wait for more than 1 ms to
-			* make sure dsi lanes' fifo is empty and
-			* lanes in stop state befroe reset
-			* controller
-			*/
+			 * need wait for more than 1 ms to
+			 * make sure lanes' fifo is empty and
+			 * lanes in stop state befroe reset
+			 * controller
+			 */
 			usleep(2000);
 			mipi_dsi_sw_reset();
 			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);

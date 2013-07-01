@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -426,9 +426,6 @@ void vidc_cleanup_addr_table(struct video_client_ctx *client_ctx,
 		}
 		if (!IS_ERR_OR_NULL(buf_addr_table[i].buff_ion_handle)) {
 			if (!IS_ERR_OR_NULL(client_ctx->user_ion_client)) {
-				ion_unmap_kernel(client_ctx->user_ion_client,
-						buf_addr_table[i].
-						buff_ion_handle);
 				if (!res_trk_check_for_sec_session() &&
 				   (res_trk_get_core_type() !=
 				   (u32)VCD_CORE_720P)) {
@@ -466,6 +463,42 @@ void vidc_cleanup_addr_table(struct video_client_ctx *client_ctx,
 					client_ctx->h264_mv_ion_handle);
 			client_ctx->h264_mv_ion_handle = NULL;
 		}
+	}
+
+	if (client_ctx->vcd_meta_buffer.client_data)
+		msm_subsystem_unmap_buffer((struct msm_mapped_buffer *)
+		client_ctx->vcd_meta_buffer.client_data);
+	if (!IS_ERR_OR_NULL(client_ctx->meta_buffer_ion_handle)) {
+			ion_unmap_kernel(client_ctx->user_ion_client,
+				client_ctx->meta_buffer_ion_handle);
+		if (!res_trk_check_for_sec_session() &&
+		   (res_trk_get_core_type() != (u32)VCD_CORE_720P)) {
+			ion_unmap_iommu(client_ctx->user_ion_client,
+				client_ctx->meta_buffer_ion_handle,
+				VIDEO_DOMAIN,
+				VIDEO_MAIN_POOL);
+		}
+		ion_free(client_ctx->user_ion_client,
+			client_ctx->meta_buffer_ion_handle);
+		client_ctx->meta_buffer_ion_handle = NULL;
+	}
+
+	if (client_ctx->vcd_meta_buffer.client_data_iommu)
+		msm_subsystem_unmap_buffer((struct msm_mapped_buffer *)
+		client_ctx->vcd_meta_buffer.client_data_iommu);
+	if (!IS_ERR_OR_NULL(client_ctx->meta_buffer_iommu_ion_handle)) {
+		ion_unmap_kernel(client_ctx->user_ion_client,
+			client_ctx->meta_buffer_iommu_ion_handle);
+		if (res_trk_check_for_sec_session() &&
+		   (res_trk_get_core_type() != (u32)VCD_CORE_720P)) {
+			ion_unmap_iommu(client_ctx->user_ion_client,
+				client_ctx->meta_buffer_iommu_ion_handle,
+				VIDEO_DOMAIN,
+				VIDEO_MAIN_POOL);
+		}
+		ion_free(client_ctx->user_ion_client,
+			client_ctx->meta_buffer_iommu_ion_handle);
+		client_ctx->meta_buffer_iommu_ion_handle = NULL;
 	}
 bail_out_cleanup:
 	return;
@@ -571,6 +604,9 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 	int ret = 0;
 	unsigned long buffer_size  = 0;
 	size_t ion_len;
+	struct vcd_property_hdr vcd_property_hdr;
+	struct vcd_property_codec codec;
+	u32 vcd_status = VCD_ERR_FAIL;
 
 	if (!client_ctx || !length)
 		return false;
@@ -586,7 +622,21 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 		num_of_buffers = &client_ctx->num_of_output_buffers;
 		DBG("%s(): buffer = OUTPUT #Buf = %d\n",
 			__func__, *num_of_buffers);
-		length = length * 2; /* workaround for iommu video h/w bug */
+		vcd_property_hdr.prop_id = VCD_I_CODEC;
+		vcd_property_hdr.sz = sizeof(struct vcd_property_codec);
+		vcd_status = vcd_get_property(client_ctx->vcd_handle,
+						&vcd_property_hdr, &codec);
+		if (vcd_status) {
+			ERR("%s(): get codec failed", __func__);
+		} else {
+			if (codec.codec != VCD_CODEC_H264) {
+				/* workaround for iommu video h/w bug */
+				DBG("%s(): Double iommu map size from %u "\
+				"to %u for non-H264", __func__,
+				(u32)length, (u32)(length * 2));
+				length = length * 2;
+			}
+		}
 	}
 
 	if (*num_of_buffers == max_num_buffers) {
@@ -677,9 +727,10 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 						(unsigned long *) &buffer_size,
 						UNCACHED,
 						ION_IOMMU_UNMAP_DELAYED);
-				if (ret) {
-					ERR("%s():ION iommu map fail\n",
-					 __func__);
+				if (ret || !iova) {
+					ERR(
+					"%s():ION iommu map fail, ret = %d, iova = 0x%lx\n",
+						__func__, ret, iova);
 					goto ion_map_error;
 				}
 				phys_addr = iova;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,10 +49,6 @@ extern struct workqueue_struct *mdp_hist_wq;
 
 extern uint32 mdp_intr_mask;
 
-extern int mdp_lut_i;
-extern int mdp_lut_push;
-extern int mdp_lut_push_i;
-extern struct mutex mdp_lut_push_sem;
 #define MDP4_REVISION_V1		0
 #define MDP4_REVISION_V2		1
 #define MDP4_REVISION_V2_1	2
@@ -732,6 +728,7 @@ extern struct mdp_hist_mgmt *mdp_hist_mgmt_array[];
 
 void mdp_hw_init(void);
 int mdp_ppp_pipe_wait(void);
+void mdp_pipe_kickoff_simplified(uint32 term);
 void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd);
 void mdp_clk_ctrl(int on);
 void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
