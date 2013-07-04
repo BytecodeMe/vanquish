@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,6 +44,10 @@ enum {
 	MSM_FRONTEND_DAI_MULTIMEDIA2,
 	MSM_FRONTEND_DAI_MULTIMEDIA3,
 	MSM_FRONTEND_DAI_MULTIMEDIA4,
+	MSM_FRONTEND_DAI_MULTIMEDIA5,
+	MSM_FRONTEND_DAI_MULTIMEDIA6,
+	MSM_FRONTEND_DAI_MULTIMEDIA7,
+	MSM_FRONTEND_DAI_MULTIMEDIA8,
 	MSM_FRONTEND_DAI_CS_VOICE,
 	MSM_FRONTEND_DAI_VOIP,
 	MSM_FRONTEND_DAI_AFE_RX,
@@ -51,8 +55,8 @@ enum {
 	MSM_FRONTEND_DAI_MAX,
 };
 
-#define MSM_FRONTEND_DAI_MM_SIZE (MSM_FRONTEND_DAI_MULTIMEDIA4 + 1)
-#define MSM_FRONTEND_DAI_MM_MAX_ID MSM_FRONTEND_DAI_MULTIMEDIA4
+#define MSM_FRONTEND_DAI_MM_SIZE (MSM_FRONTEND_DAI_MULTIMEDIA8 + 1)
+#define MSM_FRONTEND_DAI_MM_MAX_ID MSM_FRONTEND_DAI_MULTIMEDIA8
 
 enum {
 	MSM_BACKEND_DAI_PRI_I2S_RX = 0,
@@ -80,8 +84,8 @@ enum {
  * dspst_id:  DSP audio stream ID
  * stream_type: playback or capture
  */
-void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id,
-	int stream_type);
+void msm_pcm_routing_reg_phy_stream(int fedai_id, bool perf_mode,
+				int dspst_id, int stream_type);
 void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
 		int stream_type, int enable);
 
