@@ -67,3 +67,9 @@ config PROC_PAGE_MONITOR
 	  /proc/pid/smaps, /proc/pid/clear_refs, /proc/pid/pagemap,
 	  /proc/kpagecount, and /proc/kpageflags. Disabling these
           interfaces will reduce the size of the kernel by approximately 4kb.
+
+config EXPOSE_VIRTUAL_PID
+	boolean "Expose virtual PID from child namespace in /proc/PID/status"
+	default n
+	---help---
+		Turn this on to expose virtual PID from child namespace in /proc/PID/status
